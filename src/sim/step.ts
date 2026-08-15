@@ -349,8 +349,12 @@ function moveBullets(world: World): void {
       b.alive = false;
       const damage = BULLET.damagePerPower * b.power;
       hitRobot.health = clamp(hitRobot.health - damage, 0, MAX_HEALTH);
+      hitRobot.damageTaken += damage;
       const shooter = world.robots[b.ownerId];
-      if (shooter) shooter.damageDealt += damage;
+      if (shooter) {
+        shooter.damageDealt += damage;
+        shooter.shotsHit++;
+      }
 
       const impactX = x0 + (b.x - x0) * hitT;
       const impactY = y0 + (b.y - y0) * hitT;

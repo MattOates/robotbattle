@@ -43,7 +43,31 @@ export interface MatchManifest {
   simVersion: number;
 }
 
-export const SIM_VERSION = 1;
+/**
+ * Bumped whenever simulation behaviour changes, so peers on different builds
+ * refuse to share a match rather than silently desyncing.
+ *
+ * 2 — seeded spawn jitter, so different seeds give genuinely different matches.
+ */
+export const SIM_VERSION = 2;
+
+/**
+ * How far a spawn may vary from its slot on the ring.
+ *
+ * Without this, spawn position is a pure function of entry index, so for the
+ * many robots that never call `random()` every seed produced the identical
+ * match — which made "run 100 trials" meaningless and gave the Arena a
+ * positional meta. Jitter is drawn from the world RNG, so a given seed is still
+ * perfectly reproducible.
+ */
+const SPAWN_JITTER = {
+  /** Fraction of the gap to the next slot; kept below half so slots never swap. */
+  angleFraction: 0.34,
+  minRadiusScale: 0.78,
+  maxRadiusScale: 1,
+  /** Degrees either side of "facing the middle". */
+  heading: 45,
+} as const;
 
 export function makeManifest(
   entries: Entry[],
@@ -96,35 +120,49 @@ export function createWorld(manifest: MatchManifest): World {
   const cy = manifest.height / 2;
   const ringRadius = Math.min(manifest.width, manifest.height) * 0.34;
 
+  const slot = 360 / Math.max(1, n);
+
   manifest.entries.forEach((entry, index) => {
     const ast = parse(entry.source);
     const program = compile(ast);
-    // Spawn evenly around a ring so nobody starts with a positional edge,
-    // facing the centre.
-    const angle = (360 / Math.max(1, n)) * index;
+
+    // An even ring so nobody starts with a positional edge, jittered from the
+    // seed so that no two matches are the same. Draws happen in entry order,
+    // which keeps the whole thing reproducible.
+    const spread = slot * SPAWN_JITTER.angleFraction;
+    const angle = slot * index + rng.range(-spread, spread);
+    const radius =
+      ringRadius * rng.range(SPAWN_JITTER.minRadiusScale, SPAWN_JITTER.maxRadiusScale);
+    const facing = normalizeAngle(
+      angle + 180 + rng.range(-SPAWN_JITTER.heading, SPAWN_JITTER.heading),
+    );
+
     const robot: Robot = {
       id: index,
       name: ast.name,
       declaredName: ast.name,
       color: entry.color ?? ast.color,
       locomotion: ast.locomotion,
-      x: cx + cosDeg(angle) * ringRadius,
-      y: cy + sinDeg(angle) * ringRadius,
-      heading: normalizeAngle(angle + 180),
+      x: cx + cosDeg(angle) * radius,
+      y: cy + sinDeg(angle) * radius,
+      heading: facing,
       speed: 0,
-      turret: normalizeAngle(angle + 180),
+      turret: facing,
       gunHeat: 0,
       health: MAX_HEALTH,
       alive: true,
       throttle: 0,
       headingMode: "free",
-      headingGoal: normalizeAngle(angle + 180),
+      headingGoal: facing,
       steer: 0,
-      turretGoal: normalizeAngle(angle + 180),
+      turretGoal: facing,
       sweepAmplitude: 0,
       sweepDir: 1,
       kills: 0,
       damageDealt: 0,
+      damageTaken: 0,
+      shotsFired: 0,
+      shotsHit: 0,
       diedAtTick: -1,
       vm: null as unknown as Vm,
       chunk: program,
@@ -266,6 +304,7 @@ export function fire(world: World, robot: Robot, powerRaw: number): void {
   });
 
   robot.gunHeat = TURRET.heatPerPower * power;
+  robot.shotsFired++;
   world.effects.push({
     type: "muzzle",
     x: robot.x + cosDeg(robot.turret) * muzzle,

@@ -22,23 +22,20 @@ import { DODGER, HUNTER, RACER, SPINNER } from "../../src/bots/index.js";
 const GOLDEN_SEED = 20260815;
 
 const GOLDEN = {
-  simVersion: 1,
-  ticks: 515,
+  // 2 — seeded spawn jitter. Regenerated deliberately when spawn positions
+  // stopped being a pure function of entry index.
+  simVersion: 2,
+  ticks: 299,
   winner: "Hunter",
-  finalHash: "aad9c4a05665f8bf",
+  finalHash: "9ab82d36899fe5d3",
   /** Hash at ticks 0, 50, 100, ... */
   every50: [
-    "cf0fee63b182cd38",
-    "bfed1beb6752325e",
-    "1df6a60ef2ceb40b",
-    "bf9e5377137cc281",
-    "2e145b156a32e36d",
-    "7a61ceec1b34534e",
-    "5680673206eb8e32",
-    "b7456514797d7c59",
-    "b8b0f3ddc883f87a",
-    "82a80ba884016001",
-    "5833b1e7d70f0cb7",
+    "7a5ef709c4d542d9",
+    "f64c76efd49e3e0f",
+    "9ba870ac4e37f9d8",
+    "978f7fa7b7820ec4",
+    "4e86d44e72623d30",
+    "83d854408fc89eff",
   ],
 };
 

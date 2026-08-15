@@ -105,10 +105,14 @@ describe("what the two share", () => {
   it("rotates the turret independently of the chassis", () => {
     const w = world([`chassis tank\non start\n  turret.turn to 0\n  turn body by 90\nend\n`]);
     const r = w.robots[0]!;
+    const h0 = r.heading;
     run(w, 40);
-    // The turret holds its absolute heading while the body swings underneath.
+    // The claim is independence: the turret holds the absolute heading it was
+    // given while the body turns its own 90 degrees underneath it. Comparing
+    // the two headings directly would depend on where the robot happened to
+    // spawn, which is jittered per seed.
     expect(r.turret).toBeCloseTo(0, 6);
-    expect(Math.abs(angleDelta(r.heading, r.turret))).toBeGreaterThan(45);
+    expect(angleDelta(h0, r.heading)).toBeCloseTo(90, 4);
   });
 });
 

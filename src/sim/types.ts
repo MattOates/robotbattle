@@ -124,9 +124,15 @@ export interface Robot {
   /** +1 or -1: which way the sweep is currently going. */
   sweepDir: number;
 
-  // ---- scoring ----
+  // ---- scoring and telemetry ----
+  // These are observational: nothing in the tick loop reads them, and they are
+  // deliberately left out of `hashWorld` because they are fully derived from
+  // state that is already hashed.
   kills: number;
   damageDealt: number;
+  damageTaken: number;
+  shotsFired: number;
+  shotsHit: number;
   /** Tick at which this robot died, or -1 while alive. Used for placings. */
   diedAtTick: number;
 

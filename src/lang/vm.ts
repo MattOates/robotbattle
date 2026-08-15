@@ -68,6 +68,20 @@ export class Vm {
 
   /** Set when a handler aborts; surfaced in the UI, never fatal to the match. */
   lastError: RuntimeError | null = null;
+
+  // ---- telemetry -------------------------------------------------------
+  // Counters only. Nothing in the VM or the simulation reads these back, so
+  // they cannot affect a match — which is why they are safe to keep out of the
+  // world hash.
+
+  /** Total instructions executed, a rough measure of how hard this robot thinks. */
+  instructionsExecuted = 0;
+  /** Handlers that ran out of fuel mid-tick. High means slow reactions. */
+  suspensions = 0;
+  /** Events discarded because the queue was already full. */
+  eventsDropped = 0;
+  /** Runtime errors that aborted a handler. */
+  errors = 0;
   /** True while a handler is mid-flight, so `on tick` isn't queued twice. */
   get busy(): boolean {
     return this.fiber !== null;
@@ -95,6 +109,7 @@ export class Vm {
     if (this.queue.length >= MAX_QUEUE) {
       // Drop the oldest: under overload, recent information is the useful kind.
       this.queue.shift();
+      this.eventsDropped++;
     }
     this.queue.push({ name, payload });
   }
@@ -140,6 +155,12 @@ export class Vm {
 
       budget = this.step(this.fiber, budget);
     }
+
+    // Falling out of the loop means the fuel ran out. If a handler is still
+    // mid-flight it has been suspended and will resume next tick — which is
+    // exactly the thing a player wants to know about when their robot feels
+    // sluggish.
+    if (this.fiber !== null && this.fiber.waiting === 0) this.suspensions++;
   }
 
   /** Execute instructions until the fiber ends, waits, or runs out of fuel. */
@@ -150,6 +171,7 @@ export class Vm {
 
     while (budget > 0) {
       budget--;
+      this.instructionsExecuted++;
       const pc = fiber.pc;
       if (pc < 0 || pc >= ops.length) {
         this.fiber = null;
@@ -300,6 +322,7 @@ export class Vm {
         }
       } catch (err) {
         // A script must never take the match down with it.
+        this.errors++;
         this.lastError = {
           message: err instanceof Error ? err.message : String(err),
           line: lines[pc] ?? 0,
@@ -312,6 +335,7 @@ export class Vm {
       // A stack that keeps growing means a compiler bug; fail this handler
       // loudly rather than eating memory.
       if (stack.length > 256) {
+        this.errors++;
         this.lastError = {
           message: "this instruction got too complicated to work out",
           line: lines[pc] ?? 0,
