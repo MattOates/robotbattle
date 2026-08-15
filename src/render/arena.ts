@@ -1,0 +1,363 @@
+/**
+ * PixiJS arena renderer.
+ *
+ * Strictly a view: it reads snapshots and never writes simulation state, so
+ * nothing here can affect the outcome of a match or desync a peer. Robot bodies
+ * and turrets are drawn once into cached Graphics and then only moved; bullets,
+ * effects and sense cones are cheap enough to redraw each frame.
+ */
+
+import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
+import { DEG_TO_RAD } from "../sim/math.js";
+import { ROBOT_RADIUS, SENSE, MAX_HEALTH, type Effect, type World } from "../sim/types.js";
+import { ART, hexToNumber, type ArenaTheme } from "./themes/index.js";
+import type { Theme } from "../lang/vocab.js";
+import { lerp, lerpAngle, snapshot, type Snapshot } from "./interpolate.js";
+
+interface Particle {
+  type: Effect["type"];
+  x: number;
+  y: number;
+  heading: number;
+  /** Frames lived so far, and total lifetime in frames. */
+  age: number;
+  life: number;
+}
+
+interface RobotView {
+  root: Container;
+  body: Graphics;
+  turretPivot: Container;
+  label: Text;
+  healthBar: Graphics;
+  /** What the cached body Graphics was drawn for, so we redraw only on change. */
+  drawnColor: string;
+  drawnLabel: string;
+}
+
+export interface ArenaOptions {
+  theme: Theme;
+  showSenseCones: boolean;
+}
+
+export class ArenaRenderer {
+  private app: Application | null = null;
+  private theme: ArenaTheme;
+  private options: ArenaOptions;
+
+  private backdrop = new Graphics();
+  private cones = new Graphics();
+  private bullets = new Graphics();
+  private effects = new Graphics();
+  private robotLayer = new Container();
+  private views = new Map<number, RobotView>();
+  private particles: Particle[] = [];
+
+  private prev: Snapshot | null = null;
+  private curr: Snapshot | null = null;
+  private width = 0;
+  private height = 0;
+
+  constructor(options: ArenaOptions) {
+    this.options = options;
+    this.theme = ART[options.theme];
+  }
+
+  async init(parent: HTMLElement, width: number, height: number): Promise<void> {
+    this.width = width;
+    this.height = height;
+    const app = new Application();
+    await app.init({
+      width,
+      height,
+      background: this.theme.background,
+      antialias: true,
+      // Cap at 2 so a 3x phone screen doesn't quadruple the fill cost.
+      resolution: Math.min(globalThis.devicePixelRatio || 1, 2),
+      // Deliberately off: autoDensity writes inline width/height styles, which
+      // would override the CSS that scales the arena to fit its bezel. Without
+      // them the canvas keeps its intrinsic aspect ratio and CSS can letterbox
+      // it freely.
+      autoDensity: false,
+    });
+    this.app = app;
+    parent.appendChild(app.canvas);
+
+    app.stage.addChild(this.backdrop);
+    app.stage.addChild(this.cones);
+    app.stage.addChild(this.bullets);
+    app.stage.addChild(this.robotLayer);
+    app.stage.addChild(this.effects);
+
+    this.drawBackdrop();
+  }
+
+  destroy(): void {
+    this.app?.destroy(true, { children: true });
+    this.app = null;
+    this.views.clear();
+    this.particles = [];
+    this.prev = null;
+    this.curr = null;
+  }
+
+  get ready(): boolean {
+    return this.app !== null;
+  }
+
+  setTheme(theme: Theme): void {
+    this.theme = ART[theme];
+    this.options = { ...this.options, theme };
+    if (this.app) {
+      this.app.renderer.background.color = this.theme.background;
+      this.drawBackdrop();
+      // Force every cached body to be redrawn in the new art pack.
+      for (const view of this.views.values()) view.drawnColor = "";
+    }
+  }
+
+  setShowSenseCones(show: boolean): void {
+    this.options = { ...this.options, showSenseCones: show };
+    if (!show) this.cones.clear();
+  }
+
+  /** Discard all views — call when a new match starts. */
+  reset(): void {
+    for (const view of this.views.values()) view.root.destroy({ children: true });
+    this.views.clear();
+    this.particles = [];
+    this.prev = null;
+    this.curr = null;
+    this.bullets.clear();
+    this.effects.clear();
+    this.cones.clear();
+  }
+
+  /** Called once per simulation tick, after the world has stepped. */
+  onStep(world: World): void {
+    this.prev = this.curr;
+    this.curr = snapshot(world);
+    for (const e of world.effects) {
+      this.particles.push({
+        type: e.type,
+        x: e.x,
+        y: e.y,
+        heading: e.heading,
+        age: 0,
+        life: e.type === "explosion" ? 28 : e.type === "impact" ? 14 : 8,
+      });
+    }
+  }
+
+  /**
+   * Draw a frame. `alpha` is how far we are between the previous tick and the
+   * current one, 0..1.
+   */
+  draw(alpha: number): void {
+    if (!this.app || !this.curr) return;
+    const from = this.prev ?? this.curr;
+    const to = this.curr;
+    const t = this.prev ? Math.min(1, Math.max(0, alpha)) : 1;
+
+    this.drawRobots(from, to, t);
+    this.drawBullets(from, to, t);
+    this.drawCones(from, to, t);
+    this.drawParticles();
+    this.app.render();
+  }
+
+  // ---- pieces -----------------------------------------------------------
+
+  private drawBackdrop(): void {
+    const g = this.backdrop;
+    g.clear();
+    this.theme.drawBackdrop?.(g, this.width, this.height);
+
+    if (this.theme.gridSize > 0) {
+      for (let x = this.theme.gridSize; x < this.width; x += this.theme.gridSize) {
+        g.moveTo(x, 0).lineTo(x, this.height);
+      }
+      for (let y = this.theme.gridSize; y < this.height; y += this.theme.gridSize) {
+        g.moveTo(0, y).lineTo(this.width, y);
+      }
+      g.stroke({ width: 1, color: this.theme.gridColor, alpha: this.theme.gridAlpha });
+    }
+
+    g.rect(0.5, 0.5, this.width - 1, this.height - 1).stroke({
+      width: 2,
+      color: this.theme.wallColor,
+    });
+  }
+
+  private viewFor(snap: Snapshot["robots"][number]): RobotView {
+    let view = this.views.get(snap.id);
+    if (!view) {
+      const root = new Container();
+      const body = new Graphics();
+      const turretPivot = new Container();
+      const turret = new Graphics();
+      turretPivot.addChild(turret);
+
+      const label = new Text({
+        text: snap.name,
+        style: new TextStyle({
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          fontSize: 11,
+          fill: this.theme.labelColor,
+          stroke: { color: this.theme.labelStroke, width: 3 },
+        }),
+      });
+      label.anchor.set(0.5, 0);
+      label.y = ROBOT_RADIUS + 12;
+
+      const healthBar = new Graphics();
+      healthBar.y = ROBOT_RADIUS + 4;
+
+      root.addChild(body, turretPivot, healthBar, label);
+      this.robotLayer.addChild(root);
+      view = { root, body, turretPivot, label, healthBar, drawnColor: "", drawnLabel: "" };
+      this.views.set(snap.id, view);
+    }
+    return view;
+  }
+
+  private drawRobots(from: Snapshot, to: Snapshot, t: number): void {
+    for (let i = 0; i < to.robots.length; i++) {
+      const now = to.robots[i]!;
+      const was = from.robots[i] ?? now;
+      const view = this.viewFor(now);
+
+      // Redraw the cached art only when something about it actually changed.
+      const key = `${now.color}|${now.locomotion}|${now.alive}`;
+      if (view.drawnColor !== key) {
+        const tint = hexToNumber(now.color);
+        view.body.clear();
+        this.theme.drawBody(view.body, tint, now.locomotion, ROBOT_RADIUS);
+        const turret = view.turretPivot.children[0] as Graphics;
+        turret.clear();
+        this.theme.drawTurret(turret, tint, ROBOT_RADIUS);
+        view.drawnColor = key;
+      }
+
+      view.root.x = lerp(was.x, now.x, t);
+      view.root.y = lerp(was.y, now.y, t);
+      view.body.rotation = lerpAngle(was.heading, now.heading, t) * DEG_TO_RAD;
+      // The turret carries an absolute heading, so it is NOT parented to the
+      // body's rotation — that independence is the whole point of it.
+      view.turretPivot.rotation = lerpAngle(was.turret, now.turret, t) * DEG_TO_RAD;
+      // Wrecks stay on the field, faded, so you can see where people died.
+      view.root.alpha = now.alive ? 1 : 0.25;
+
+      if (view.drawnLabel !== now.name) {
+        view.label.text = now.name;
+        view.drawnLabel = now.name;
+      }
+
+      const hb = view.healthBar;
+      hb.clear();
+      if (now.alive) {
+        const w = ROBOT_RADIUS * 2;
+        const frac = Math.max(0, now.health / MAX_HEALTH);
+        hb.rect(-w / 2, 0, w, 3).fill({ color: 0x000000, alpha: 0.45 });
+        hb.rect(-w / 2, 0, w * frac, 3).fill(
+          frac > 0.5 ? 0x6ad98a : frac > 0.25 ? 0xffd166 : 0xff6b6b,
+        );
+      }
+    }
+  }
+
+  private drawBullets(from: Snapshot, to: Snapshot, t: number): void {
+    const g = this.bullets;
+    g.clear();
+    // Match bullets by id so a bullet that died this tick isn't interpolated
+    // toward some unrelated new one.
+    const previous = new Map(from.bullets.map((b) => [b.id, b]));
+    for (const b of to.bullets) {
+      const was = previous.get(b.id) ?? b;
+      const x = lerp(was.x, b.x, t);
+      const y = lerp(was.y, b.y, t);
+      drawBulletAt(g, this.theme, x, y, b.heading, b.power);
+    }
+  }
+
+  private drawCones(from: Snapshot, to: Snapshot, t: number): void {
+    const g = this.cones;
+    g.clear();
+    if (!this.options.showSenseCones) return;
+    for (let i = 0; i < to.robots.length; i++) {
+      const now = to.robots[i]!;
+      if (!now.alive) continue;
+      const was = from.robots[i] ?? now;
+      const x = lerp(was.x, now.x, t);
+      const y = lerp(was.y, now.y, t);
+      const heading = lerpAngle(was.heading, now.heading, t);
+
+      const a0 = (heading - SENSE.halfAngle) * DEG_TO_RAD;
+      const a1 = (heading + SENSE.halfAngle) * DEG_TO_RAD;
+      g.moveTo(x, y);
+      g.arc(x, y, SENSE.range, a0, a1);
+      g.lineTo(x, y);
+      g.fill({ color: hexToNumber(now.color), alpha: this.theme.senseConeAlpha });
+    }
+  }
+
+  private drawParticles(): void {
+    const g = this.effects;
+    g.clear();
+    for (const p of this.particles) {
+      const k = p.age / p.life;
+      const fade = 1 - k;
+      if (p.type === "muzzle") {
+        g.circle(p.x, p.y, 3 + k * 7).fill({ color: this.theme.impactColor, alpha: fade * 0.7 });
+      } else if (p.type === "impact") {
+        g.circle(p.x, p.y, 2 + k * 12).stroke({
+          width: 2,
+          color: this.theme.impactColor,
+          alpha: fade,
+        });
+      } else if (p.type === "explosion") {
+        g.circle(p.x, p.y, 4 + k * 34).stroke({
+          width: 3,
+          color: this.theme.explosionColor,
+          alpha: fade,
+        });
+        g.circle(p.x, p.y, 2 + k * 18).fill({
+          color: this.theme.explosionColor,
+          alpha: fade * 0.35,
+        });
+      } else {
+        g.circle(p.x, p.y, 2 + k * 5).fill({ color: this.theme.wallColor, alpha: fade * 0.6 });
+      }
+      p.age++;
+    }
+    this.particles = this.particles.filter((p) => p.age < p.life);
+  }
+}
+
+/**
+ * Bullets are drawn directly into the shared Graphics at world coordinates.
+ * Rotating a shape without a container means composing the rotation by hand,
+ * which is cheap for something this small.
+ */
+function drawBulletAt(
+  g: Graphics,
+  theme: ArenaTheme,
+  x: number,
+  y: number,
+  heading: number,
+  power: number,
+): void {
+  const r = 3 * (0.8 + power * 0.25);
+  const c = Math.cos(heading * DEG_TO_RAD);
+  const s = Math.sin(heading * DEG_TO_RAD);
+  // Elongating along the direction of travel reads as motion. The mechanical
+  // theme keeps shots nearly round; biological darts are long and thin.
+  const long = r * theme.bulletLength;
+  const wide = r * theme.bulletWidth;
+  g.poly([
+    x + c * long, y + s * long,
+    x - s * wide, y + c * wide,
+    x - c * long, y - s * long,
+    x + s * wide, y - c * wide,
+  ]).fill(theme.bulletColor);
+}

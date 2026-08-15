@@ -1,0 +1,115 @@
+/**
+ * World state hashing — the divergence tripwire.
+ *
+ * Every peer simulates the same match independently, so we need a cheap way to
+ * notice the moment two peers stop agreeing. Hashing the full physical state
+ * each tick gives us that: if two peers' hash streams differ at tick N, the bug
+ * is in whatever ran at tick N.
+ *
+ * Floats are hashed by their exact bits rather than by a rounded decimal,
+ * because rounding would hide precisely the tiny divergences we are hunting.
+ */
+
+import type { World } from "./types.js";
+
+const scratch = new DataView(new ArrayBuffer(8));
+
+/** FNV-1a, 64-bit, carried in two 32-bit halves to stay in exact integer range. */
+export class Hasher {
+  private h1 = 0x811c9dc5; // low half
+  private h2 = 0xcbf29ce4; // high half
+
+  byte(b: number): void {
+    this.h1 = Math.imul(this.h1 ^ (b & 0xff), 0x01000193) >>> 0;
+    this.h2 = Math.imul(this.h2 ^ (b & 0xff), 0x01000193) >>> 0;
+    // Cross-feed the halves so the result behaves like a 64-bit hash rather
+    // than two independent 32-bit ones.
+    this.h2 = (this.h2 ^ (this.h1 >>> 16)) >>> 0;
+  }
+
+  int(v: number): void {
+    const n = v | 0;
+    this.byte(n);
+    this.byte(n >>> 8);
+    this.byte(n >>> 16);
+    this.byte(n >>> 24);
+  }
+
+  /** Hash the exact IEEE-754 bits, so 0.1 + 0.2 and 0.30000000000000004 differ. */
+  float(v: number): void {
+    scratch.setFloat64(0, v);
+    for (let i = 0; i < 8; i++) this.byte(scratch.getUint8(i));
+  }
+
+  bool(v: boolean): void {
+    this.byte(v ? 1 : 0);
+  }
+
+  text(s: string): void {
+    this.int(s.length);
+    for (let i = 0; i < s.length; i++) this.int(s.charCodeAt(i));
+  }
+
+  /** Final value as a 16-character hex string. */
+  digest(): string {
+    return (
+      (this.h2 >>> 0).toString(16).padStart(8, "0") +
+      (this.h1 >>> 0).toString(16).padStart(8, "0")
+    );
+  }
+}
+
+/**
+ * Hash everything that affects future ticks. Deliberately excludes `effects`,
+ * which are render-only, and excludes VM internals, which are reached through
+ * the state they produce.
+ */
+export function hashWorld(world: World): string {
+  const h = new Hasher();
+  h.int(world.tick);
+  h.int(world.width);
+  h.int(world.height);
+  h.bool(world.over);
+  h.int(world.winnerId ?? -1);
+
+  const [rngHi, rngLo] = world.rng.getState();
+  h.int(rngHi);
+  h.int(rngLo);
+
+  h.int(world.robots.length);
+  for (const r of world.robots) {
+    h.int(r.id);
+    h.float(r.x);
+    h.float(r.y);
+    h.float(r.heading);
+    h.float(r.speed);
+    h.float(r.turret);
+    h.float(r.gunHeat);
+    h.float(r.health);
+    h.bool(r.alive);
+    h.float(r.throttle);
+    h.float(r.headingGoal);
+    h.float(r.steer);
+    h.float(r.turretGoal);
+    h.float(r.sweepAmplitude);
+    h.int(r.sweepDir);
+    h.int(r.kills);
+    h.float(r.damageDealt);
+    h.int(r.diedAtTick);
+    // The label is script-controlled state, so it belongs in the hash.
+    h.text(r.name);
+  }
+
+  h.int(world.bullets.length);
+  for (const b of world.bullets) {
+    h.int(b.id);
+    h.int(b.ownerId);
+    h.float(b.x);
+    h.float(b.y);
+    h.float(b.heading);
+    h.float(b.speed);
+    h.int(b.power);
+  }
+
+  return h.digest();
+}

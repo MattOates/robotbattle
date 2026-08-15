@@ -1,0 +1,169 @@
+/**
+ * Themed vocabulary.
+ *
+ * RoboBattle can be taught as robotics or as biology. Rather than forking the
+ * language, we keep ONE canonical grammar and let the lexer rewrite synonyms
+ * into it. A biological script and its mechanical translation therefore produce
+ * byte-identical bytecode and identical physics — the theme is art and wording,
+ * never a balance difference.
+ *
+ * Both vocabularies always parse, in any arena theme, so nobody's script breaks
+ * for being written in the "wrong" words.
+ *
+ * One table drives both directions: the lexer reads it to canonicalise what was
+ * typed, and the editor reads it to decide which words to *suggest*. A single
+ * source means autocomplete can never offer a word the parser would reject.
+ */
+
+export type Theme = "mechanical" | "biological";
+
+export interface Synonym {
+  /** The word the parser and compiler actually see. */
+  canonical: string;
+  mechanical: string;
+  biological: string;
+  /** Extra spellings that are accepted but never suggested. */
+  also?: readonly string[];
+}
+
+export const SYNONYMS: readonly Synonym[] = [
+  // `body` and `chassis` are interchangeable everywhere, so both
+  // `body ciliate` and `turn body by 90` read naturally.
+  { canonical: "chassis", mechanical: "chassis", biological: "body" },
+  {
+    canonical: "skid",
+    mechanical: "tank",
+    biological: "ciliate",
+    also: ["tracks", "cilia"],
+  },
+  {
+    canonical: "steered",
+    mechanical: "car",
+    biological: "flagellate",
+    also: ["wheels", "flagellum"],
+  },
+  { canonical: "drive", mechanical: "drive", biological: "swim" },
+  { canonical: "turret", mechanical: "turret", biological: "stinger" },
+  { canonical: "fire", mechanical: "fire", biological: "sting" },
+  {
+    canonical: "bullet",
+    mechanical: "bullet",
+    biological: "dart",
+    also: ["nematocyst"],
+  },
+  {
+    canonical: "robot",
+    mechanical: "robot",
+    biological: "organism",
+    also: ["cell", "creature"],
+  },
+];
+
+/**
+ * Word-level synonyms, resolved during lexing. A synonym may expand to several
+ * canonical words, which is how `stung` becomes `hit by bullet`.
+ */
+export const WORD_ALIASES: Readonly<Record<string, readonly string[]>> = (() => {
+  const table: Record<string, readonly string[]> = {
+    // The one multi-word shorthand: too good a word to give up for the sake of
+    // a uniform table.
+    stung: ["hit", "by", "bullet"],
+  };
+  for (const s of SYNONYMS) {
+    for (const spelling of [s.mechanical, s.biological, ...(s.also ?? [])]) {
+      if (spelling !== s.canonical) table[spelling] = [s.canonical];
+    }
+  }
+  return table;
+})();
+
+/** Look up the word to *show* for a canonical word in a given theme. */
+export function wordFor(canonical: string, theme: Theme): string {
+  const found = SYNONYMS.find((s) => s.canonical === canonical);
+  if (!found) return canonical;
+  return theme === "biological" ? found.biological : found.mechanical;
+}
+
+/** Render a canonical multi-word phrase in a theme's words. */
+export function phraseFor(canonical: string, theme: Theme): string {
+  // `on stung` is far friendlier than `on hit by bullet` in biology words.
+  if (theme === "biological" && canonical === "hit by bullet") return "stung";
+  return canonical
+    .split(" ")
+    .map((w) => wordFor(w, theme))
+    .join(" ");
+}
+
+/**
+ * Property synonyms, resolved when a `me.<prop>` access is compiled.
+ * Kept separate from WORD_ALIASES because `health` should not be rewritten
+ * when it appears as a plain variable name.
+ */
+export const PROPERTY_ALIASES: Readonly<Record<string, string>> = {
+  vitality: "health",
+  integrity: "health",
+  energy: "health",
+  hp: "health",
+  facing: "heading",
+};
+
+/**
+ * Display wording per theme. Purely cosmetic: HUD labels, tutorial copy and
+ * editor autocomplete. Nothing here reaches the simulation.
+ */
+export interface ThemeVocab {
+  readonly theme: Theme;
+  readonly robot: string;
+  readonly robotPlural: string;
+  readonly bullet: string;
+  readonly health: string;
+  readonly skidName: string;
+  readonly steeredName: string;
+  readonly weapon: string;
+  readonly fireVerb: string;
+  readonly driveVerb: string;
+  readonly arena: string;
+}
+
+export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
+  mechanical: {
+    theme: "mechanical",
+    robot: "robot",
+    robotPlural: "robots",
+    bullet: "bullet",
+    health: "integrity",
+    skidName: "tracks",
+    steeredName: "wheels",
+    weapon: "turret",
+    fireVerb: "fire",
+    driveVerb: "drive",
+    arena: "arena",
+  },
+  biological: {
+    theme: "biological",
+    robot: "organism",
+    robotPlural: "organisms",
+    bullet: "dart",
+    health: "vitality",
+    skidName: "cilia",
+    steeredName: "flagellum",
+    weapon: "stinger",
+    fireVerb: "sting",
+    driveVerb: "swim",
+    arena: "microcosm",
+  },
+};
+
+/** Expand a word through the alias table. Returns the canonical word(s). */
+export function canonicalizeWord(word: string): readonly string[] {
+  return WORD_ALIASES[word] ?? [word];
+}
+
+export function canonicalizeProperty(prop: string): string {
+  return PROPERTY_ALIASES[prop] ?? prop;
+}
+
+/** The health property under the theme's own name, for `me.<x>` suggestions. */
+export function healthPropertyFor(theme: Theme): string {
+  return theme === "biological" ? "vitality" : "health";
+}
