@@ -8,8 +8,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Lobby } from "./Lobby.js";
+import { Countdown } from "../Countdown.js";
 import { MatchCanvas, type MatchOutcome, type MatchStatus } from "../MatchCanvas.js";
-import { useRoom } from "../useRoom.js";
+import { useAutoJoin, useRoom } from "../useRoom.js";
 import type { LibraryApi } from "../useLibrary.js";
 import type { Message } from "../../net/protocol.js";
 import {
@@ -23,7 +24,7 @@ import type { MatchManifest } from "../../sim/world.js";
 import { accuracy, executionWarning } from "../../sim/telemetry.js";
 import type { RobotTelemetry } from "../../store/types.js";
 import type { Theme } from "../../lang/vocab.js";
-import { navigate } from "../router.js";
+import { navigate, parseRoute } from "../router.js";
 
 interface Props {
   theme: Theme;
@@ -53,13 +54,17 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
   const [status, setStatus] = useState<MatchStatus | null>(null);
   const [outcome, setOutcome] = useState<MatchOutcome | null>(null);
   const [drifted, setDrifted] = useState(false);
+  /** Held still for the 3-2-1 before anything moves. */
+  const [counting, setCounting] = useState(false);
+  const [nudge, setNudge] = useState<{ at: number; text: string } | null>(null);
   const hashesRef = useRef(new Map<number, string>());
 
-  // Auto-fill a room code that arrived in the URL.
-  const [prefilled, setPrefilled] = useState(false);
+  useAutoJoin(room, initialRoom);
   useEffect(() => {
-    if (initialRoom && !prefilled) setPrefilled(true);
-  }, [initialRoom, prefilled]);
+    if (room.phase === "connected" && room.roomCode && parseRoute(window.location.hash).room !== room.roomCode) {
+      navigate("arena", room.roomCode);
+    }
+  }, [room.phase, room.roomCode]);
 
   useEffect(
     () =>
@@ -68,11 +73,15 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           hashesRef.current.clear();
           setDrifted(false);
           setOutcome(null);
+          setCounting(true);
           setMatch({
             matchId: message.matchId,
             manifest: message.manifest,
             myIndex: null,
           });
+        }
+        if (message.t === "nudge") {
+          setNudge({ at: Date.now(), text: message.text });
         }
         if (message.t === "hash") {
           const mine = hashesRef.current.get(message.tick);
@@ -120,12 +129,39 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
 
   const startMatch = () => {
     const session = room.session;
-    if (!session) return;
+    const state = room.state;
+    if (!session || !state) return;
+
     const participants = session.entries() as Participant[];
     if (participants.length < 2) {
       session.setNotice("At least two robots are needed.");
       return;
     }
+
+    // Nobody is dragged into a battle they have not said yes to. Anyone
+    // holding things up gets prodded individually, rather than the host being
+    // left to shout across the room.
+    const notReady = state.peers.filter((p) => !p.ready);
+    if (notReady.length > 0) {
+      for (const peer of notReady) {
+        if (peer.id === state.selfId) continue;
+        session.send(peer.id, {
+          t: "nudge",
+          text: peer.robot
+            ? "Everyone is waiting on you — press “I’m ready” when your robot is set."
+            : "Everyone is waiting on you — pick a robot, then press “I’m ready”.",
+        });
+      }
+      const names = notReady.map((p) => (p.id === state.selfId ? "you" : p.displayName));
+      session.setNotice(
+        `Still waiting on ${names.join(", ")}. ${
+          notReady.some((p) => p.id === state.selfId) ? "" : "They have been nudged."
+        }`.trim(),
+      );
+      return;
+    }
+
+    session.setNotice(null);
     const manifest = manifestFromParticipants(participants, newMatchSeed());
     session.broadcast({ t: "start", matchId: newMatchId(), manifest, label: "Arena" });
   };
@@ -145,7 +181,7 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           manifest={match.manifest}
           theme={theme}
           showCones={false}
-          running
+          running={!counting}
           fit="contain"
           onStatus={onStatus}
           onFinished={onFinished}
@@ -168,6 +204,10 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           </button>
         </div>
 
+        {counting ? (
+          <Countdown theme={theme} onDone={() => setCounting(false)} />
+        ) : null}
+
         {outcome ? (
           <Results
             outcome={outcome}
@@ -182,27 +222,39 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
     );
   }
 
-  const readyCount = room.state?.peers.filter((p) => p.robot !== null).length ?? 0;
+  const peers = room.state?.peers ?? [];
+  const withRobots = peers.filter((p) => p.robot !== null).length;
+  const readyCount = peers.filter((p) => p.ready).length;
+  const allReady = peers.length > 0 && readyCount === peers.length;
 
   return (
     <Lobby
       title="Arena"
+      shareScreen="arena"
       blurb="Everyone's robot in one arena at once, all against all. Last one running wins."
       room={room}
       robots={robots}
       selectedRobotId={robot?.id ?? null}
-      onSelectRobot={setRobotId}
+      onSelectRobot={(id) => {
+        setRobotId(id);
+        room.session?.setReady(false);
+      }}
       playerName={playerName}
       onPlayerName={onPlayerName}
+      nudge={nudge}
       action={
         room.isHost
           ? {
               label: "Start the battle",
-              disabled: readyCount < 2,
+              // Deliberately clickable when people are not ready: pressing it
+              // is how the host nudges them.
+              disabled: withRobots < 2,
               hint:
-                readyCount < 2
-                  ? "Waiting for at least two robots."
-                  : `${readyCount} robots ready.`,
+                withRobots < 2
+                  ? "At least two robots are needed."
+                  : allReady
+                    ? `All ${readyCount} ready.`
+                    : `${readyCount} of ${peers.length} ready — press to nudge the rest.`,
               onRun: startMatch,
             }
           : undefined

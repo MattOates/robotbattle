@@ -8,6 +8,25 @@
 
 import type { MatchManifest } from "../sim/world.js";
 import type { MatchResult } from "../sim/match.js";
+import type { Locomotion } from "../lang/ast.js";
+
+/**
+ * A version that arrived from someone else rather than from your own editor.
+ *
+ * Recorded against the version rather than against the robot because a robot
+ * accumulates history: a script traded to you, then edited for a week, is still
+ * a script that came from somebody, and the version list is where that stays
+ * true. Credit is the point — this is what a classroom argues about.
+ */
+export interface TradeOrigin {
+  kind: "trade";
+  /** What they were calling themselves at the time. Not an identity. */
+  from: string;
+  /** When the trade happened. */
+  at: number;
+  /** What they called the robot, which need not be what you call it. */
+  robotName: string;
+}
 
 /** A saved, named version of a robot's source. */
 export interface Snapshot {
@@ -17,6 +36,8 @@ export interface Snapshot {
   createdAt: number;
   /** Pinned snapshots are offered first as trial opponents. */
   pinned: boolean;
+  /** Absent on versions you saved yourself, which is nearly all of them. */
+  origin?: TradeOrigin;
 }
 
 export interface StoredRobot {
@@ -25,6 +46,12 @@ export interface StoredRobot {
   name: string;
   /** Cached from the script's `color`, for the roster chip. */
   color: string;
+  /**
+   * Cached from the script's `chassis`, so a robot can be *drawn* without
+   * parsing — the same bargain as the name and colour. Absent on anything
+   * stored before robots were drawn outside the arena; treat that as "skid".
+   */
+  locomotion?: Locomotion;
   /** The working copy — what the editor shows. */
   source: string;
   createdAt: number;
@@ -60,6 +87,22 @@ export interface RobotTelemetry {
   errors: number;
   /** Most recent runtime error, if any. */
   lastError: string | null;
+}
+
+/**
+ * One line of a conversation about a robot.
+ *
+ * Kept against the robot rather than against the room, because the advice is
+ * what is worth keeping and the room is gone in twenty minutes.
+ */
+export interface ChatMessage {
+  id: string;
+  at: number;
+  /** Display name at the time it was said; people can rename themselves later. */
+  author: string;
+  /** Who said it, so your own lines can be shown differently. */
+  authorPeerId: string;
+  text: string;
 }
 
 export type BattleMode = "trial" | "arena" | "tournament";

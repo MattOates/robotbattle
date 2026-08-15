@@ -13,10 +13,10 @@ import { navigate, type ScreenName } from "../router.js";
 import { makeManifest } from "../../sim/world.js";
 import { DODGER, HUNTER, RACER, SPINNER } from "../../bots/index.js";
 import { THEMES, type Theme } from "../../lang/vocab.js";
+import { BRANDING } from "../branding.js";
 
 interface Props {
   theme: Theme;
-  onThemeChange: (theme: Theme) => void;
   robotCount: number;
 }
 
@@ -26,13 +26,22 @@ interface ModeCard {
   blurb: string;
   /** Modes that need other people are marked, so nobody hits a dead end alone. */
   needsPeople: boolean;
+  /** Marked on the card, so nobody picks it and then finds out. */
+  underConstruction?: boolean;
 }
 
 const MODES: ModeCard[] = [
   {
+    screen: "learn",
+    title: "Learn",
+    blurb: "How it all works, and how to write a robot — one idea at a time, with examples you can change and run.",
+    needsPeople: false,
+  },
+  {
     screen: "workshop",
     title: "Workshop",
-    blurb: "Write a robot, test it against the arena bots, and keep every version you try.",
+    blurb:
+      "Write a robot, test it, keep every version — and open a session so other people can build it with you.",
     needsPeople: false,
   },
   {
@@ -46,12 +55,7 @@ const MODES: ModeCard[] = [
     title: "Tournament",
     blurb: "One against one, round after round, until a single robot is left standing.",
     needsPeople: true,
-  },
-  {
-    screen: "pair",
-    title: "Pair Program",
-    blurb: "Build a robot together in one editor, with chat, and see each other type.",
-    needsPeople: true,
+    underConstruction: true,
   },
   {
     screen: "trade",
@@ -69,7 +73,7 @@ const BACKGROUND_BOTS = [
   { source: DODGER },
 ];
 
-export function Menu({ theme, onThemeChange, robotCount }: Props) {
+export function Menu({ theme, robotCount }: Props) {
   const [seed] = useState(() => Math.floor(Math.random() * 1e9));
 
   const manifest = useMemo(
@@ -84,6 +88,7 @@ export function Menu({ theme, onThemeChange, robotCount }: Props) {
     window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
   const words = THEMES[theme];
+  const brand = BRANDING[theme];
 
   return (
     <div className="menu">
@@ -102,11 +107,10 @@ export function Menu({ theme, onThemeChange, robotCount }: Props) {
       <div className="menu-content">
         <header className="menu-head">
           <h1 className="menu-title">
-            Robo<span>Battle</span>
+            {brand.prefix}
+            <span>{brand.suffix}</span>
           </h1>
-          <p className="menu-strap">
-            Program a robot in a little language of its own. Then find out whose is best.
-          </p>
+          <p className="menu-strap">{brand.strap}</p>
         </header>
 
         <nav className="menu-modes" aria-label="Game modes">
@@ -114,38 +118,39 @@ export function Menu({ theme, onThemeChange, robotCount }: Props) {
             <button
               key={mode.screen}
               type="button"
-              className="mode-card"
+              className={`mode-card${mode.underConstruction ? " soon" : ""}`}
               onClick={() => navigate(mode.screen)}
             >
-              <span className="mode-title">{mode.title}</span>
+              <span className="mode-title">
+                {mode.title}
+                {mode.underConstruction ? (
+                  <span className="mode-badge">Under construction</span>
+                ) : null}
+              </span>
               <span className="mode-blurb">{mode.blurb}</span>
               <span className="mode-foot">
-                {mode.needsPeople ? "Needs someone to play with" : `${robotCount} in your library`}
+                {mode.underConstruction
+                  ? "Not playable yet — have a look at what is built"
+                  : mode.needsPeople
+                    ? "Needs someone to play with"
+                    : mode.screen === "learn"
+                      ? "Start here"
+                      : `${robotCount} in your library`}
               </span>
             </button>
           ))}
         </nav>
 
         <footer className="menu-foot">
-          <div className="toggle" role="group" aria-label="Theme">
-            <button
-              type="button"
-              aria-pressed={theme === "mechanical"}
-              onClick={() => onThemeChange("mechanical")}
-            >
-              Mechanical
-            </button>
-            <button
-              type="button"
-              aria-pressed={theme === "biological"}
-              onClick={() => onThemeChange("biological")}
-            >
-              Biological
-            </button>
-          </div>
           <span className="menu-note">
-            Robots are {words.robotPlural} here, and they fight in {words.arena}.
+            Robots are {words.robotPlural} here, and they fight in {words.arena}. Change that
+            in settings, top right.
           </span>
+          <span className="spacer" />
+          {/* Not a mode card: About sits beside the game rather than in it. */}
+          <button type="button" className="menu-link" onClick={() => navigate("about")}>
+            About &amp; credits
+          </button>
         </footer>
       </div>
     </div>

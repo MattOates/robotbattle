@@ -15,7 +15,9 @@ export type ScreenName =
   | "arena"
   | "tournament"
   | "pair"
-  | "trade";
+  | "trade"
+  | "about"
+  | "learn";
 
 export interface Route {
   screen: ScreenName;
@@ -30,12 +32,16 @@ const SCREENS: ReadonlySet<string> = new Set<ScreenName>([
   "tournament",
   "pair",
   "trade",
+  "about",
+  "learn",
 ]);
 
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#\/?/, "");
   const [screen = "", room = ""] = path.split("/");
-  const name = screen.toLowerCase();
+  // Pair Program was folded into the Workshop; links already handed out keep
+  // working rather than landing on the menu with no explanation.
+  const name = screen.toLowerCase() === "pair" ? "workshop" : screen.toLowerCase();
   return {
     screen: SCREENS.has(name) ? (name as ScreenName) : "menu",
     room: room ? decodeURIComponent(room).toUpperCase() : null,

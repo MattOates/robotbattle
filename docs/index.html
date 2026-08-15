@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BotBattle</title>
+    <meta
+      name="description"
+      content="Program a robot in a small, safe language. Watch it fight. Everyone watching sees the same match."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --chassis: #171a16;
+        --panel: #1e221c;
+        --bezel: #2c3128;
+        --bezel-light: #3a4034;
+        --ink: #d6d3c2;
+        --ink-strong: #f0ede0;
+        --ink-muted: #838772;
+        --signal: #e8a33d;
+        --readout: #5fd0c5;
+        --font-display: "Chakra Petch", "Arial Narrow", sans-serif;
+        --font-body: "IBM Plex Sans", system-ui, sans-serif;
+        --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--chassis);
+        color: var(--ink);
+        font-family: var(--font-body);
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap { max-width: 760px; margin: 0 auto; padding: 8vh 24px 80px; }
+      h1 {
+        font-family: var(--font-display);
+        font-size: clamp(38px, 8vw, 68px);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin: 0;
+        color: var(--ink-strong);
+      }
+      h1 span { color: var(--signal); }
+      .strap {
+        font-family: var(--font-mono);
+        font-size: 14px;
+        color: var(--ink-muted);
+        margin: 14px 0 34px;
+      }
+      .play {
+        display: inline-block;
+        background: var(--signal);
+        color: #17190f;
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 15px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        text-decoration: none;
+        padding: 13px 30px;
+        border-radius: 3px;
+      }
+      .play:hover { filter: brightness(1.12); }
+      h2 {
+        font-family: var(--font-display);
+        font-size: 13px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--ink-muted);
+        margin: 46px 0 12px;
+      }
+      pre {
+        background: #12150f;
+        border: 1px solid var(--bezel);
+        border-radius: 3px;
+        padding: 16px;
+        overflow-x: auto;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        line-height: 1.55;
+        color: var(--ink);
+      }
+      .kw { color: var(--signal); font-weight: 600; }
+      .ev { color: #e6b3ff; }
+      .ac { color: var(--readout); font-weight: 600; }
+      .pr { color: #b6e3a8; }
+      .cm { color: var(--ink-muted); font-style: italic; }
+      .nu { color: #ffd9a0; }
+      .st { color: #a8d8ff; }
+      ul { padding-left: 20px; }
+      li { margin-bottom: 8px; }
+      a { color: var(--readout); }
+      footer {
+        margin-top: 56px;
+        padding-top: 18px;
+        border-top: 1px solid var(--bezel);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--ink-muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Bot<span>Battle</span></h1>
+      <p class="strap">
+        Program a robot in a small language of its own. Then find out whose is best.
+      </p>
+      <a class="play" href="play/">Play</a>
+
+      <h2>What it is</h2>
+      <p>
+        A spiritual successor to <strong>Robot Battle</strong> (1993) and
+        <strong>Robocode</strong> (2000). You write a robot's brain in RoboScript — an
+        event-driven language with no punctuation to get wrong — and watch it fight in
+        an arena. Nobody writes JavaScript, so a script from a stranger is safe to run.
+      </p>
+
+      <pre><span class="cm">-- Sweeps for a target, then chases it down.</span>
+<span class="kw">name</span> <span class="st">"Hunter"</span>
+<span class="kw">chassis</span> tank
+
+<span class="kw">on</span> <span class="ev">start</span>
+  <span class="ac">turret</span>.sweep <span class="nu">45</span>
+  <span class="ac">drive</span> forward <span class="nu">70</span>
+<span class="kw">end</span>
+
+<span class="kw">on</span> <span class="ev">sense robot</span>
+  <span class="kw">set</span> name = <span class="st">"hunting"</span>
+  <span class="ac">turret</span>.aim at <span class="pr">event.bearing</span>
+  <span class="ac">fire</span> <span class="nu">3</span>
+  <span class="ac">turn</span> body by <span class="pr">event.bearing</span>
+<span class="kw">end</span>
+
+<span class="kw">on</span> <span class="ev">hit by bullet</span>
+  <span class="cm">-- The bearing points back at whoever shot you.</span>
+  <span class="ac">turn</span> body by <span class="pr">event.bearing</span> + <span class="nu">90</span>
+  <span class="ac">drive</span> forward <span class="nu">100</span>
+<span class="kw">end</span></pre>
+
+      <h2>Why it works the way it does</h2>
+      <ul>
+        <li>
+          <strong>Every screen sees the same match.</strong> A battle is fully determined
+          by its manifest — the scripts, a seed, the arena — because there is no human
+          input once it starts. So peers exchange manifests, not game state, and each one
+          plays the whole battle locally. Someone losing connection halfway through
+          changes nothing.
+        </li>
+        <li>
+          <strong>A manifest is already a replay.</strong> Keeping your battle history
+          costs a few kilobytes, and every past fight can be watched again.
+        </li>
+        <li>
+          <strong>Two ways to move.</strong> Tracks pivot on the spot but are slow; wheels
+          are fast but carry a turning circle they cannot escape. The circle falls out of
+          the physics rather than being a rule.
+        </li>
+        <li>
+          <strong>Robotics or biology.</strong> The same simulation, two vocabularies.
+          <code>chassis tank</code> and <code>body ciliate</code> compile to byte-identical
+          bytecode, so the theme is wording and art and never an advantage.
+        </li>
+      </ul>
+
+      <h2>Modes</h2>
+      <ul>
+        <li><strong>Workshop</strong> — build a robot, keep every version, and measure whether a change actually helped.</li>
+        <li><strong>Arena</strong> — everyone's robot at once, all against all.</li>
+        <li><strong>Tournament</strong> — one against one until a single robot is left.</li>
+        <li><strong>Pair Program</strong> — build one robot together, with chat.</li>
+        <li><strong>Trade</strong> — swap copies of your robots, with permission.</li>
+      </ul>
+
+      <h2>Support the work</h2>
+      <p>
+        Free, no accounts, and your robots stay in your own browser. If you would like to
+        help it keep going:
+      </p>
+      <p style="overflow-x: auto">
+        <iframe
+          src="https://github.com/sponsors/MattOates/card"
+          title="Sponsor MattOates on GitHub"
+          height="150"
+          width="600"
+          loading="lazy"
+          style="border: 0; max-width: 100%; color-scheme: light; border-radius: 3px"
+        ></iframe>
+      </p>
+      <p>
+        <a href="https://github.com/sponsors/MattOates">Sponsor MattOates on GitHub &#8599;</a>
+      </p>
+
+      <footer>
+        Source on <a href="https://github.com/MattOates/robotbattle">GitHub</a>. Built from source on every
+        push, so what is published here matches what is in the repo.
+      </footer>
+    </div>
+  </body>
+</html>

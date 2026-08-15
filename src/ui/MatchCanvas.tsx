@@ -95,6 +95,9 @@ export function MatchCanvas({
   const restartRef = useRef(autoRestart);
   /** Guards against reporting the same match's end twice. */
   const reportedRef = useRef(false);
+  /** Set when a paused arena needs one more frame: a new match, a theme
+   * change, a single step. Cleared as soon as that frame is drawn. */
+  const redrawRef = useRef(true);
   runningRef.current = running;
   statusRef.current = onStatus;
   finishedRef.current = onFinished;
@@ -134,6 +137,7 @@ export function MatchCanvas({
       if (cancelled) renderer.destroy();
       else {
         rendererRef.current = renderer;
+        redrawRef.current = true;
         if (worldRef.current) renderer.onStep(worldRef.current);
       }
     });
@@ -148,16 +152,19 @@ export function MatchCanvas({
 
   useEffect(() => {
     rendererRef.current?.setTheme(theme);
+    redrawRef.current = true;
   }, [theme]);
 
   useEffect(() => {
     rendererRef.current?.setShowSenseCones(showCones);
+    redrawRef.current = true;
   }, [showCones]);
 
   // --- new match ----------------------------------------------------------
   useEffect(() => {
     manifestRef.current = manifest;
     reportedRef.current = false;
+    redrawRef.current = true;
     if (!manifest) {
       worldRef.current = null;
       rendererRef.current?.reset();
@@ -200,7 +207,21 @@ export function MatchCanvas({
         accumulator = 0;
       }
 
-      renderer.draw(accumulator / TICK_MS);
+      // A paused arena has nothing new to show, and a lesson page holds three
+      // of them. Redrawing an unchanging picture sixty times a second is pure
+      // heat, so a stopped arena paints once — when something asks it to — and
+      // then leaves the GPU alone.
+      //
+      // Only the drawing is skipped, deliberately. Everything around it — the
+      // simulation, the end-of-match report, the status callback — runs on
+      // every frame regardless, so a mistake in the condition below can cost
+      // a wasted repaint but can never stop a match from running.
+      const owed =
+        redrawRef.current || (world.over && !reportedRef.current) || renderer.animating;
+      if (runningRef.current || owed) {
+        redrawRef.current = false;
+        renderer.draw(accumulator / TICK_MS);
+      }
 
       if (world.over && !reportedRef.current) {
         reportedRef.current = true;
@@ -239,6 +260,7 @@ export function MatchCanvas({
     if (!world || world.over) return;
     step(world);
     rendererRef.current?.onStep(world);
+    redrawRef.current = true;
     statusRef.current?.(readStatus(world));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepSignal]);

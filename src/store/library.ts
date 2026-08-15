@@ -15,6 +15,7 @@ import {
   writeJson,
   type KeyValueStore,
 } from "./storage.js";
+import type { Locomotion } from "../lang/ast.js";
 import type { Snapshot, StoredRobot } from "./types.js";
 
 const KEY = "robots";
@@ -42,6 +43,7 @@ end
 export interface RobotMeta {
   name: string;
   color: string;
+  locomotion: Locomotion;
 }
 
 /**
@@ -51,7 +53,7 @@ export interface RobotMeta {
 export function deriveMeta(source: string): RobotMeta | null {
   try {
     const program = parse(source);
-    return { name: program.name, color: program.color };
+    return { name: program.name, color: program.color, locomotion: program.locomotion };
   } catch {
     return null;
   }
@@ -83,6 +85,7 @@ export class Library {
       id: newId("bot"),
       name: meta?.name ?? "New Robot",
       color: meta?.color ?? "#7fd1e0",
+      locomotion: meta?.locomotion ?? "skid",
       source,
       createdAt: now,
       updatedAt: now,
@@ -105,6 +108,7 @@ export class Library {
         // doesn't flicker to "unnamed" on every keystroke.
         name: meta?.name ?? robot.name,
         color: meta?.color ?? robot.color,
+        locomotion: meta?.locomotion ?? robot.locomotion ?? "skid",
         updatedAt: Date.now(),
       };
       return updated;
@@ -136,6 +140,65 @@ export class Library {
   /** Import a robot from elsewhere — a trade, or a shared script. */
   import(source: string): StoredRobot {
     return this.create(source);
+  }
+
+  /**
+   * Take a script somebody handed over, as a new robot in this library.
+   *
+   * The traded script is kept as a version as well as the working copy, so the
+   * moment it arrived survives every edit made to it afterwards. That version
+   * is the only record of where the robot came from: the working copy will have
+   * moved on within minutes, and nobody labels their own history honestly.
+   */
+  importTraded(source: string, from: string, at = Date.now()): StoredRobot {
+    const robot = this.create(source);
+    const who = from.trim().slice(0, 24) || "someone";
+    const snapshot: Snapshot = {
+      id: newId("snap"),
+      label: `From ${who}`,
+      source,
+      createdAt: at,
+      pinned: false,
+      origin: { kind: "trade", from: who, at, robotName: robot.name },
+    };
+    const traded = { ...robot, snapshots: [snapshot] };
+    this.save(this.list().map((r) => (r.id === robot.id ? traded : r)));
+    return traded;
+  }
+
+  /**
+   * Take a traded script into a robot you already have, as a new version.
+   *
+   * What this is for: swapping revisions of a robot back and forth with someone
+   * without collecting a library full of near-identical entries. The working
+   * copy is replaced, and the version before it is *not* saved automatically —
+   * saving that is the caller's business, because only the caller knows whether
+   * it was worth keeping.
+   */
+  addTradedVersion(
+    robotId: string,
+    source: string,
+    from: string,
+    at = Date.now(),
+  ): StoredRobot | undefined {
+    const robot = this.get(robotId);
+    if (!robot) return undefined;
+    const who = from.trim().slice(0, 24) || "someone";
+    const meta = deriveMeta(source);
+    const snapshot: Snapshot = {
+      id: newId("snap"),
+      label: `From ${who}`,
+      source,
+      createdAt: at,
+      pinned: false,
+      origin: { kind: "trade", from: who, at, robotName: meta?.name ?? robot.name },
+    };
+    this.save(
+      this.list().map((r) =>
+        r.id === robotId ? { ...r, snapshots: [snapshot, ...r.snapshots] } : r,
+      ),
+    );
+    return this.updateSource(robotId, source);
   }
 
   // ---- snapshots --------------------------------------------------------

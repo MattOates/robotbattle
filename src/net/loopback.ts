@@ -90,6 +90,11 @@ export class LoopbackTransport extends StarTransport {
   protected linkTeardown(): void {
     this.network.unregister(this.selfId);
   }
+
+  protected linkDisconnect(peerId: PeerId): void {
+    // Tell them their link is gone, but stay in the network ourselves.
+    this.network.get(peerId)?.notifyClosed(this.selfId);
+  }
 }
 
 /** Convenience for tests: a host and n guests, all connected. */

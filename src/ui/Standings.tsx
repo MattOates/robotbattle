@@ -8,14 +8,20 @@
 
 import { MAX_HEALTH } from "../sim/types.js";
 import { THEMES, type Theme } from "../lang/vocab.js";
-import type { MatchStatus } from "./ArenaStage.js";
+import type { MatchStatus } from "./MatchCanvas.js";
 
 interface Props {
   status: MatchStatus | null;
   theme: Theme;
+  /**
+   * What each entry was picked as, indexed by entry. Two saved versions of one
+   * robot declare the same name, so without this a comparison between them is
+   * two identical rows. Optional: only the Trial knows what it lined up.
+   */
+  entryLabels?: ReadonlyArray<string>;
 }
 
-export function Standings({ status, theme }: Props) {
+export function Standings({ status, theme, entryLabels }: Props) {
   const words = THEMES[theme];
 
   if (!status) {
@@ -47,6 +53,9 @@ export function Standings({ status, theme }: Props) {
               <span className="chip" style={{ background: r.color }} />
               <span className="who" title={r.error ?? undefined}>
                 {r.declaredName}
+                {entryLabels?.[r.id] && entryLabels[r.id] !== r.declaredName ? (
+                  <span className="entry-label"> {entryLabels[r.id]}</span>
+                ) : null}
                 {r.name !== r.declaredName ? (
                   <span className="roster-meta"> · {r.name}</span>
                 ) : null}

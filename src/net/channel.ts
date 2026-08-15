@@ -16,7 +16,8 @@ type BusMessage =
   | { type: "join"; from: PeerId }
   | { type: "welcome"; from: PeerId; to: PeerId }
   | { type: "data"; from: PeerId; to: PeerId; raw: string }
-  | { type: "bye"; from: PeerId };
+  | { type: "bye"; from: PeerId }
+  | { type: "kicked"; from: PeerId; to: PeerId };
 
 export class ChannelTransport extends StarTransport {
   readonly selfId: PeerId;
@@ -66,6 +67,11 @@ export class ChannelTransport extends StarTransport {
       case "bye":
         this.linkClosed(message.from);
         return;
+
+      case "kicked":
+        if (message.to !== this.selfId) return;
+        this.linkClosed(message.from);
+        return;
     }
   }
 
@@ -84,6 +90,13 @@ export class ChannelTransport extends StarTransport {
   protected linkTeardown(): void {
     this.post({ type: "bye", from: this.selfId });
     this.channel.close();
+  }
+
+  protected linkDisconnect(peerId: PeerId): void {
+    // BroadcastChannel has no per-peer connection to sever, so the removal is
+    // announced and the peer is expected to act on it. A modified client could
+    // ignore it — hence the honest wording in the UI about soft moderation.
+    this.post({ type: "kicked", from: this.selfId, to: peerId });
   }
 
   /** Where a guest should address the host before the roster arrives. */

@@ -23,7 +23,19 @@ export class StorageFullError extends Error {
   }
 }
 
-const PREFIX = "robobattle:";
+/**
+ * Namespace for everything we store.
+ *
+ * Deliberately not renamed when the game became BotBattle/BioBattle: it
+ * identifies saved data, and changing it would orphan every robot anyone has
+ * already built.
+ */
+export const PREFIX = "robobattle:";
+
+/** Does a raw `storage` event key belong to us? A null key means "all cleared". */
+export function isOurKey(key: string | null): boolean {
+  return key === null || key.startsWith(PREFIX);
+}
 
 export class MemoryStore implements KeyValueStore {
   private data = new Map<string, string>();

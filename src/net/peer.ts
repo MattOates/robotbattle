@@ -126,6 +126,12 @@ export class PeerTransport extends StarTransport {
     if (connection?.open) connection.send(raw);
   }
 
+  protected linkDisconnect(peerId: PeerId): void {
+    const connection = this.connections.get(peerId);
+    this.connections.delete(peerId);
+    connection?.close();
+  }
+
   protected linkTeardown(): void {
     this.clearTimer();
     for (const connection of this.connections.values()) connection.close();

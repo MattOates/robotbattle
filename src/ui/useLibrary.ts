@@ -8,7 +8,40 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Library } from "../store/library.js";
 import { BattleLog } from "../store/battles.js";
-import { defaultStore, storageAvailable, usedBytes, STORAGE_BUDGET_BYTES } from "../store/storage.js";
+import { ChatLog } from "../store/chat.js";
+import {
+  defaultStore,
+  isOurKey,
+  storageAvailable,
+  usedBytes,
+  STORAGE_BUDGET_BYTES,
+} from "../store/storage.js";
+
+/**
+ * Re-read stored state when another tab changes it.
+ *
+ * The `storage` event fires in every tab *except* the one that made the change,
+ * which is exactly right: that tab already knows. Focus and visibility are
+ * belt-and-braces for a tab that was backgrounded and throttled while the
+ * event went by.
+ */
+function useCrossTabSync(refresh: () => void): void {
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (isOurKey(event.key)) refresh();
+    };
+    const onWake = () => refresh();
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", onWake);
+    document.addEventListener("visibilitychange", onWake);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", onWake);
+      document.removeEventListener("visibilitychange", onWake);
+    };
+  }, [refresh]);
+}
 import type { StoredRobot } from "../store/types.js";
 import type { Theme } from "../lang/vocab.js";
 
@@ -37,19 +70,35 @@ end
 export interface LibraryApi {
   library: Library;
   battles: BattleLog;
+  chat: ChatLog;
   robots: StoredRobot[];
   refresh: () => void;
   storage: { used: number; budget: number; available: boolean };
+  /** Throw away every robot and every battle. Not undoable. */
+  clearAll: () => void;
+  /** Forget battle history but keep the robots. */
+  clearHistory: () => void;
 }
 
 export function useLibrary(): LibraryApi {
   const store = useMemo(() => defaultStore(), []);
   const library = useMemo(() => new Library(store), [store]);
   const battles = useMemo(() => new BattleLog(store), [store]);
+  const chat = useMemo(() => new ChatLog(store), [store]);
   const [robots, setRobots] = useState<StoredRobot[]>(() => library.list());
+  // Held in state rather than recomputed each render: it walks every key.
+  const [used, setUsed] = useState(() => usedBytes(store));
   const seeded = useRef(false);
 
-  const refresh = useCallback(() => setRobots(library.list()), [library]);
+  const refresh = useCallback(() => {
+    setRobots(library.list());
+    setUsed(usedBytes(store));
+  }, [library, store]);
+
+  // Editing a robot in the Workshop should reach a lobby open in another tab,
+  // so what goes into a match is what you last wrote — not what existed when
+  // the lobby happened to open.
+  useCrossTabSync(refresh);
 
   useEffect(() => {
     if (seeded.current) return;
@@ -62,13 +111,30 @@ export function useLibrary(): LibraryApi {
     }
   }, [library, refresh]);
 
+  const clearHistory = useCallback(() => {
+    battles.clear();
+    refresh();
+  }, [battles, refresh]);
+
+  const clearAll = useCallback(() => {
+    for (const robot of library.list()) library.remove(robot.id);
+    battles.clear();
+    chat.clearAll();
+    // Let the seeding effect run again so they are not left with nothing.
+    seeded.current = false;
+    refresh();
+  }, [battles, chat, library, refresh]);
+
   return {
     library,
     battles,
+    chat,
     robots,
     refresh,
+    clearAll,
+    clearHistory,
     storage: {
-      used: usedBytes(store),
+      used,
       budget: STORAGE_BUDGET_BYTES,
       available: typeof window === "undefined" ? false : storageAvailable(),
     },
@@ -76,44 +142,85 @@ export function useLibrary(): LibraryApi {
 }
 
 const THEME_KEY = "theme";
+const NAME_KEY = "playerName";
+const ONBOARDED_KEY = "onboarded";
 
-/** Theme choice, remembered between visits. */
-export function usePersistentTheme(): [Theme, (theme: Theme) => void] {
+export interface Profile {
+  name: string;
+  theme: Theme;
+  /** False on a first visit, when nothing has been chosen yet. */
+  onboarded: boolean;
+}
+
+/**
+ * Who you are and which world you play in — asked once, then used everywhere:
+ * chat, trading, pair programming, and which vocabulary the editor suggests.
+ */
+export function useProfile(): {
+  profile: Profile;
+  setName: (name: string) => void;
+  setTheme: (theme: Theme) => void;
+  complete: (name: string, theme: Theme) => void;
+} {
   const store = useMemo(() => defaultStore(), []);
-  const [theme, setThemeState] = useState<Theme>(() =>
-    store.get(THEME_KEY) === "biological" ? "biological" : "mechanical",
-  );
+
+  const [profile, setProfile] = useState<Profile>(() => {
+    const name = store.get(NAME_KEY) ?? "";
+    const theme: Theme = store.get(THEME_KEY) === "biological" ? "biological" : "mechanical";
+    // Anyone who already has a name predates the welcome screen; do not make
+    // them sit through it.
+    const onboarded = store.get(ONBOARDED_KEY) === "yes" || name.trim() !== "";
+    return { name, theme, onboarded };
+  });
 
   useEffect(() => {
-    document.documentElement.dataset["arena"] = theme;
-  }, [theme]);
+    document.documentElement.dataset["arena"] = profile.theme;
+  }, [profile.theme]);
 
-  const setTheme = useCallback(
-    (next: Theme) => {
-      setThemeState(next);
-      store.set(THEME_KEY, next);
-    },
-    [store],
-  );
-
-  return [theme, setTheme];
-}
-
-const NAME_KEY = "playerName";
-
-/** The name shown to other people in a room. */
-export function usePlayerName(): [string, (name: string) => void] {
-  const store = useMemo(() => defaultStore(), []);
-  const [name, setNameState] = useState<string>(() => store.get(NAME_KEY) ?? "");
+  // Changing your name or your world in one tab should be true in all of them.
+  const reread = useCallback(() => {
+    setProfile((current) => {
+      const name = store.get(NAME_KEY) ?? "";
+      const theme: Theme = store.get(THEME_KEY) === "biological" ? "biological" : "mechanical";
+      const onboarded = store.get(ONBOARDED_KEY) === "yes" || name.trim() !== "";
+      if (name === current.name && theme === current.theme && onboarded === current.onboarded) {
+        // Returning the same object avoids a pointless re-render on every
+        // focus event.
+        return current;
+      }
+      return { name, theme, onboarded };
+    });
+  }, [store]);
+  useCrossTabSync(reread);
 
   const setName = useCallback(
-    (next: string) => {
-      const trimmed = next.slice(0, 24);
-      setNameState(trimmed);
+    (name: string) => {
+      const trimmed = name.slice(0, 24);
       store.set(NAME_KEY, trimmed);
+      setProfile((p) => ({ ...p, name: trimmed }));
     },
     [store],
   );
 
-  return [name, setName];
+  const setTheme = useCallback(
+    (theme: Theme) => {
+      store.set(THEME_KEY, theme);
+      setProfile((p) => ({ ...p, theme }));
+    },
+    [store],
+  );
+
+  const complete = useCallback(
+    (name: string, theme: Theme) => {
+      const trimmed = name.trim().slice(0, 24) || "Player";
+      store.set(NAME_KEY, trimmed);
+      store.set(THEME_KEY, theme);
+      store.set(ONBOARDED_KEY, "yes");
+      setProfile({ name: trimmed, theme, onboarded: true });
+    },
+    [store],
+  );
+
+  return { profile, setName, setTheme, complete };
 }
+

@@ -1,0 +1,5 @@
+# Copy to .envrc, fill in your own server, then run: direnv allow
+# .envrc is gitignored — these never reach the repo.
+export RB_DEPLOY_HOST=myserver
+export RB_DEPLOY_DIR=/var/www/robobattle
+export RB_DEPLOY_URL=https://example.com/robobattle

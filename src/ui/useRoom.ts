@@ -28,7 +28,29 @@ export interface RoomApi {
   host: (kind: TransportKind) => Promise<void>;
   join: (code: string, kind: TransportKind) => Promise<void>;
   leave: () => void;
+  /** Host only: remove a peer from the room. */
+  kick: (peerId: string) => void;
   onMessage: (fn: (from: string, message: Message) => void) => () => void;
+}
+
+/**
+ * Follow a shared link straight into a room.
+ *
+ * A link is far better than a code read aloud — it is clickable — so arriving
+ * at `#/pair/BOLT-7429` should just join, using the name already on file. Only
+ * ever fires once: hosting rewrites the URL to include the room code so it can
+ * be copied out of the address bar, and that must not be mistaken for an
+ * invitation to rejoin.
+ */
+export function useAutoJoin(room: RoomApi, code: string | null): void {
+  const attempted = useRef(false);
+  useEffect(() => {
+    if (attempted.current || !code || room.phase !== "idle") return;
+    attempted.current = true;
+    // A link came from someone else's machine, so it can only mean the
+    // internet transport.
+    void room.join(code, "online");
+  }, [code, room]);
 }
 
 export function useRoom(displayName: string, robot: RobotEntry | null): RoomApi {
@@ -37,11 +59,13 @@ export function useRoom(displayName: string, robot: RobotEntry | null): RoomApi 
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [state, setState] = useState<SessionState | null>(null);
   const sessionRef = useRef<Session | null>(null);
+  const transportRef = useRef<Transport | null>(null);
   const listeners = useRef(new Set<(from: string, message: Message) => void>());
 
   const teardown = useCallback(() => {
     sessionRef.current?.close();
     sessionRef.current = null;
+    transportRef.current = null;
     setState(null);
     setRoomCode(null);
     setPhase("idle");
@@ -54,7 +78,13 @@ export function useRoom(displayName: string, robot: RobotEntry | null): RoomApi 
     (transport: Transport, code: string) => {
       const session = new Session({ transport, displayName, robot });
       sessionRef.current = session;
-      session.onChange(setState);
+      transportRef.current = transport;
+      session.onChange((next) => {
+        setState(next);
+        // A room whose transport has gone must not keep looking live — the
+        // buttons would all be there and none of them would reach anyone.
+        if (!next.connected) setPhase("idle");
+      });
       session.onMessage((from, message) => {
         for (const fn of [...listeners.current]) fn(from, message);
       });
@@ -114,6 +144,10 @@ export function useRoom(displayName: string, robot: RobotEntry | null): RoomApi 
     [start],
   );
 
+  const kick = useCallback((peerId: string) => {
+    transportRef.current?.drop(peerId);
+  }, []);
+
   const onMessage = useCallback((fn: (from: string, message: Message) => void) => {
     listeners.current.add(fn);
     return () => listeners.current.delete(fn);
@@ -135,6 +169,7 @@ export function useRoom(displayName: string, robot: RobotEntry | null): RoomApi 
     host,
     join,
     leave: teardown,
+    kick,
     onMessage,
   };
 }

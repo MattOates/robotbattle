@@ -3,14 +3,50 @@
  * room, see who else is here.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { RoomApi, TransportKind } from "../useRoom.js";
 import type { StoredRobot } from "../../store/types.js";
-import { navigate } from "../router.js";
+import { navigate, routePath, type ScreenName } from "../router.js";
+
+/** Build the URL someone else can click to land straight in this room. */
+export function roomUrl(screen: ScreenName, room: string): string {
+  const { origin, pathname, search } = window.location;
+  return `${origin}${pathname}${search}${routePath(screen, room)}`;
+}
+
+function ShareLink({ screen, room }: { screen: ScreenName; room: string | null }) {
+  const [copied, setCopied] = useState(false);
+  if (!room) return null;
+
+  return (
+    <button
+      type="button"
+      className="btn small"
+      onClick={() => {
+        const url = roomUrl(screen, room);
+        void navigator.clipboard?.writeText(url).then(
+          () => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 2000);
+          },
+          () => {
+            // Clipboard access can be refused; showing the URL still lets
+            // someone copy it by hand rather than leaving them stuck.
+            window.prompt("Copy this link and send it to whoever is joining:", url);
+          },
+        );
+      }}
+    >
+      {copied ? "Link copied" : "Copy invite link"}
+    </button>
+  );
+}
 
 interface Props {
   title: string;
   blurb: string;
+  /** Which route an invite link should point at. */
+  shareScreen: ScreenName;
   room: RoomApi;
   robots: StoredRobot[];
   selectedRobotId: string | null;
@@ -19,6 +55,8 @@ interface Props {
   onPlayerName: (name: string) => void;
   /** Whether this mode wants everyone to bring a robot. */
   requiresRobot?: boolean;
+  /** Set when the host has prodded us for holding things up. */
+  nudge?: { at: number; text: string } | null;
   /** Host-only action, shown when the room is ready to begin. */
   action?:
     | { label: string; disabled: boolean; hint: string | null; onRun: () => void }
@@ -29,6 +67,7 @@ interface Props {
 export function Lobby({
   title,
   blurb,
+  shareScreen,
   room,
   robots,
   selectedRobotId,
@@ -36,11 +75,24 @@ export function Lobby({
   playerName,
   onPlayerName,
   requiresRobot = true,
+  nudge = null,
   action,
   children,
 }: Props) {
   const [code, setCode] = useState("");
   const [kind, setKind] = useState<TransportKind>("online");
+
+  const self = room.state?.peers.find((p) => p.id === room.state?.selfId);
+  const iAmReady = self?.ready ?? false;
+
+  // The prod fades after a few seconds so it reads as an event, not a state.
+  const [nudging, setNudging] = useState(false);
+  useEffect(() => {
+    if (!nudge) return;
+    setNudging(true);
+    const timer = window.setTimeout(() => setNudging(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [nudge]);
 
   if (room.phase === "connected" && room.state) {
     return (
@@ -51,14 +103,16 @@ export function Lobby({
           </button>
           <h2 className="screen-title">{title}</h2>
           <span className="spacer" />
-          <span className="room-code" title="Give this code to whoever is joining">
+          <span className="room-code" title="Read this out, or share the link">
             {room.roomCode}
           </span>
+          <ShareLink screen={shareScreen} room={room.roomCode} />
           <button type="button" className="btn small" onClick={room.leave}>
             Leave room
           </button>
         </header>
 
+        {nudging && nudge ? <div className="notice nudge">{nudge.text}</div> : null}
         {room.state.notice ? <div className="notice">{room.state.notice}</div> : null}
         {room.error ? <div className="notice bad">{room.error}</div> : null}
 
@@ -86,11 +140,16 @@ export function Lobby({
                       {peer.robot ? peer.robot.name : "no robot yet"}
                     </span>
                   </span>
+                  {requiresRobot ? (
+                    <span className={`ready-pip${peer.ready ? " on" : ""}`}>
+                      {peer.ready ? "Ready" : "Waiting"}
+                    </span>
+                  ) : null}
                 </div>
               ))}
             </div>
             {requiresRobot ? (
-              <div className="roster-actions">
+              <div className="lobby-robot">
                 <label className="field-row">
                   <span className="silkscreen">Your robot</span>
                   <select
@@ -105,7 +164,28 @@ export function Lobby({
                       </option>
                     ))}
                   </select>
+                  <span className="spacer" />
+                  <button
+                    type="button"
+                    className="btn small"
+                    title="Opens in a new tab so you can keep this room open"
+                    onClick={() => window.open(routePath("workshop"), "_blank", "noopener")}
+                  >
+                    Edit in Workshop ↗
+                  </button>
                 </label>
+                <span className="roster-meta">
+                  Whatever you last saved is what fights — edit in the Workshop and this room
+                  picks it up straight away, no need to rejoin.
+                </span>
+                <button
+                  type="button"
+                  className={`btn ${iAmReady ? "" : "primary"}${nudging ? " nudged" : ""}`}
+                  disabled={!selectedRobotId}
+                  onClick={() => room.session?.setReady(!iAmReady)}
+                >
+                  {iAmReady ? "Ready — click to change your mind" : "I'm ready"}
+                </button>
               </div>
             ) : null}
           </section>

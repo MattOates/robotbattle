@@ -24,6 +24,9 @@ interface Particle {
   life: number;
 }
 
+/** Frames between label rasterisations. Six is about five updates a second. */
+const LABEL_INTERVAL = 6;
+
 interface RobotView {
   root: Container;
   body: Graphics;
@@ -33,6 +36,8 @@ interface RobotView {
   /** What the cached body Graphics was drawn for, so we redraw only on change. */
   drawnColor: string;
   drawnLabel: string;
+  /** Frames since the label text was last replaced. */
+  labelAge: number;
 }
 
 export interface ArenaOptions {
@@ -53,6 +58,8 @@ export class ArenaRenderer {
   private views = new Map<number, RobotView>();
   private particles: Particle[] = [];
 
+  /** Set when drawing has thrown; nothing is drawn afterwards. */
+  private broken = false;
   private prev: Snapshot | null = null;
   private curr: Snapshot | null = null;
   private width = 0;
@@ -79,6 +86,14 @@ export class ArenaRenderer {
       // them the canvas keeps its intrinsic aspect ratio and CSS can letterbox
       // it freely.
       autoDensity: false,
+      // Both deliberately off. Pixi's default is to add itself to the shared
+      // ticker and render every frame on its own — but we already drive
+      // rendering from our own loop, in `draw`, because rendering has to happen
+      // at a known point relative to the simulation step. Left on, every arena
+      // renders twice per frame, and an arena that is merely sitting on the
+      // page renders sixty times a second while showing nothing new.
+      autoStart: false,
+      sharedTicker: false,
     });
     this.app = app;
     parent.appendChild(app.canvas);
@@ -93,8 +108,28 @@ export class ArenaRenderer {
   }
 
   destroy(): void {
-    this.app?.destroy(true, { children: true });
+    const app = this.app;
+    // Cleared first: anything below that throws must not leave a half-torn-down
+    // renderer that a later call would try to use again.
     this.app = null;
+    if (app) {
+      try {
+        // Our own display objects go first, while the renderer is still alive.
+        // Each robot's label is a Text, and destroying a Text hands its texture
+        // back to the renderer's texture pool — so if Pixi is left to destroy
+        // the children itself it has already torn that pool down, and the
+        // return throws. Asking it to destroy children is the bug; doing it
+        // ourselves in the right order is the fix.
+        this.reset();
+        app.stage.removeChildren();
+        app.destroy(true);
+      } catch {
+        // Teardown runs inside a React cleanup. A throw there escapes into
+        // React and unmounts the whole tree, which on a lesson page means
+        // every other example on it disappears too. Nothing here is worth
+        // that: the renderer is being thrown away regardless.
+      }
+    }
     this.views.clear();
     this.particles = [];
     this.prev = null;
@@ -103,6 +138,11 @@ export class ArenaRenderer {
 
   get ready(): boolean {
     return this.app !== null;
+  }
+
+  /** True while there is still something moving that no simulation step drives. */
+  get animating(): boolean {
+    return this.particles.length > 0;
   }
 
   setTheme(theme: Theme): void {
@@ -121,9 +161,33 @@ export class ArenaRenderer {
     if (!show) this.cones.clear();
   }
 
+  /**
+   * Throwing away one robot's view.
+   *
+   * Destroying a `Text` hands its texture back to the renderer's texture pool,
+   * and Pixi's own garbage collector can get there first — so this throws with
+   * "cannot read properties of undefined" on a pool that is gone or has already
+   * taken the texture back. There is nothing to recover: the view is being
+   * discarded either way. What matters is that it does not throw, because every
+   * caller is inside a React effect, where an escaping error unmounts the tree
+   * and takes the rest of the page with it. Detaching is the fallback; the
+   * worst case is a little memory held until the app itself is destroyed.
+   */
+  private discard(view: RobotView): void {
+    try {
+      view.root.destroy({ children: true });
+    } catch {
+      try {
+        view.root.removeFromParent();
+      } catch {
+        /* nothing left to try */
+      }
+    }
+  }
+
   /** Discard all views — call when a new match starts. */
   reset(): void {
-    for (const view of this.views.values()) view.root.destroy({ children: true });
+    for (const view of this.views.values()) this.discard(view);
     this.views.clear();
     this.particles = [];
     this.prev = null;
@@ -154,16 +218,27 @@ export class ArenaRenderer {
    * current one, 0..1.
    */
   draw(alpha: number): void {
-    if (!this.app || !this.curr) return;
+    if (!this.app || !this.curr || this.broken) return;
     const from = this.prev ?? this.curr;
     const to = this.curr;
     const t = this.prev ? Math.min(1, Math.max(0, alpha)) : 1;
 
-    this.drawRobots(from, to, t);
-    this.drawBullets(from, to, t);
-    this.drawCones(from, to, t);
-    this.drawParticles();
-    this.app.render();
+    try {
+      this.drawRobots(from, to, t);
+      this.drawBullets(from, to, t);
+      this.drawCones(from, to, t);
+      this.drawParticles();
+      this.app.render();
+    } catch {
+      // The GPU can take the context away underneath us — a lost WebGL context
+      // leaves the renderer's targets dead, and drawing into them throws. This
+      // runs on an animation frame owned by a React effect, so letting it out
+      // would unmount the page. Stop drawing instead: the simulation keeps
+      // running and the picture is stale, which is a far better failure than a
+      // blank lesson. Retrying every frame would only throw sixty times a
+      // second.
+      this.broken = true;
+    }
   }
 
   // ---- pieces -----------------------------------------------------------
@@ -215,7 +290,16 @@ export class ArenaRenderer {
 
       root.addChild(body, turretPivot, healthBar, label);
       this.robotLayer.addChild(root);
-      view = { root, body, turretPivot, label, healthBar, drawnColor: "", drawnLabel: "" };
+      view = {
+        root,
+        body,
+        turretPivot,
+        label,
+        healthBar,
+        drawnColor: "",
+        drawnLabel: "",
+        labelAge: LABEL_INTERVAL,
+      };
       this.views.set(snap.id, view);
     }
     return view;
@@ -248,9 +332,16 @@ export class ArenaRenderer {
       // Wrecks stay on the field, faded, so you can see where people died.
       view.root.alpha = now.alive ? 1 : 0.25;
 
-      if (view.drawnLabel !== now.name) {
+      // Replacing the text throws away the old texture and rasterises a new
+      // one, which is by far the most expensive thing a robot can ask the
+      // renderer to do. A robot using its name as a debug readout changes it
+      // thirty times a second, and at that rate the label is unreadable anyway
+      // — so it is allowed to change a few times a second and no more.
+      view.labelAge++;
+      if (view.drawnLabel !== now.name && view.labelAge >= LABEL_INTERVAL) {
         view.label.text = now.name;
         view.drawnLabel = now.name;
+        view.labelAge = 0;
       }
 
       const hb = view.healthBar;

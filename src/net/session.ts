@@ -84,6 +84,9 @@ export class Session {
         this.publish();
       }),
       this.transport.on("peerJoin", (peerId) => this.onPeerJoin(peerId)),
+      // Not `peerJoin`: a guest hears about the host from the roster, which can
+      // arrive before its own link exists, and a hello sent then goes nowhere.
+      this.transport.on("ready", () => this.announce()),
       this.transport.on("peerLeave", (peerId) => this.onPeerLeave(peerId)),
       this.transport.on("message", (from, payload) => this.handleMessage(from, payload)),
       this.transport.on("error", (err) => {
@@ -99,9 +102,17 @@ export class Session {
     if (this.transport.selfId) this.connected = true;
   }
 
-  /** Guests announce themselves once their link to the host is up. */
+  /**
+   * Introduce ourselves to the host.
+   *
+   * Safe to call at any time, and called automatically the moment the link to
+   * the host opens. Calling it before then would post into the void: a guest
+   * has no links yet while the transport is still shaking hands, so the
+   * message would be dropped and the host would show us as "Joining…" forever.
+   */
   announce(): void {
     if (this.transport.isHost) return;
+    if (!this.transport.ready) return;
     this.send("all", {
       t: "hello",
       displayName: this.displayName,
