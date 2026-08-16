@@ -2054,6 +2054,123 @@ button {
   }
 }
 
+.entering-note {
+  display: block;
+  margin: 10px 2px 0;
+  line-height: 1.6;
+}
+
+/* ---------- the tournament draw ---------- */
+
+/* One column per round, scrolling sideways rather than shrinking: a bracket
+   that has been squeezed to fit is a bracket nobody can read. */
+.bracket {
+  display: flex;
+  gap: var(--gap);
+  align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.bracket-round {
+  min-width: 210px;
+  flex: 1 0 210px;
+}
+
+.bracket-round .entry-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+/* Ties spread down the column so a later round sits opposite the pair that
+   feeds it, the way a bracket is drawn on paper. */
+.bracket-column {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 8px;
+  height: 100%;
+}
+
+.tie {
+  border: 1px solid var(--bezel);
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+  padding: 4px;
+}
+
+.tie.empty {
+  border-style: dashed;
+  opacity: 0.35;
+  text-align: center;
+  padding: 12px 4px;
+}
+
+.tie-corner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+
+.tie-corner.won {
+  background: rgba(95, 208, 197, 0.12);
+}
+
+/* The loser stays legible: who went out is part of reading a bracket. */
+.tie-corner.lost {
+  opacity: 0.55;
+}
+
+.tie-corner.pending {
+  opacity: 0.4;
+  padding-left: 10px;
+}
+
+.tie-name {
+  flex: 1;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tie-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 4px 1px;
+  border-top: 1px solid var(--bezel);
+  margin-top: 3px;
+}
+
+.notice.champion {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* The line over a tournament replay: a sentence, so it stays on one row and
+   does not stack into a two-line label the way a gauge does. */
+.watching {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.watching strong {
+  color: var(--readout);
+}
+
+/* Compact enough to sit in the overlay beside the buttons. */
+.toggle.speed button {
+  padding: 3px 8px;
+  letter-spacing: 0.06em;
+}
+
 /* The editor inside is `flex: 1`, so the preview has to be a flex column with a
    height of its own — an unbounded one would collapse to nothing. */
 .trade-preview {

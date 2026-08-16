@@ -16,8 +16,8 @@ import {
 
 function entrants(n: number): Entrant[] {
   return Array.from({ length: n }, (_, i) => ({
-    peerId: `p${i + 1}`,
-    displayName: `Player ${i + 1}`,
+    id: `p${i + 1}`,
+    ownerName: `Player ${i + 1}`,
     robot: { name: `Bot ${i + 1}`, color: "#ff8800", source: "chassis tank\n" },
   }));
 }
@@ -43,13 +43,13 @@ describe("building", () => {
   it("draws differently for a different seed", () => {
     const a = buildBracket(entrants(8), 1);
     const b = buildBracket(entrants(8), 2);
-    expect(b.entrants.map((e) => e.peerId)).not.toEqual(a.entrants.map((e) => e.peerId));
+    expect(b.entrants.map((e) => e.id)).not.toEqual(a.entrants.map((e) => e.id));
   });
 
   it("keeps everyone who entered", () => {
     const bracket = buildBracket(entrants(7), 3);
-    expect(bracket.entrants.map((e) => e.peerId).sort()).toEqual(
-      entrants(7).map((e) => e.peerId).sort(),
+    expect(bracket.entrants.map((e) => e.id).sort()).toEqual(
+      entrants(7).map((e) => e.id).sort(),
     );
   });
 
@@ -104,7 +104,7 @@ describe("playing out", () => {
       expect(isComplete(finished), `${n} entrants`).toBe(true);
       expect(finished.champion, `${n} entrants`).not.toBeNull();
       // The champion has to be someone who actually entered.
-      expect(finished.entrants.some((e) => e.peerId === finished.champion)).toBe(true);
+      expect(finished.entrants.some((e) => e.id === finished.champion)).toBe(true);
     }
   });
 

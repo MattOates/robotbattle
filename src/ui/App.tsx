@@ -7,7 +7,7 @@
  */
 
 import { Suspense, lazy, useEffect } from "react";
-import { useRoute, navigate, type ScreenName } from "./router.js";
+import { useRoute, type ScreenName } from "./router.js";
 import { useLibrary, useProfile } from "./useLibrary.js";
 import { branding } from "./branding.js";
 import { Welcome } from "./screens/Welcome.js";
@@ -18,15 +18,12 @@ const Workshop = lazy(() =>
   import("./screens/Workshop.js").then((m) => ({ default: m.Workshop })),
 );
 const Arena = lazy(() => import("./screens/Arena.js").then((m) => ({ default: m.Arena })));
+const Tournament = lazy(() =>
+  import("./screens/Tournament.js").then((m) => ({ default: m.Tournament })),
+);
 const Trade = lazy(() => import("./screens/Trade.js").then((m) => ({ default: m.Trade })));
 const Learn = lazy(() => import("./screens/Learn.js").then((m) => ({ default: m.Learn })));
 const About = lazy(() => import("./screens/About.js").then((m) => ({ default: m.About })));
-
-/** Modes whose screens are not built yet. Honest rather than a dead link. */
-const NOT_YET: Partial<Record<ScreenName, string>> = {
-  tournament:
-    "The bracket, seeding and match progression are built and tested — the screen that draws them is not finished yet.",
-};
 
 /** Screens where the second path segment is a room code rather than a page id. */
 const ROOM_SCREENS: ReadonlySet<ScreenName> = new Set<ScreenName>([
@@ -58,8 +55,6 @@ export function App() {
     );
   }
 
-  const pending = NOT_YET[route.screen];
-
   return (
     <>
       <Settings profile={profile} onName={setName} onTheme={setTheme} lib={lib} />
@@ -79,6 +74,16 @@ export function App() {
 
       {route.screen === "arena" ? (
         <Arena
+          theme={profile.theme}
+          lib={lib}
+          playerName={profile.name}
+          onPlayerName={setName}
+          initialRoom={route.room}
+        />
+      ) : null}
+
+      {route.screen === "tournament" ? (
+        <Tournament
           theme={profile.theme}
           lib={lib}
           playerName={profile.name}
@@ -109,26 +114,6 @@ export function App() {
         />
       ) : null}
 
-      {pending ? (
-        <div className="workshop">
-          <header className="screen-head">
-            <button type="button" className="btn small" onClick={() => navigate("menu")}>
-              ← Menu
-            </button>
-            <h2 className="screen-title">
-              {route.screen[0]!.toUpperCase() + route.screen.slice(1)}
-            </h2>
-          </header>
-          <div className="join-card">
-            <p className="join-blurb">{pending}</p>
-            <div className="join-actions">
-              <button type="button" className="btn primary" onClick={() => navigate("workshop")}>
-                Go to the Workshop
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
       </Suspense>
     </>
   );
