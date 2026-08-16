@@ -64,7 +64,14 @@ describe("events", () => {
 describe("event fields depend on the handler", () => {
   it("offers the full set inside `on sense robot`", () => {
     expect(at("on sense robot\n  fire event.|\nend\n")).toEqual([
-      "bearing", "distance", "heading", "speed", "health", "name", "x", "y",
+      "bearing",
+      "distance",
+      "heading",
+      "speed",
+      "health",
+      "name",
+      "x",
+      "y",
     ]);
   });
 
@@ -88,15 +95,66 @@ describe("event fields depend on the handler", () => {
       const source = `on ${event}\n  fire event.\nend\n`;
       const offered = at(`on ${event}\n  fire event.|\nend\n`);
       for (const field of offered) {
-        expect(() =>
-          compile(parse(source.replace("event.", `event.${field}`))),
-        ).not.toThrow();
+        expect(() => compile(parse(source.replace("event.", `event.${field}`)))).not.toThrow();
       }
       // And something absent really is rejected.
-      expect(() =>
-        compile(parse(source.replace("event.", "event.nonsense"))),
-      ).toThrow();
+      expect(() => compile(parse(source.replace("event.", "event.nonsense")))).toThrow();
     }
+  });
+});
+
+describe("blocks you teach yourself", () => {
+  it("offers the two clauses after a name", () => {
+    expect(at("can dodge |")).toEqual(["with", "given"]);
+    // `with` is spent once it has been used; `given` is still to come.
+    expect(at("can dodge with effort |")).toEqual(["given"]);
+  });
+
+  it("offers the event list after `given`, narrowing as you type", () => {
+    expect(at("can dodge given |")).toEqual([...EVENT_NAMES]);
+    expect(at("can dodge given sense |")).toEqual(["robot", "bullet", "wall"]);
+  });
+
+  it("knows which event a block is for, inside it", () => {
+    // The whole point of `given`: the editor can offer event fields inside a
+    // block, because the block says what it is for rather than leaving the
+    // editor to guess from whoever calls it.
+    expect(at("can dodge given hit by bullet\n  turn body by event.|\nend\n")).toEqual([
+      "bearing",
+      "distance",
+      "power",
+      "health",
+      "x",
+      "y",
+    ]);
+  });
+
+  it("offers nothing for `event.` in a block that never said which event", () => {
+    expect(at("can dodge\n  turn body by event.|\nend\n")).toEqual([]);
+  });
+
+  it("offers instructions inside a block, as it would in a handler", () => {
+    const labels = at("can dodge\n  |\nend\n");
+    expect(labels).toContain("drive");
+    expect(labels).toContain("if");
+    expect(labels).not.toContain("on");
+  });
+
+  it("offers only the blocks that would work where the cursor is", () => {
+    const source = `can dodge given hit by bullet
+  stop
+end
+
+can regroup
+  stop
+end
+
+on tick
+  do |
+end
+`;
+    expect(at(source)).toEqual(["regroup"]);
+    expect(at(source.replace("on tick", "on hit by bullet"))).toEqual(["dodge", "regroup"]);
   });
 });
 
@@ -149,7 +207,7 @@ describe("the action grammar", () => {
 
 describe("position awareness", () => {
   it("offers declarations at the top level", () => {
-    expect(at("|")).toEqual(["on", "name", "chassis", "color", "var"]);
+    expect(at("|")).toEqual(["on", "name", "chassis", "color", "var", "can"]);
   });
 
   it("offers actions inside a handler", () => {
@@ -248,9 +306,7 @@ describe("themed vocabulary", () => {
     const fixture = "on sense organism\n  fire event.|\nend\n";
     const pos = fixture.indexOf("|");
     const source = fixture.slice(0, pos) + fixture.slice(pos + 1);
-    const health = completeAt(source, pos, "biological")?.options.find(
-      (o) => o.label === "health",
-    );
+    const health = completeAt(source, pos, "biological")?.options.find((o) => o.label === "health");
     expect(health?.detail).toContain("vitality");
   });
 
@@ -264,5 +320,35 @@ describe("themed vocabulary", () => {
         expect(() => compile(parse(`on tick\n  fire me.${label}\nend\n`))).not.toThrow();
       }
     }
+  });
+});
+
+describe("how often a block runs", () => {
+  const at = (source: string) => completeAt(source, source.length, "mechanical");
+
+  it("offers the clauses once the event has been named", () => {
+    const labels = at("on tick ")?.options.map((o) => o.label);
+    expect(labels).toEqual(["every", "after", "before", "at"]);
+  });
+
+  it("offers them after `given` too", () => {
+    expect(at("can sweep given sense robot ")?.options.map((o) => o.label)).toContain("every");
+  });
+
+  it("does not offer one already written", () => {
+    const labels = at("on tick every 30 ")?.options.map((o) => o.label);
+    expect(labels).toEqual(["after", "before"]);
+  });
+
+  it("offers nothing beside `at`, which stands alone", () => {
+    expect(at("on tick at 3 ")).toBeNull();
+  });
+
+  it("still finishes the event first, before asking how often", () => {
+    // `sense` on its own is not an event yet, so this is no place to be
+    // offering a cadence.
+    const labels = at("on sense ")?.options.map((o) => o.label);
+    expect(labels).not.toContain("every");
+    expect(labels).toContain("robot");
   });
 });

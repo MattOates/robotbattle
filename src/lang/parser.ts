@@ -12,11 +12,14 @@ import { tokenize } from "./lexer.js";
 import {
   EVENT_NAMES,
   type ActionKind,
+  type CountClause,
   type EventName,
   type Expr,
   type Handler,
   type Locomotion,
+  type Param,
   type Program,
+  type Routine,
   type Stmt,
   type Stmt_Var,
 } from "./ast.js";
@@ -87,6 +90,13 @@ export const RESERVED = new Set([
   "destroyed",
   "radar",
   "ping",
+  "can",
+  "do",
+  "with",
+  "given",
+  "every",
+  "after",
+  "before",
 ]);
 
 /** Builtin functions callable from expressions. */
@@ -208,6 +218,7 @@ class Parser {
     let sawLocomotion = false;
     const globals: Stmt_Var[] = [];
     const handlers: Handler[] = [];
+    const routines: Routine[] = [];
     const seen = new Set<EventName>();
 
     this.skipNewlines();
@@ -264,11 +275,21 @@ class Parser {
         }
         seen.add(handler.event);
         handlers.push(handler);
+      } else if (this.matchWord("can")) {
+        const routine = this.parseRoutine(pos);
+        if (routines.some((r) => r.name.toLowerCase() === routine.name.toLowerCase())) {
+          throw new RoboScriptError(
+            `you already have a \`can ${routine.name}\` block`,
+            pos,
+            "two blocks with the same name would be impossible to tell apart in a `do`",
+          );
+        }
+        routines.push(routine);
       } else {
         throw new RoboScriptError(
           `I don't know what \`${this.describe(this.peek())}\` means out here`,
           this.pos(),
-          "outside an `on ... end` block you can set `name`, `chassis`, `color`, or declare a `var`",
+          "outside a block you can set `name`, `chassis`, `color`, declare a `var`, start an `on ...` block, or teach yourself something new with `can ...`",
         );
       }
       this.skipNewlines();
@@ -279,14 +300,156 @@ class Parser {
       // first script — but the roster surfaces it as a warning.
     }
 
-    return { name, locomotion, color, globals, handlers };
+    return { name, locomotion, color, globals, handlers, routines };
+  }
+
+  /**
+   * `can NAME [with p1, p2=default] [given EVENT]` … `end`
+   *
+   * The two clauses are optional and always in this order, so the first word
+   * after the name says which one is coming — which keeps the error messages
+   * specific rather than "I expected something here".
+   */
+  private parseRoutine(pos: SourcePos): Routine {
+    const name = this.parseVarName();
+    const params: Param[] = [];
+
+    if (this.matchWord("with")) {
+      for (;;) {
+        const paramPos = this.pos();
+        const paramName = this.parseVarName();
+        if (params.some((p) => p.name.toLowerCase() === paramName.toLowerCase())) {
+          throw new RoboScriptError(
+            `\`${name}\` is already given something called \`${paramName}\``,
+            paramPos,
+            "each thing a block is given needs its own name",
+          );
+        }
+        const fallback = this.matchOp("=") ? this.parseExpr() : null;
+        // Defaults have to come last, or leaving one out at a `do` would be
+        // ambiguous: `do shove with 2` could mean either of two things.
+        if (fallback === null && params.some((p) => p.default !== null)) {
+          throw new RoboScriptError(
+            `\`${paramName}\` has to come before the ones with a starting value`,
+            paramPos,
+            "put the ones you always have to supply first, so leaving the rest out is never ambiguous",
+          );
+        }
+        params.push({ name: paramName, default: fallback, pos: paramPos });
+        if (!this.matchOp(",")) break;
+      }
+    }
+
+    const given = this.matchWord("given") ? this.parseEventName() : null;
+    const counts = this.parseCountClauses(`can ${name}`);
+    this.expectEndOfLine(`\`can ${name}\``);
+    const body = this.parseBlock(`the \`can ${name}\` block`, pos);
+    return { name, params, given, counts, body, pos };
   }
 
   private parseHandler(pos: SourcePos): Handler {
     const event = this.parseEventName();
+    const counts = this.parseCountClauses(`on ${event}`);
     this.expectEndOfLine(`\`on ${event}\``);
     const body = this.parseBlock(`the \`on ${event}\` block`, pos);
-    return { event, body, pos };
+    return { event, body, counts, pos };
+  }
+
+  /**
+   * `every 30 after 90 before 900` — how often, in any order.
+   *
+   * They are filters on one count, so order carries no meaning and the parser
+   * accepts whichever way round it reads best to the person writing it.
+   */
+  private parseCountClauses(what: string): CountClause[] {
+    const counts: CountClause[] = [];
+
+    for (;;) {
+      const pos = this.pos();
+      let kind: CountClause["kind"] | null = null;
+      for (const word of ["every", "after", "before", "at"] as const) {
+        if (this.matchWord(word)) {
+          kind = word;
+          break;
+        }
+      }
+      if (kind === null) break;
+
+      const already = counts.find((c) => c.kind === kind);
+      if (already) {
+        throw new RoboScriptError(
+          `\`${what}\` already says \`${kind} ${already.value}\``,
+          pos,
+          "one `every`, one `after`, one `before` — saying it twice would only contradict itself",
+        );
+      }
+
+      const t = this.peek();
+      if (t.kind !== "number") {
+        throw new RoboScriptError(
+          `\`${kind}\` needs a plain number after it`,
+          this.pos(),
+          `\`${kind} 30\` counts how many times this has happened — it cannot be worked out as you go`,
+        );
+      }
+      const value = Number(t.text);
+      if (!Number.isInteger(value) || value < 1) {
+        throw new RoboScriptError(
+          `\`${kind} ${t.text}\` needs a whole number of times, 1 or more`,
+          this.pos(),
+          "counting starts at 1, on the first time the block is reached",
+        );
+      }
+      this.advance();
+      counts.push({ kind, value, pos });
+    }
+
+    // `at 2` is already "the count is exactly 2", so nothing else has anything
+    // left to narrow — a second clause beside it can only be a misunderstanding.
+    const at = counts.find((c) => c.kind === "at");
+    if (at && counts.length > 1) {
+      const other = counts.find((c) => c.kind !== "at")!;
+      throw new RoboScriptError(
+        `\`at ${at.value}\` and \`${other.kind} ${other.value}\` cannot both be true`,
+        other.pos,
+        "`at` pins the count exactly, so it goes on its own — use `every`, `after` and `before` together instead",
+      );
+    }
+
+    const every = counts.find((c) => c.kind === "every");
+    const after = counts.find((c) => c.kind === "after");
+    const before = counts.find((c) => c.kind === "before");
+    if (after && before && after.value >= before.value - 1) {
+      throw new RoboScriptError(
+        `\`after ${after.value} before ${before.value}\` leaves no times in between`,
+        before.pos,
+        "`after` and `before` are both exclusive, so there has to be room between them",
+      );
+    }
+    // `after` starts the cadence counting, so the first run is that many on
+    // from there — which is what decides whether `before` leaves room for it.
+    if (every && before) {
+      const first = (after?.value ?? 0) + every.value;
+      if (first >= before.value) {
+        throw new RoboScriptError(
+          `\`every ${every.value}\` never comes round before ${before.value}`,
+          every.pos,
+          after
+            ? `counting starts again after ${after.value}, so the first run would be number ${first}`
+            : `the first run would be number ${first}`,
+        );
+      }
+    }
+
+    // Sorted into one canonical order before they leave here. The clauses are
+    // independent tests on the same count, so the order they were written in
+    // carries no meaning — and this way `every 10 after 25` and
+    // `after 25 every 10` are not merely equivalent but the identical program,
+    // which matters to everything downstream that compares two scripts.
+    const RANK = { every: 0, after: 1, before: 2, at: 3 } as const;
+    counts.sort((a, b) => RANK[a.kind] - RANK[b.kind]);
+
+    return counts;
   }
 
   private parseEventName(): EventName {
@@ -389,6 +552,26 @@ class Parser {
     const pos = this.pos();
 
     if (this.isWord("var")) return this.parseVarDecl();
+
+    if (this.matchWord("do")) {
+      const name = this.parseVarName();
+      const args: Expr[] = [];
+      if (this.matchWord("with")) {
+        do {
+          args.push(this.parseExpr());
+        } while (this.matchOp(","));
+      }
+      this.expectEndOfLine(`\`do ${name}\``);
+      return { type: "do", name, args, pos };
+    }
+
+    if (this.isWord("can")) {
+      throw new RoboScriptError(
+        "`can` blocks go outside everything else",
+        pos,
+        "move it out to the left margin, then use `do` in here to run it",
+      );
+    }
 
     if (this.matchWord("set")) {
       // `set name = ...` writes the display label; otherwise a normal variable.

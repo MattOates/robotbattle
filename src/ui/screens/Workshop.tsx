@@ -18,15 +18,22 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { yCollab } from "y-codemirror.next";
-import { CodeEditor } from "../CodeEditor.js";
+import type { EditorView } from "@codemirror/view";
+import { BLOCK_MIME, CodeEditor } from "../CodeEditor.js";
 import { MatchCanvas, type MatchOutcome, type MatchStatus } from "../MatchCanvas.js";
 import { Standings } from "../Standings.js";
 import { navigate, parseRoute, routePath } from "../router.js";
 import { useAutoJoin, useRoom, type TransportKind } from "../useRoom.js";
 import type { LibraryApi } from "../useLibrary.js";
 import { SAMPLE_BOTS } from "../../bots/index.js";
-import { makeManifest, type MatchManifest } from "../../sim/world.js";
-import { THEMES, type Theme } from "../../lang/vocab.js";
+import { checkScript, makeManifest, type MatchManifest } from "../../sim/world.js";
+import { phraseFor, THEMES, type Theme } from "../../lang/vocab.js";
+import {
+  blockInsertion,
+  groupBlocks,
+  libraryBlocks,
+  type LibraryBlock,
+} from "../../workshop/blocks.js";
 import { accuracy, executionWarning } from "../../sim/telemetry.js";
 import { shortAgo } from "../../store/chat.js";
 import { MAX_CHAT_LENGTH, sanitiseChat, sanitiseText } from "../../net/protocol.js";
@@ -276,8 +283,7 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
             const line: ChatMessage = {
               id: newId("msg"),
               at: typeof message.at === "number" ? message.at : Date.now(),
-              author:
-                room.state?.peers.find((p) => p.id === from)?.displayName ?? "Someone",
+              author: room.state?.peers.find((p) => p.id === from)?.displayName ?? "Someone",
               authorPeerId: from,
               text: sanitiseText(message.text, MAX_CHAT_LENGTH),
             };
@@ -362,6 +368,64 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
 
   const editorSource = inSession && !isHost ? (guestView?.source ?? "") : (selected?.source ?? "");
 
+  // --- the block shelf ------------------------------------------------------
+  // Every `can` block the player has written, across every robot they own. It
+  // is built from their own library even mid-session: your blocks are yours,
+  // and bringing one into a shared script is one of the better reasons to be in
+  // a session at all.
+  const editorViewRef = useRef<EditorView | null>(null);
+  const shelf = useMemo(() => libraryBlocks(robots), [robots]);
+  const shelfGroups = useMemo(() => groupBlocks(shelf), [shelf]);
+
+  /** Put a block into the script, and say what happened if it was not literal. */
+  const applyBlock = useCallback(
+    (doc: string, block: LibraryBlock, at: number | null) => {
+      const edit = blockInsertion(doc, block, shelf, at);
+      if (!edit) {
+        setNotice(`This script already has \`${block.name}\`.`);
+        return null;
+      }
+      const brought =
+        edit.brought.length > 0 ? ` It brought \`${edit.brought.join("`, `")}\` with it.` : "";
+      // A rename is the one outcome the player must not miss: they dropped
+      // `dodge` and the script now says `dodge2`.
+      if (edit.name !== block.name) {
+        setNotice(`Added \`${edit.name}\` — you already had a \`${block.name}\`.${brought}`);
+      } else if (brought) {
+        setNotice(`Added \`${edit.name}\`.${brought}`);
+      }
+      return edit;
+    },
+    [shelf],
+  );
+
+  const onEditorDrop = useCallback(
+    (doc: string, payload: string, pos: number) => {
+      const block = shelf.find((b) => `${b.robotId}/${b.name}` === payload);
+      return block ? applyBlock(doc, block, pos) : null;
+    },
+    [applyBlock, shelf],
+  );
+
+  // Clicking a block adds it at the end. The editor has to be on screen for
+  // that, so the click switches to it and the insertion waits a render for the
+  // editor to exist.
+  const [pendingBlock, setPendingBlock] = useState<LibraryBlock | null>(null);
+  useEffect(() => {
+    if (!pendingBlock) return;
+    const view = editorViewRef.current;
+    if (!view) return;
+    setPendingBlock(null);
+    if (view.state.readOnly) return;
+    const edit = applyBlock(view.state.doc.toString(), pendingBlock, null);
+    if (!edit) return;
+    view.dispatch({
+      changes: { from: edit.from, insert: edit.text },
+      selection: { anchor: edit.from + edit.text.length },
+      scrollIntoView: true,
+    });
+  }, [applyBlock, pane, pendingBlock]);
+
   return (
     <div className="workshop">
       <header className="screen-head">
@@ -403,8 +467,8 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
               <div className="panel-body">
                 <p className="empty small">
                   You are in {hostName(room)}&rsquo;s session, working on{" "}
-                  <strong>{sessionRobotName}</strong>. Your own robots are waiting for you
-                  when you leave.
+                  <strong>{sessionRobotName}</strong>. Your own robots are waiting for you when you
+                  leave.
                 </p>
               </div>
             </section>
@@ -417,6 +481,16 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
               sessionRobotId={inSession ? sessionRobotId : null}
             />
           )}
+
+          <BlockShelf
+            groups={shelfGroups}
+            theme={theme}
+            usable={editable}
+            onTake={(block) => {
+              setPane("editor");
+              setPendingBlock(block);
+            }}
+          />
 
           <SessionPanel
             room={room}
@@ -521,6 +595,8 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
                   collab={collab}
                   readOnly={inSession && !editable}
                   onChange={inSession ? () => undefined : updateSource}
+                  viewRef={editorViewRef}
+                  onDrop={onEditorDrop}
                 />
               ) : (
                 <div className="empty">Add a robot to start writing.</div>
@@ -644,9 +720,7 @@ function SessionPanel({
   // their own, and an invitation they are not acting on should not cost them
   // half the sidebar. It opens itself if they arrived on an invite link, since
   // then joining is the whole reason they are here.
-  const [open, setOpen] = useState(
-    () => room.roomCode !== null || room.phase === "connecting",
-  );
+  const [open, setOpen] = useState(() => room.roomCode !== null || room.phase === "connecting");
 
   if (inSession && room.state) {
     return (
@@ -672,8 +746,7 @@ function SessionPanel({
                 <span
                   className="chip"
                   style={{
-                    background:
-                      CURSOR_COLORS[Math.abs(hashString(peer.id)) % CURSOR_COLORS.length],
+                    background: CURSOR_COLORS[Math.abs(hashString(peer.id)) % CURSOR_COLORS.length],
                   }}
                 />
                 <span className="roster-name">
@@ -704,8 +777,8 @@ function SessionPanel({
         {isHost ? (
           <div className="roster-actions">
             <span className="roster-meta">
-              Removing someone ends their connection now. They could rejoin with a new
-              identity — change the room code if that matters.
+              Removing someone ends their connection now. They could rejoin with a new identity —
+              change the room code if that matters.
             </span>
           </div>
         ) : null}
@@ -729,49 +802,53 @@ function SessionPanel({
         </span>
       </button>
       {!open ? null : (
-      <div className="panel-body">
-        <p className="empty small">
-          Open a session and other people can edit this robot with you, and talk about it. The
-          conversation is kept against the robot afterwards.
-        </p>
-        <div className="toggle" role="group" aria-label="Where">
-          <button type="button" aria-pressed={kind === "online"} onClick={() => setKind("online")}>
-            Internet
-          </button>
-          <button type="button" aria-pressed={kind === "local"} onClick={() => setKind("local")}>
-            This computer
-          </button>
+        <div className="panel-body">
+          <p className="empty small">
+            Open a session and other people can edit this robot with you, and talk about it. The
+            conversation is kept against the robot afterwards.
+          </p>
+          <div className="toggle" role="group" aria-label="Where">
+            <button
+              type="button"
+              aria-pressed={kind === "online"}
+              onClick={() => setKind("online")}
+            >
+              Internet
+            </button>
+            <button type="button" aria-pressed={kind === "local"} onClick={() => setKind("local")}>
+              This computer
+            </button>
+          </div>
+          <div className="roster-actions">
+            <button
+              type="button"
+              className="btn primary small"
+              disabled={!canStart || room.phase === "connecting"}
+              onClick={() => onStart(kind)}
+            >
+              {room.phase === "connecting" ? "Opening…" : "Start a session"}
+            </button>
+          </div>
+          <div className="roster-actions">
+            <input
+              className="text-input code"
+              value={code}
+              placeholder="BOLT-7429"
+              onChange={(e) => setCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void room.join(code, kind);
+              }}
+            />
+            <button
+              type="button"
+              className="btn small"
+              disabled={code.trim() === "" || room.phase === "connecting"}
+              onClick={() => void room.join(code, kind)}
+            >
+              Join
+            </button>
+          </div>
         </div>
-        <div className="roster-actions">
-          <button
-            type="button"
-            className="btn primary small"
-            disabled={!canStart || room.phase === "connecting"}
-            onClick={() => onStart(kind)}
-          >
-            {room.phase === "connecting" ? "Opening…" : "Start a session"}
-          </button>
-        </div>
-        <div className="roster-actions">
-          <input
-            className="text-input code"
-            value={code}
-            placeholder="BOLT-7429"
-            onChange={(e) => setCode(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void room.join(code, kind);
-            }}
-          />
-          <button
-            type="button"
-            className="btn small"
-            disabled={code.trim() === "" || room.phase === "connecting"}
-            onClick={() => void room.join(code, kind)}
-          >
-            Join
-          </button>
-        </div>
-      </div>
       )}
     </section>
   );
@@ -819,10 +896,7 @@ function ChatPanel({
           <p className="empty small">Say hello. Everyone here is editing the same robot.</p>
         ) : null}
         {messages.map((line) => (
-          <div
-            key={line.id}
-            className={`chat-line${line.authorPeerId === selfId ? " mine" : ""}`}
-          >
+          <div key={line.id} className={`chat-line${line.authorPeerId === selfId ? " mine" : ""}`}>
             <span className="chat-who">
               {line.authorPeerId === selfId ? "You" : line.author}
               <time
@@ -872,6 +946,102 @@ function ChatPanel({
 }
 
 // ---------------------------------------------------------------------------
+// The block shelf
+// ---------------------------------------------------------------------------
+
+/**
+ * Every `can` block the player has written, grouped by the event it works on,
+ * ready to be dragged into a script.
+ *
+ * Grouping by event is the whole idea. A `can … given hit by bullet` is not a
+ * general-purpose function, it is an answer to one thing that happens — so the
+ * shelf is organised the way the question arrives ("what have I got for getting
+ * shot?") rather than by which robot it came from. The robot name is there, but
+ * as provenance, in small print.
+ */
+function BlockShelf({
+  groups,
+  theme,
+  usable,
+  onTake,
+}: {
+  groups: ReturnType<typeof groupBlocks>;
+  theme: Theme;
+  /** False when the script on screen is not yours to change. */
+  usable: boolean;
+  onTake: (block: LibraryBlock) => void;
+}) {
+  const total = groups.reduce((n, g) => n + g.blocks.length, 0);
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <span className="silkscreen">
+          {theme === "biological" ? "Your behaviours" : "Your blocks"}
+        </span>
+        <span className="spacer" />
+        {total > 0 ? <span className="roster-meta">{total}</span> : null}
+      </div>
+
+      <div className="panel-body">
+        {total === 0 ? (
+          <p className="empty small">
+            Nothing yet. Write a <code>can … given</code> block in any of your scripts and it
+            appears here, ready to drop into the others.
+          </p>
+        ) : (
+          <>
+            <p className="roster-meta shelf-hint">
+              {usable ? "Drag one into your script, or click to add it." : "Read-only just now."}
+            </p>
+            {groups.map((group) => (
+              <div className="block-group" key={group.event ?? "anywhere"}>
+                {/* `given`, not `on`. These are blocks, and the difference is
+                    the point: a handler is one script's flow control, a
+                    `given` block is a behaviour that fits anybody's. */}
+                <div className="block-group-head">given {phraseFor(group.event, theme)}</div>
+                {group.blocks.map((block) => (
+                  <div
+                    key={`${block.robotId}/${block.name}`}
+                    className="block-chip"
+                    draggable={usable}
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData(BLOCK_MIME, `${block.robotId}/${block.name}`);
+                      // Anywhere that is not our editor gets the block itself,
+                      // which is the sensible thing to paste into a chat or a
+                      // text file.
+                      event.dataTransfer.setData("text/plain", block.text);
+                      event.dataTransfer.effectAllowed = "copy";
+                    }}
+                    title={block.text}
+                  >
+                    <button
+                      type="button"
+                      className="block-take"
+                      disabled={!usable}
+                      onClick={() => onTake(block)}
+                    >
+                      <span className="block-name">{block.name}</span>
+                      {block.params.length > 0 ? (
+                        <span className="block-params">with {block.params.join(", ")}</span>
+                      ) : null}
+                    </button>
+                    <span className="roster-meta block-from">
+                      {block.robotName}
+                      {block.alsoIn.length > 0 ? ` +${block.alsoIn.length}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Library
 // ---------------------------------------------------------------------------
 
@@ -898,15 +1068,16 @@ function RobotLibrary({
       <div className="panel-head">
         <span className="silkscreen">Your {words.robotPlural}</span>
         <span className="spacer" />
-        <span className="roster-meta">
-          {Math.round((storage.used / 1024) * 10) / 10} kB used
-        </span>
+        <span className="roster-meta">{Math.round((storage.used / 1024) * 10) / 10} kB used</span>
       </div>
 
       <div className="panel-body flush">
         {robots.map((robot) => (
           <div key={robot.id}>
-            <div className="roster-item" aria-current={robot.id === selectedId ? "true" : undefined}>
+            <div
+              className="roster-item"
+              aria-current={robot.id === selectedId ? "true" : undefined}
+            >
               <button type="button" className="roster-select" onClick={() => onSelect(robot.id)}>
                 <span className="chip" style={{ background: robot.color }} />
                 <span className="roster-name">{robot.name}</span>
@@ -1014,8 +1185,8 @@ function SnapshotList({
   if (robot.snapshots.length === 0) {
     return (
       <div className="empty small">
-        No saved versions yet. Save one before a big change — especially before letting
-        someone else edit.
+        No saved versions yet. Save one before a big change — especially before letting someone else
+        edit.
       </div>
     );
   }
@@ -1175,8 +1346,14 @@ function TrialPane({
     }
   }, [liveMatch]);
 
+  // A script that will not compile takes the arena down with it — the renderer
+  // builds the world the moment it is handed a manifest, and a compile error
+  // thrown there is thrown during React's commit. The editor is already showing
+  // what is wrong; the button just has to stop asking.
+  const broken = robot ? !checkScript(robot.source).ok : false;
+
   const start = () => {
-    if (!robot || !canRun) return;
+    if (!robot || !canRun || broken) return;
     // Filtered through the live list, so a version deleted since it was ticked
     // simply drops out rather than failing to compile.
     const chosen = contenders.filter((c) => opponents.includes(c.id));
@@ -1244,7 +1421,13 @@ function TrialPane({
           <span className="spacer" />
           {canRun ? (
             <span className="transport">
-              <button type="button" className="btn primary" onClick={start} disabled={!robot}>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={start}
+                disabled={!robot || broken}
+                title={broken ? "Fix the line the editor is complaining about first" : undefined}
+              >
                 {manifest ? "Restart" : "Start trial"}
               </button>
               <button
@@ -1265,7 +1448,9 @@ function TrialPane({
               </button>
             </span>
           ) : (
-            <span className="roster-meta">The owner starts trials — you watch the same battle.</span>
+            <span className="roster-meta">
+              The owner starts trials — you watch the same battle.
+            </span>
           )}
         </div>
       </section>
@@ -1344,10 +1529,7 @@ function BenchPane({
 
   useEffect(() => () => workerRef.current?.terminate(), []);
 
-  const contenders = useMemo(
-    () => buildContenders(robots, robot?.id ?? null),
-    [robots, robot?.id],
-  );
+  const contenders = useMemo(() => buildContenders(robots, robot?.id ?? null), [robots, robot?.id]);
 
   const run = () => {
     if (!robot) return;
@@ -1424,8 +1606,8 @@ function BenchPane({
         {canRun ? (
           <>
             <p className="empty small">
-              Every trial is a different battle, and your robot swaps sides each time, so the
-              result measures the robot rather than where it happened to start.
+              Every trial is a different battle, and your robot swaps sides each time, so the result
+              measures the robot rather than where it happened to start.
             </p>
             <div className="chip-row">
               {contenders.map((c) => (

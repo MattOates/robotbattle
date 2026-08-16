@@ -259,7 +259,9 @@ button {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: border-color 0.12s ease, color 0.12s ease;
+  transition:
+    border-color 0.12s ease,
+    color 0.12s ease;
 }
 
 .btn:hover:not(:disabled) {
@@ -414,6 +416,91 @@ button {
 .workshop-body .sidebar .roster-select {
   gap: 8px;
   padding-left: 10px;
+}
+
+/* ---------- the block shelf ---------- */
+
+.shelf-hint {
+  display: block;
+  margin: 0 0 10px;
+}
+
+.block-group + .block-group {
+  margin-top: 12px;
+}
+
+.block-group-head {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: var(--signal);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--bezel);
+  margin-bottom: 4px;
+}
+
+.block-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-radius: var(--radius);
+  padding-right: 6px;
+}
+
+.block-chip:hover {
+  background: var(--panel-raised);
+}
+
+/* A block is a thing you pick up, so it says so before you touch it. */
+.block-chip[draggable="true"] {
+  cursor: grab;
+}
+
+.block-chip[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.block-take {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 4px 5px 6px;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.block-take:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.block-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block-params {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.block-from {
+  flex: 0 0 auto;
+  max-width: 40%;
 }
 
 /* ---------- editor ---------- */
@@ -848,7 +935,9 @@ button {
   backdrop-filter: blur(6px);
   border: 1px solid var(--bezel-light);
   border-radius: var(--radius);
-  transition: border-color 0.14s ease, transform 0.14s ease;
+  transition:
+    border-color 0.14s ease,
+    transform 0.14s ease;
 }
 
 .mode-card:hover {
@@ -1678,7 +1767,10 @@ button {
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
-  transition: color 0.12s ease, border-color 0.12s ease, transform 0.2s ease;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.2s ease;
 }
 
 .settings-cog:hover {
@@ -2350,7 +2442,6 @@ button {
   flex-direction: column;
   height: 360px;
 }
-
 
 .viewing-banner {
   flex: none;

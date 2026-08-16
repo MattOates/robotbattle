@@ -76,6 +76,12 @@ const TOP_LEVEL: readonly Suggestion[] = [
     detail: "remember something",
     info: "Makes a new variable you can change later. `var target = none`",
   },
+  {
+    label: "can",
+    kind: "keyword",
+    detail: "teach yourself something",
+    info: "Names a block of instructions you can use more than once.\n\ncan dodge given hit by bullet\n  turn body by event.bearing + 90\nend\n\nSay `given <event>` and the block can read `event.` — and if you have no `on` block for that event, blocks like it become the handler, in the order you wrote them.",
+  },
 ];
 
 const STATEMENTS: readonly Suggestion[] = [
@@ -126,6 +132,12 @@ const STATEMENTS: readonly Suggestion[] = [
     kind: "keyword",
     detail: "skip to the next go",
     info: "Skips the rest of this time round the loop and starts the next one.",
+  },
+  {
+    label: "do",
+    kind: "keyword",
+    detail: "run one of your blocks",
+    info: "Runs a block you made with `can`. `do dodge`\nIf the block was given something, hand it over: `do shove with 3`",
   },
   {
     label: "wait",
@@ -291,6 +303,7 @@ const EXPECTS_VALUE = new Set([
 // ---------------------------------------------------------------------------
 
 interface Context {
+  /** True anywhere instructions are legal: a handler or a `can` block. */
   inHandler: boolean;
   event: EventName | null;
 }
@@ -301,11 +314,75 @@ interface Frame {
 }
 
 /**
- * Work out which handler the cursor sits inside, by tracking block depth
- * through the lines above it.
+ * Words that are never the last thing on their line.
+ *
+ * Accepting one of these leaves a space behind, because the next thing you type
+ * is another word and `givensense robot` is not what anybody meant. Only words
+ * the grammar *requires* something after are listed: `fire` and `stop` are
+ * whole instructions on their own, and a space after them would be litter.
+ *
+ * All of them are control words, which are the same in either vocabulary, so
+ * this needs no theme.
+ */
+const NEEDS_A_WORD_AFTER: ReadonlySet<string> = new Set([
+  "on",
+  "can",
+  "do",
+  "given",
+  "with",
+  "set",
+  "var",
+  "if",
+  "for",
+  "repeat",
+  "wait",
+]);
+
+/** Should accepting this suggestion leave a space ready for the next word? */
+export function completionKeepsGoing(label: string): boolean {
+  return NEEDS_A_WORD_AFTER.has(label);
+}
+
+/** The canonical words of one line, punctuation included. */
+export function wordsOf(line: string): string[] {
+  const words: string[] = [];
+  for (const tok of scanLine(line)) {
+    if (tok.kind === "word") words.push(...tok.canonical);
+    else if (tok.kind === "punct") words.push(tok.text);
+  }
+  return words;
+}
+
+/**
+ * What one line does to block depth: which blocks it opens, and where it
+ * closes one.
  *
  * Two exceptions to "`if` opens a block": `break if` / `continue if` are
  * conditions rather than blocks, and `else if` shares the outer block's `end`.
+ *
+ * Every reader of block structure goes through here — the cursor context below
+ * and the block slicer further down — because two sets of rules that are
+ * *nearly* the same is how a slice ends up one `end` short.
+ */
+export type BlockEdge = "on" | "can" | "plain" | "end";
+
+export function blockEdges(words: readonly string[]): BlockEdge[] {
+  const edges: BlockEdge[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    const prev = i > 0 ? words[i - 1] : undefined;
+    if ((w === "on" || w === "can") && i === 0) edges.push(w);
+    else if (w === "if") {
+      if (prev !== "break" && prev !== "continue" && prev !== "else") edges.push("plain");
+    } else if (w === "loop" || w === "for" || w === "repeat") edges.push("plain");
+    else if (w === "end") edges.push("end");
+  }
+  return edges;
+}
+
+/**
+ * Work out which handler the cursor sits inside, by tracking block depth
+ * through the lines above it.
  */
 export function contextAt(source: string, pos: number): Context {
   const upto = source.slice(0, pos);
@@ -317,25 +394,18 @@ export function contextAt(source: string, pos: number): Context {
   const stack: Frame[] = [];
 
   for (const line of lines) {
-    const words: string[] = [];
-    for (const tok of scanLine(line)) {
-      if (tok.kind === "word") words.push(...tok.canonical);
-      else if (tok.kind === "punct") words.push(tok.text);
-    }
-
-    for (let i = 0; i < words.length; i++) {
-      const w = words[i]!;
-      const prev = i > 0 ? words[i - 1] : undefined;
-
-      if (w === "on" && i === 0) {
+    const words = wordsOf(line);
+    for (const edge of blockEdges(words)) {
+      if (edge === "on") {
         stack.push({ handler: true, event: matchEvent(words.slice(1)) });
-      } else if (w === "if") {
-        if (prev !== "break" && prev !== "continue" && prev !== "else") {
-          stack.push({ handler: false, event: null });
-        }
-      } else if (w === "loop" || w === "for" || w === "repeat") {
+      } else if (edge === "can") {
+        // A `can` block takes instructions like a handler does, and if it says
+        // which event it is for, `event.` means the same thing inside it.
+        const at = words.indexOf("given");
+        stack.push({ handler: true, event: at >= 0 ? matchEvent(words.slice(at + 1)) : null });
+      } else if (edge === "plain") {
         stack.push({ handler: false, event: null });
-      } else if (w === "end") {
+      } else {
         stack.pop();
       }
     }
@@ -346,6 +416,59 @@ export function contextAt(source: string, pos: number): Context {
     if (frame.handler) return { inHandler: true, event: frame.event };
   }
   return { inHandler: false, event: null };
+}
+
+/** The words that say how often a block runs. */
+const COUNT_WORDS: ReadonlySet<string> = new Set(["every", "after", "before", "at"]);
+
+/** Stands in for a literal value in the word stream the phrase rules read. */
+const LITERAL = "\0";
+
+/**
+ * How often — offered once the event has been named, because that is the point
+ * at which the question "how often?" becomes askable.
+ *
+ * Nobody guesses these exist: a tick handler looks finished the moment you have
+ * typed the event, and the popup appearing there is the only hint that running
+ * every single tick was a choice.
+ */
+function countSuggestions(used: readonly string[]): Suggestion[] | null {
+  // `at` pins the count exactly, so nothing can be added beside it.
+  if (used.includes("at")) return null;
+  const out: Suggestion[] = [];
+  if (!used.includes("every")) {
+    out.push({
+      label: "every",
+      kind: "keyword",
+      detail: "one time in N",
+      info: "Runs one time in every N. `on tick every 30` runs once a second — 30 ticks to the second — instead of thirty times.",
+    });
+  }
+  if (!used.includes("after")) {
+    out.push({
+      label: "after",
+      kind: "keyword",
+      detail: "not until later",
+      info: "Waits until it has happened this many times. `can rally given hit wall after 2` runs from the third bump onward.\nCombines with `every` and `before`.",
+    });
+  }
+  if (!used.includes("before")) {
+    out.push({
+      label: "before",
+      kind: "keyword",
+      detail: "only early on",
+      info: "Stops once it has happened this many times. `on tick before 90` runs for the first three seconds only.\nCombines with `every` and `after`.",
+    });
+  }
+  if (used.length === 0) {
+    out.push({
+      label: "at",
+      kind: "keyword",
+      detail: "exactly once",
+      info: "Runs on that time and no other. `can panic given hit by bullet at 3` runs on the third hit, once.\nGoes on its own — `at` already says exactly when.",
+    });
+  }
+  return out.length > 0 ? out : null;
 }
 
 /** Longest event phrase that the given words begin with. */
@@ -388,7 +511,7 @@ export function completeAt(source: string, pos: number, theme: Theme): Completio
   for (const tok of tokens) {
     if (tok.kind === "word") words.push(...tok.canonical);
     else if (tok.kind === "punct") words.push(tok.text);
-    else words.push(" "); // a literal value
+    else words.push(LITERAL); // a literal value
   }
 
   const options = suggest(words, source, pos, theme);
@@ -415,8 +538,44 @@ function suggest(
     return null;
   }
 
+  // --- how often, once the event has been named ---
+  if (words[0] === "on" || words[0] === "can") {
+    const at = words[0] === "on" ? 1 : words.indexOf("given") + 1;
+    if (at > 0) {
+      const event = matchEvent(words.slice(at));
+      if (event) {
+        const rest = words.slice(at + event.split(" ").length);
+        // The numbers arrive as the literal marker rather than as digits, so
+        // what is checked here is "nothing but clauses and their numbers".
+        if (rest.every((w) => COUNT_WORDS.has(w) || w === LITERAL)) return countSuggestions(rest);
+      }
+    }
+  }
+
   // --- `on ...`: the event list, narrowing as you type ---
   if (words[0] === "on") return eventSuggestions(words.slice(1), theme);
+
+  // --- `can ...`: the two clauses, then the event list after `given` ---
+  const givenAt = words.indexOf("given");
+  if (givenAt >= 0) return eventSuggestions(words.slice(givenAt + 1), theme);
+  if (words[0] === "can" && words.length >= 2) {
+    const clauses: Suggestion[] = [];
+    if (!words.includes("with")) {
+      clauses.push({
+        label: "with",
+        kind: "keyword",
+        detail: "things to hand it",
+        info: "Names what the block is given: `can shove with effort`.\nGive it a starting value — `with effort=2` — and the block can also run on its own.",
+      });
+    }
+    clauses.push({
+      label: "given",
+      kind: "keyword",
+      detail: "which event it is for",
+      info: "Says what the block works on, so it can read `event.`: `can dodge given hit by bullet`.\nWith no `on` block for that event, blocks like it become the handler.",
+    });
+    return clauses;
+  }
 
   // --- exact phrase rules for the action grammar ---
   const phrase = words.join(" ");
@@ -480,6 +639,22 @@ function suggest(
           info: "Aims relative to your body, so `turret.aim at event.bearing` points straight at what you just sensed.",
         },
       ];
+    case "do": {
+      // Only the blocks that would actually work here: one that says
+      // `given hit by bullet` has no meaning inside `on tick`.
+      const { routines, handled } = routinesIn(source);
+      return routines
+        .filter((r) => r.given === null || r.given === ctx.event)
+        .map((r): Suggestion => ({
+          label: r.name,
+          kind: "action",
+          // "run it with `do`" is not news to someone who has just typed `do`.
+          detail: routineNote(r, handled, theme) || (r.params.length > 0 ? "takes something" : ""),
+          info: r.params.length
+            ? `Give it: ${r.params.join(", ")}\n\ndo ${r.name} with ...`
+            : `Runs the \`can ${r.name}\` block here.`,
+        }));
+    }
     case "set":
       return [
         {
@@ -710,6 +885,207 @@ function expressionSuggestions(
  * rather than the parser, because the file being edited usually does not
  * compile yet — which is exactly when you most want the suggestions.
  */
+/** What a `can` block declared, read straight off the line that opened it. */
+export interface RoutineInfo {
+  name: string;
+  /** The event named after `given`, if any. */
+  given: EventName | null;
+  params: string[];
+  /** True when every parameter has a starting value, so it can run unasked. */
+  runsAlone: boolean;
+  /** Line the block was declared on. */
+  line: number;
+  /** `every 30`, `after 2` … in the order written. */
+  counts: Array<{ kind: string; value: number }>;
+}
+
+/**
+ * Every `can` block in a script, and every event with an `on` block.
+ *
+ * Read with the tolerant scanner rather than the parser, because this runs on
+ * every keystroke against a script that is usually half-written. Anything it
+ * cannot make sense of is simply left out.
+ */
+export function routinesIn(source: string): {
+  routines: RoutineInfo[];
+  handled: Set<EventName>;
+} {
+  const routines: RoutineInfo[] = [];
+  const handled = new Set<EventName>();
+
+  source.split("\n").forEach((line, index) => {
+    const words: string[] = [];
+    const raw: string[] = [];
+    for (const tok of scanLine(line)) {
+      if (tok.kind === "word") {
+        words.push(...tok.canonical);
+        for (const _ of tok.canonical) raw.push(tok.text);
+      } else if (tok.kind === "punct" || tok.kind === "number") {
+        words.push(tok.text);
+        raw.push(tok.text);
+      }
+    }
+    if (words[0] === "on") {
+      const event = matchEvent(words.slice(1));
+      if (event) handled.add(event);
+      return;
+    }
+    if (words[0] !== "can" || words.length < 2) return;
+
+    const name = raw[1] ?? words[1]!;
+    const givenAt = words.indexOf("given");
+    const given = givenAt >= 0 ? matchEvent(words.slice(givenAt + 1)) : null;
+
+    // Parameters run from `with` to `given` (or the end): names, commas, and
+    // `= value` for the ones with a starting value.
+    const params: string[] = [];
+    const defaulted = new Set<string>();
+    const withAt = words.indexOf("with");
+    if (withAt >= 0) {
+      const stop = givenAt >= 0 ? givenAt : words.length;
+      let current: string | null = null;
+      for (let i = withAt + 1; i < stop; i++) {
+        const w = words[i]!;
+        if (w === ",") {
+          current = null;
+        } else if (w === "=") {
+          if (current) defaulted.add(current);
+        } else if (current === null) {
+          current = raw[i] ?? w;
+          params.push(current);
+        }
+      }
+    }
+
+    // `every 30 after 2` — a clause word followed by a number.
+    const counts: Array<{ kind: string; value: number }> = [];
+    for (let i = 0; i < words.length - 1; i++) {
+      const w = words[i]!;
+      if (!COUNT_WORDS.has(w)) continue;
+      const value = Number(words[i + 1]);
+      if (Number.isFinite(value)) counts.push({ kind: w, value });
+    }
+
+    routines.push({
+      name,
+      given,
+      params,
+      runsAlone: params.every((p) => defaulted.has(p)),
+      line: index,
+      counts,
+    });
+  });
+
+  return { routines, handled };
+}
+
+/** A `can` block together with the text of it, ready to be moved somewhere. */
+export interface BlockSource extends RoutineInfo {
+  /** Every line from `can` to its `end`, exactly as written. */
+  text: string;
+  endLine: number;
+  /** Blocks this one hands off to with `do`, so they can travel with it. */
+  calls: string[];
+}
+
+/**
+ * Every complete `can` block in a script, with its source text.
+ *
+ * A block still being typed — one whose `end` has not been written yet — is
+ * left out rather than guessed at. Half a block is not something anyone wants
+ * dropped into their script.
+ */
+export function blockSourcesIn(source: string): BlockSource[] {
+  const lines = source.split("\n");
+  const out: BlockSource[] = [];
+
+  for (const routine of routinesIn(source).routines) {
+    let depth = 0;
+    let end = -1;
+    const calls: string[] = [];
+
+    for (let i = routine.line; i < lines.length; i++) {
+      const line = lines[i]!;
+      const words = wordsOf(line);
+      // `do NAME`, in the words as written rather than canonicalised, since a
+      // block's name is a name and not vocabulary.
+      const raw = scanLine(line).filter((t) => t.kind === "word");
+      for (let k = 0; k < raw.length - 1; k++) {
+        if (raw[k]!.canonical[0] === "do") calls.push(raw[k + 1]!.text);
+      }
+      for (const edge of blockEdges(words)) depth += edge === "end" ? -1 : 1;
+      if (depth <= 0) {
+        end = i;
+        break;
+      }
+    }
+
+    if (end < 0) continue; // never closed: still being written
+    out.push({
+      ...routine,
+      endLine: end,
+      text: lines.slice(routine.line, end + 1).join("\n"),
+      calls: [...new Set(calls)],
+    });
+  }
+
+  return out;
+}
+
+/**
+ * What will happen to a `can` block, in a few words.
+ *
+ * Nothing in the source says whether a block runs by itself, so this is the
+ * only place a reader can find out — the editor prints it at the end of the
+ * line, and the same words label the block in the `do` menu.
+ *
+ * Empty when there is nothing worth saying, and callers are expected to show
+ * nothing at all rather than an empty space.
+ */
+/** 1st, 2nd, 3rd, 4th … 11th, 12th, 13th, 21st. */
+function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  const suffix = { 1: "st", 2: "nd", 3: "rd" }[n % 10] ?? "th";
+  return `${n}${suffix}`;
+}
+
+/** "one in 30, after 25" — the cadence, in words, or "" if it runs every time. */
+function cadence(counts: RoutineInfo["counts"]): string {
+  const value = (kind: string) => counts.find((c) => c.kind === kind)?.value;
+  const every = value("every");
+  const after = value("after");
+  const before = value("before");
+  const at = value("at");
+
+  if (at !== undefined) return `only the ${ordinal(at)}`;
+
+  const parts: string[] = [];
+  // `after` first when both are there, and "then", because that is the order
+  // the two actually happen in: the wait, and then the cadence counting from
+  // the end of it.
+  if (after !== undefined) parts.push(`after ${after}`);
+  if (every !== undefined) parts.push(`${after !== undefined ? "then " : ""}one in ${every}`);
+  if (before !== undefined) parts.push(`before ${before}`);
+  return parts.join(", ");
+}
+
+export function routineNote(routine: RoutineInfo, handled: Set<EventName>, theme: Theme): string {
+  const often = cadence(routine.counts);
+
+  // A block with no `given` was never going to run on its own, so the only
+  // thing worth saying about it is a cadence, if it has one.
+  if (routine.given === null) return often;
+
+  const event = phraseFor(routine.given, theme);
+  if (handled.has(routine.given)) return `your \`on ${event}\` runs instead`;
+  if (!routine.runsAlone) {
+    const needed = routine.params.join(", ");
+    return `needs ${needed} — run it with \`do\``;
+  }
+  return often ? `runs on ${event}, ${often}` : `runs on ${event}`;
+}
+
 export function variablesIn(source: string): string[] {
   const found: string[] = [];
   const seen = new Set<string>();

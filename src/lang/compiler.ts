@@ -7,7 +7,16 @@
  */
 
 import { RoboScriptError, type SourcePos } from "./errors.js";
-import type { ActionKind, EventName, Expr, Program, Stmt } from "./ast.js";
+import type {
+  ActionKind,
+  CountClause,
+  EventName,
+  Expr,
+  Program,
+  Routine,
+  Stmt,
+  Stmt_Do,
+} from "./ast.js";
 import { EVENT_DOCS, eventFields } from "./events.js";
 import {
   BUILTIN_NAMES,
@@ -57,6 +66,94 @@ const ARENA_PROPS = new Set(["width", "height", "time", "robots"]);
 /** Default firing power when a script writes a bare `fire`. */
 const DEFAULT_FIRE_POWER = 2;
 
+/**
+ * Ceiling on the size of a compiled script.
+ *
+ * `can` blocks are copied out wherever they are used, so a big one used inside
+ * another big one multiplies. This is a blowup guard and nothing else: a robot
+ * would have to be writing thousands of instructions to reach it, and by then
+ * it is already thinking far too slowly to react.
+ */
+const MAX_OPS = 8192;
+
+/** Comparisons: the operators whose answer is yes or no. */
+const COMPARISONS: ReadonlySet<string> = new Set(["is", "isnt", "<", ">", "<=", ">="]);
+
+/**
+ * Is this expression a question with a yes-or-no answer?
+ *
+ * `and`, `or` and `not` are tests only if what they join are tests, so
+ * `if seen and health > 20` is refused for the same reason `if seen` is: one
+ * half of it is a value, not a question.
+ */
+function isTest(e: Expr): boolean {
+  switch (e.type) {
+    case "bool":
+      return true;
+    case "unary":
+      return e.op === "not" && isTest(e.expr);
+    case "binary":
+      if (COMPARISONS.has(e.op)) return true;
+      return (e.op === "and" || e.op === "or") && isTest(e.left) && isTest(e.right);
+    default:
+      return false;
+  }
+}
+
+/** What the reader wrote, named in words they can match to their own line. */
+function describe(e: Expr): string {
+  switch (e.type) {
+    case "num":
+      return `\`${e.value}\` is a number`;
+    case "str":
+      return "a piece of text";
+    case "none":
+      return "`none`";
+    case "var":
+      return `\`${e.name}\` on its own`;
+    case "prop":
+      return `\`${e.obj}.${e.prop}\` on its own`;
+    case "call":
+      return `\`${e.name}(…)\` gives back a number, which`;
+    case "unary":
+      return e.op === "-" ? "a number" : `\`not …\` around something that`;
+    case "binary":
+      return `\`${e.op}\` gives back a number, which`;
+    default:
+      return "that";
+  }
+}
+
+/**
+ * The fix, spelled out. Guessing what someone meant is usually a bad idea, but
+ * `mod` has exactly one common use in a condition — "every N ticks" — and
+ * naming it turns a refusal into the answer.
+ */
+function suggestTest(e: Expr): string {
+  if (e.type === "binary" && e.op === "mod") {
+    return "did you mean `... mod 60 is 0`? On its own, `mod` answers with the remainder, and every remainder except 0 counts as true — so the test would pass on every tick but the one you wanted";
+  }
+  if (e.type === "var" || e.type === "prop") {
+    const name = e.type === "var" ? e.name : `${e.obj}.${e.prop}`;
+    return `compare it to something: \`${name} is true\`, \`${name} > 0\`, \`${name} isnt none\``;
+  }
+  return "a condition compares two things: `is`, `isnt`, `>`, `<`, `>=`, `<=`, joined with `and`, `or`, `not`";
+}
+
+/** How deep `can` blocks may be nested before it stops being comprehensible. */
+const MAX_EXPANSION_DEPTH = 4;
+
+/**
+ * Can this block run without being handed anything?
+ *
+ * Only such a block can become a handler on its own — there would be nobody to
+ * supply the missing value. One that needs something is library code: perfectly
+ * good, but it has to be started with a `do`.
+ */
+function canRunAlone(routine: Routine): boolean {
+  return routine.params.every((p) => p.default !== null);
+}
+
 interface LoopContext {
   /** Addresses of JUMPs emitted by `break`, patched to the loop exit. */
   breaks: number[];
@@ -77,6 +174,26 @@ class Compiler {
   private loops: LoopContext[] = [];
   /** Which handler is being compiled, so `event.*` can be checked against it. */
   private currentEvent: EventName | null = null;
+  /** Every `can` block, by lowercased name. */
+  private routines = new Map<string, Routine>();
+  /**
+   * The routines currently being expanded, outermost first.
+   *
+   * Doubles as the cycle check and the depth guard: a routine already on this
+   * list is calling itself, however many steps round the houses it went.
+   */
+  private expanding: string[] = [];
+  /**
+   * Parameter names in scope, innermost last.
+   *
+   * A parameter is an ordinary global slot under a name nobody can type, and
+   * this is what makes it *local*: name lookup consults these first, so a
+   * parameter called `power` hides `var power` for the length of the body and
+   * gives it back afterwards.
+   */
+  private paramScopes: Array<Map<string, number>> = [];
+  /** One hidden counter per block that says how often it runs, by owner key. */
+  private countSlots = new Map<string, number>();
 
   // ---- emit helpers -----------------------------------------------------
 
@@ -143,9 +260,9 @@ class Compiler {
   private checkEventProp(prop: string, pos: SourcePos): void {
     if (!this.currentEvent) {
       throw new RoboScriptError(
-        "`event` only means something inside an `on ...` block",
+        "`event` only means something when something has happened",
         pos,
-        "there is no event to talk about out here — move this line into a handler",
+        "put this in an `on ...` block, or say which event the block is for: `can dodge given hit by bullet`",
       );
     }
     const fields = eventFields(this.currentEvent);
@@ -165,11 +282,27 @@ class Compiler {
     );
   }
 
+  /** A parameter of the routine being expanded, if this name is one. */
+  private lookupParam(name: string): number | undefined {
+    const key = name.toLowerCase();
+    for (let i = this.paramScopes.length - 1; i >= 0; i--) {
+      const slot = this.paramScopes[i]!.get(key);
+      if (slot !== undefined) return slot;
+    }
+    return undefined;
+  }
+
   private lookupGlobal(name: string, pos: SourcePos): number {
+    const param = this.lookupParam(name);
+    if (param !== undefined) return param;
     const slot = this.globalIndex.get(name.toLowerCase());
     if (slot === undefined) {
-      const known = this.globals.length
-        ? `you've made: ${this.globals.join(", ")}`
+      // Hidden slots — loop counters, and the ones holding what a `can` block
+      // was given — are ours, not the player's, and listing them as things
+      // they made would be a lie.
+      const mine = this.globals.filter((g) => !g.startsWith("__"));
+      const known = mine.length
+        ? `you've made: ${mine.join(", ")}`
         : "you haven't made any variables yet";
       throw new RoboScriptError(
         `I don't know a variable called \`${name}\``,
@@ -183,10 +316,52 @@ class Compiler {
   // ---- program ----------------------------------------------------------
 
   compile(program: Program): Chunk {
+    for (const r of program.routines) this.routines.set(r.name.toLowerCase(), r);
+
+    // Blocks that will run without being asked. A `can` block with a `given`
+    // becomes the handler for that event when the script does not write one
+    // out — so pasting in a dodge and a reposition gives you both, in the
+    // order they appear. Writing `on hit by bullet` yourself takes that back.
+    const written = new Set(program.handlers.map((h) => h.event));
+    const registered = new Map<EventName, Routine[]>();
+    for (const r of program.routines) {
+      if (r.given === null || written.has(r.given)) continue;
+      if (!canRunAlone(r)) continue;
+      const list = registered.get(r.given);
+      if (list) list.push(r);
+      else registered.set(r.given, [r]);
+    }
+
+    // Handlers in source order, with each synthesised one standing where its
+    // first contributing block was written — so "paste it in" and "write it
+    // out" compile to the same program.
+    const blocks: Array<{
+      event: EventName;
+      body: Stmt[];
+      counts: CountClause[];
+      pos: SourcePos;
+    }> = [
+      ...program.handlers.map((h) => ({
+        event: h.event,
+        body: h.body,
+        counts: h.counts,
+        pos: h.pos,
+      })),
+      // A synthesised handler has no counts of its own: each block it calls
+      // carries its own, which is what lets two blocks on one event run at two
+      // different cadences.
+      ...[...registered].map(([event, list]) => ({
+        event,
+        body: list.map((r): Stmt => ({ type: "do", name: r.name, args: [], pos: r.pos })),
+        counts: [] as CountClause[],
+        pos: list[0]!.pos,
+      })),
+    ].sort((a, b) => a.pos.line - b.pos.line);
+
     // Pre-declare every global so a handler can use a variable declared later
     // in the file. Order of declaration fixes slot numbers.
     for (const g of program.globals) this.declareGlobal(g.name);
-    for (const h of program.handlers) this.predeclare(h.body);
+    for (const b of blocks) this.predeclare(b.body);
 
     // Prelude: initialise globals once, before `on start` runs.
     const initEntry = this.here();
@@ -197,12 +372,21 @@ class Compiler {
     this.emit(Op.HALT, 0, { line: 1, col: 1 });
 
     const handlers: Record<string, number> = {};
-    for (const h of program.handlers) {
-      handlers[h.event] = this.here();
-      this.currentEvent = h.event;
-      for (const s of h.body) this.stmt(s);
+    for (const b of blocks) {
+      handlers[b.event] = this.here();
+      this.currentEvent = b.event;
+      const skips = this.emitCountGate(`on:${b.event}`, b.counts, b.pos);
+      for (const s of b.body) this.stmt(s);
+      for (const skip of skips) this.patch(skip, this.here());
       this.currentEvent = null;
-      this.emit(Op.HALT, 0, h.pos);
+      this.emit(Op.HALT, 0, b.pos);
+      if (this.here() > MAX_OPS) {
+        throw new RoboScriptError(
+          "this script has grown too big to run",
+          b.pos,
+          "a `can` block is copied out wherever it is used, so using big ones inside big ones adds up quickly — try doing less, or using fewer of them",
+        );
+      }
     }
 
     return {
@@ -219,13 +403,178 @@ class Compiler {
     };
   }
 
+  /**
+   * Run a `can` block here, by copying its instructions in.
+   *
+   * There is no call and no return: by the time the VM sees this, the block's
+   * instructions are simply part of the handler, which is why a `wait` or a
+   * suspended tick inside one needs no machinery at all.
+   */
+  private expand(s: Stmt_Do): void {
+    const key = s.name.toLowerCase();
+    const routine = this.routines.get(key);
+    if (!routine) {
+      const known = [...this.routines.values()].map((r) => r.name);
+      throw new RoboScriptError(
+        `I don't know how to \`do ${s.name}\``,
+        s.pos,
+        known.length
+          ? `you can do: ${known.join(", ")}`
+          : "teach yourself first with a `can ... end` block outside your handlers",
+      );
+    }
+
+    if (this.expanding.includes(key)) {
+      throw new RoboScriptError(
+        `\`${routine.name}\` ends up doing itself`,
+        s.pos,
+        `${[...this.expanding, routine.name].join(" → ")} — a block is copied out where it is used, so this would never finish`,
+      );
+    }
+    if (this.expanding.length >= MAX_EXPANSION_DEPTH) {
+      throw new RoboScriptError(
+        `\`${routine.name}\` is nested too deeply inside other blocks`,
+        s.pos,
+        `blocks may go ${MAX_EXPANSION_DEPTH} deep; past that nobody can follow what runs`,
+      );
+    }
+
+    // The contract. A block that reads `event.*` says which event it is for,
+    // and that is the only place it fits.
+    if (routine.given !== null && routine.given !== this.currentEvent) {
+      throw new RoboScriptError(
+        `\`${routine.name}\` needs a \`${routine.given}\` to work with`,
+        s.pos,
+        this.currentEvent
+          ? `you are inside \`on ${this.currentEvent}\`, which is a different thing happening — use it in an \`on ${routine.given}\` block, or in a \`can ... given ${routine.given}\``
+          : `use it inside an \`on ${routine.given}\` block, or a \`can ... given ${routine.given}\``,
+      );
+    }
+
+    const required = routine.params.filter((p) => p.default === null).length;
+    if (s.args.length < required || s.args.length > routine.params.length) {
+      const wanted =
+        required === routine.params.length
+          ? `${routine.params.length}`
+          : `${required} to ${routine.params.length}`;
+      throw new RoboScriptError(
+        `\`do ${routine.name}\` needs ${wanted} thing${wanted === "1" ? "" : "s"}, and you gave it ${s.args.length}`,
+        s.pos,
+        routine.params.length
+          ? `it takes: ${routine.params.map((p) => p.name).join(", ")}`
+          : "it doesn't take anything — just `do ${routine.name}`",
+      );
+    }
+
+    // Each parameter is a slot of its own, filled here and read inside. The
+    // argument is worked out once, at this call, so a `random()` handed in
+    // does not change value halfway through the block.
+    const scope = new Map<string, number>();
+    routine.params.forEach((param, i) => {
+      const slot = this.declareGlobal(`__given${this.globals.length}`);
+      const value = s.args[i] ?? param.default!;
+      this.expr(value);
+      this.emit(Op.STORE, slot, s.pos);
+      scope.set(param.name.toLowerCase(), slot);
+    });
+
+    // The count gate sits inside the block, after its parameters are filled:
+    // an argument is worked out whenever you ask for the block, and the block
+    // then decides whether this is one of the times it runs.
+    const skips = this.emitCountGate(`can:${key}`, routine.counts, s.pos);
+
+    this.expanding.push(key);
+    this.paramScopes.push(scope);
+    for (const inner of routine.body) this.stmt(inner);
+    this.paramScopes.pop();
+    this.expanding.pop();
+
+    for (const skip of skips) this.patch(skip, this.here());
+  }
+
+  /**
+   * Count this arrival, and skip the body unless the clauses are satisfied.
+   *
+   * The counter is one hidden global per block, so two blocks on the same event
+   * keep their own tallies and a block used from several places keeps one — it
+   * counts how many times *it* has been reached, which is the thing anybody
+   * writing `every 30` has in mind.
+   *
+   * Returns the jumps waiting for the end of the body.
+   */
+  private emitCountGate(owner: string, counts: CountClause[], pos: SourcePos): number[] {
+    if (counts.length === 0) return [];
+
+    let slot = this.countSlots.get(owner);
+    if (slot === undefined) {
+      slot = this.declareGlobal(`__count${this.globals.length}`);
+      this.countSlots.set(owner, slot);
+    }
+
+    // Every arrival counts, whether or not it goes on to run the body.
+    this.emit(Op.LOAD, slot, pos);
+    this.emit(Op.PUSH, this.constIndex(1), pos);
+    this.emit(Op.ADD, 0, pos);
+    this.emit(Op.STORE, slot, pos);
+
+    // `after` starts the clock. `after 2 every 3` on a wall bump means "two
+    // bumps, then every third one after that" — the third, sixth, ninth from
+    // there — which is what anybody counting hits expects. Counting the
+    // cadence from the beginning of the match instead would fire on the fourth
+    // and sixth for no reason a reader could see.
+    const from = counts.find((c) => c.kind === "after")?.value ?? 0;
+
+    const skips: number[] = [];
+    for (const clause of counts) {
+      this.emit(Op.LOAD, slot, pos);
+      if (clause.kind === "every" && from > 0) {
+        this.emit(Op.PUSH, this.constIndex(from), pos);
+        this.emit(Op.SUB, 0, pos);
+      }
+      this.emit(Op.PUSH, this.constIndex(clause.value), pos);
+      switch (clause.kind) {
+        case "every":
+          // `count mod N is 0` — written out, so nobody has to. The `after`
+          // clause has already insisted the count is past its own mark, so
+          // this never has to worry about the negative side of zero.
+          this.emit(Op.MOD, 0, pos);
+          this.emit(Op.PUSH, this.constIndex(0), pos);
+          this.emit(Op.IS, 0, pos);
+          break;
+        case "after":
+          this.emit(Op.GT, 0, pos);
+          break;
+        case "before":
+          this.emit(Op.LT, 0, pos);
+          break;
+        case "at":
+          this.emit(Op.IS, 0, pos);
+          break;
+      }
+      skips.push(this.emit(Op.JUMP_IF_FALSE, 0, pos));
+    }
+    return skips;
+  }
+
   /** Walk a block declaring any `var`/`for` names, without emitting code. */
-  private predeclare(body: Stmt[]): void {
+  private predeclare(body: Stmt[], seen: Set<string> = new Set()): void {
     for (const s of body) {
       switch (s.type) {
         case "varDecl":
           this.declareGlobal(s.name);
           break;
+        case "do": {
+          // Only through blocks that actually run. Walking every `can` in the
+          // file would give a block nobody uses a slot of its own, shifting
+          // every later slot number — and slot numbers are part of what makes
+          // two scripts the same program.
+          const routine = this.routines.get(s.name.toLowerCase());
+          if (!routine || seen.has(s.name.toLowerCase())) break;
+          seen.add(s.name.toLowerCase());
+          this.predeclare(routine.body, seen);
+          seen.delete(s.name.toLowerCase());
+          break;
+        }
         case "for":
           this.declareGlobal(s.varName);
           this.predeclare(s.body);
@@ -246,6 +595,29 @@ class Compiler {
 
   // ---- statements -------------------------------------------------------
 
+  /**
+   * A condition has to be a question with a yes-or-no answer.
+   *
+   * RoboScript could treat any value as true-or-false — the VM still does, and
+   * `truthy` in `vm.ts` decides it — but a beginner writing `if tick mod 60`
+   * means "every 60 ticks" and gets the exact opposite, on 59 ticks out of 60,
+   * with no error and no crash. That is the worst kind of bug to hand someone
+   * learning: it compiles, it runs, it looks alive, and it is wrong.
+   *
+   * So the compiler insists on an actual test. Nothing in the language produces
+   * a true-or-false value except a comparison, `and`/`or`/`not`, and the words
+   * `true` and `false` — there are no boolean properties and no builtins that
+   * return one — which makes this rule easy to state and easy to obey.
+   */
+  private requireTest(cond: Expr, keyword: string): void {
+    if (isTest(cond)) return;
+    throw new RoboScriptError(
+      `\`${keyword}\` needs a question that answers yes or no, and ${describe(cond)} is not one`,
+      cond.pos,
+      suggestTest(cond),
+    );
+  }
+
   private stmt(s: Stmt): void {
     switch (s.type) {
       case "varDecl":
@@ -263,6 +635,7 @@ class Compiler {
       }
 
       case "if": {
+        this.requireTest(s.cond, "if");
         this.expr(s.cond);
         const jumpElse = this.emit(Op.JUMP_IF_FALSE, 0, s.pos);
         for (const st of s.then) this.stmt(st);
@@ -354,6 +727,7 @@ class Compiler {
         }
         if (s.cond) {
           // `break if x` — jump over the break when the condition is false.
+          this.requireTest(s.cond, s.type);
           this.expr(s.cond);
           const skip = this.emit(Op.JUMP_IF_FALSE, 0, s.pos);
           const j = this.emit(Op.JUMP, 0, s.pos);
@@ -369,6 +743,11 @@ class Compiler {
       case "wait": {
         this.expr(s.ticks);
         this.emit(Op.WAIT, 0, s.pos);
+        return;
+      }
+
+      case "do": {
+        this.expand(s);
         return;
       }
 

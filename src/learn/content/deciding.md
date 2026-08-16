@@ -34,6 +34,25 @@ Both close with `end`, like every other block.
 
 It reads close to English on purpose: `if me.health < 30 and event.distance > 200`.
 
+An `if` always needs one of these. It wants a *question* — something that comes
+back yes or no — not a value:
+
+```robo
+-- No. `arena.time mod 60` is a number, not a question.
+if arena.time mod 60
+
+-- Yes. "is the remainder zero?" is a question.
+if arena.time mod 60 is 0
+```
+
+That first one is worth understanding, because it is the mistake everybody
+makes once. `mod` gives you the remainder — 1, 2, 3, all the way to 59, and
+then 0. Written on its own it would count every one of those as true except the
+0, so a script meant to do something *every 60 ticks* would do it on the other
+59 instead. The compiler stops you rather than let you go looking for that.
+
+The same goes for a name on its own: write `if ready is true`, not `if ready`.
+
 ## Closing carefully
 
 Distance changes how you should behave. Far away, close the gap. Close up, stop

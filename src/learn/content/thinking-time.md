@@ -4,7 +4,7 @@ titleBio: Thinking time
 teaches: why a correct {robot} can still be slow, and what to do about it
 teachesBio: why a correct cell can still be slow, and what to do about it
 section: The language
-order: 12
+order: 13
 ---
 
 This is the lesson that explains the strange results. Your {robot} looks right,
@@ -75,6 +75,22 @@ culprit.
 **Put continuous things in `on tick` and rare things in their own blocks.** An
 `on tick` block runs thirty times a second; anything expensive in there is
 expensive thirty times a second.
+
+**Say how often, instead of every time.** This is the cheapest win there is,
+and you already have the tool for it. `every 30` on the header turns thirty
+runs a second into one:
+
+```robo
+can scan given tick every 30
+  radar.turn by 20
+  ping
+end
+```
+
+The work did not get faster — it happens a thirtieth as often, which is better
+than faster. Look down your `on tick` block and ask of each line how often it
+genuinely needs doing. Aiming does. Choosing a corner of the arena to head for
+does not.
 
 **Leave loops with `break`.** A loop that always runs to its natural end is
 fine if it is short. A loop searching for something should stop the moment it

@@ -4,7 +4,7 @@ titleBio: Putting it together
 teaches: a complete {robot}, and where to go next
 teachesBio: a complete cell, and where to go next
 section: The language
-order: 13
+order: 14
 ---
 
 Everything so far, in one {robot}. Read it once through before you run it —
