@@ -30,6 +30,8 @@ export function renderDoc(text: string, theme: Theme = "mechanical"): string {
     .replace(/\{bullet\}/g, words.bullet)
     .replace(/\{health\}/g, words.health)
     .replace(/\{turret\}/g, words.weapon)
+    .replace(/\{radar\}/g, words.scanner)
+    .replace(/\{ping\}/g, words.pingVerb)
     .replace(/\{fire\}/g, words.fireVerb)
     .replace(/\{drive\}/g, words.driveVerb);
 }
@@ -79,6 +81,16 @@ export const EVENT_DOCS: Readonly<Record<EventName, EventDoc>> = {
   },
   "sense wall": {
     summary: "There is a wall ahead of you.",
+    fields: [BEARING, DISTANCE],
+  },
+  "ping robot": {
+    summary:
+      "Your {radar} beam found a {robot}. The beam is narrow and reaches much further than the cone, so this is a {robot} you could not otherwise see.",
+    fields: [BEARING, DISTANCE, HEADING, SPEED, HEALTH, NAME, X, Y],
+  },
+  "ping wall": {
+    summary:
+      "Your {radar} beam reached a wall instead of a {robot}. The distance is how far the wall is in the direction the {radar} points.",
     fields: [BEARING, DISTANCE],
   },
   "hit wall": {

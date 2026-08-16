@@ -23,14 +23,7 @@ import { scanLine } from "./scan.js";
 import { healthPropertyFor, phraseFor, wordFor, type Theme } from "./vocab.js";
 
 export type SuggestionKind =
-  | "event"
-  | "action"
-  | "keyword"
-  | "property"
-  | "function"
-  | "variable"
-  | "value"
-  | "color";
+  "event" | "action" | "keyword" | "property" | "function" | "variable" | "value" | "color";
 
 export interface Suggestion {
   /** Text to insert, already in the player's vocabulary. */
@@ -90,7 +83,7 @@ const STATEMENTS: readonly Suggestion[] = [
     label: "set",
     kind: "keyword",
     detail: "change a variable",
-    info: "Changes a variable you already made. `set target = event.bearing`\nYou can also `set name = \"hunting\"` to change your label mid-match.",
+    info: 'Changes a variable you already made. `set target = event.bearing`\nYou can also `set name = "hunting"` to change your label mid-match.',
   },
   {
     label: "var",
@@ -148,6 +141,8 @@ function actionSuggestions(theme: Theme): Suggestion[] {
   const turret = wordFor("turret", theme);
   const fire = wordFor("fire", theme);
   const body = wordFor("chassis", theme);
+  const radar = wordFor("radar", theme);
+  const ping = wordFor("ping", theme);
   return [
     {
       label: drive,
@@ -179,6 +174,18 @@ function actionSuggestions(theme: Theme): Suggestion[] {
       detail: "shoot",
       info: `Shoots, if the gun has cooled down. Power 1 to 3: stronger shots hurt more but fly slower. \`${fire} 2\``,
     },
+    {
+      label: radar,
+      kind: "action",
+      detail: "aim the long look",
+      info: `The ${radar} turns on its own, separately from your body and your ${turret}. It looks three times as far as your sense cone but only a fifth as wide, so you have to point it somewhere on purpose.\n\n${radar}.aim at event.bearing\n${radar}.sweep 60\n${radar}.turn to 0`,
+    },
+    {
+      label: ping,
+      kind: "action",
+      detail: "look down the beam",
+      info: `Sends the beam out where the ${radar} points, once. If it finds someone you get \`on ${ping} robot\`; if it does not, \`on ${ping} wall\` tells you how much room is that way. There is a short wait before you can ${ping} again — check \`me.pingHeat\`.`,
+    },
   ];
 }
 
@@ -195,6 +202,8 @@ const ME_PROPS: readonly PropDoc[] = [
   { name: "health", detail: "How much {health} you have left, out of 100." },
   { name: "turret", detail: "Where the {turret} points, compared to straight ahead." },
   { name: "gunHeat", detail: "Above 0 means the gun is still cooling and cannot fire." },
+  { name: "radar", detail: "Where the {radar} points, compared to straight ahead." },
+  { name: "pingHeat", detail: "Ticks left before you can {ping} again. 0 means ready." },
   { name: "ammo", detail: "1 when you are ready to fire, 0 when you are not." },
   { name: "score", detail: "How many robots you have destroyed." },
 ];
@@ -247,9 +256,34 @@ const PALETTE: readonly { hex: string; name: string }[] = [
 
 /** Words after which a value is expected, so we offer expressions. */
 const EXPECTS_VALUE = new Set([
-  "=", "(", ",", "if", "and", "or", "not", "mod",
-  "+", "-", "*", "/", "<", ">", "<=", ">=", "is", "isnt",
-  "to", "by", "at", "forward", "back", "sweep", "fire", "repeat", "wait", "drive",
+  "=",
+  "(",
+  ",",
+  "if",
+  "and",
+  "or",
+  "not",
+  "mod",
+  "+",
+  "-",
+  "*",
+  "/",
+  "<",
+  ">",
+  "<=",
+  ">=",
+  "is",
+  "isnt",
+  "to",
+  "by",
+  "at",
+  "forward",
+  "back",
+  "sweep",
+  "fire",
+  "repeat",
+  "wait",
+  "drive",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -331,11 +365,7 @@ function matchEvent(words: readonly string[]): EventName | null {
 // Completion
 // ---------------------------------------------------------------------------
 
-export function completeAt(
-  source: string,
-  pos: number,
-  theme: Theme,
-): CompletionResult | null {
+export function completeAt(source: string, pos: number, theme: Theme): CompletionResult | null {
   const lineStart = source.lastIndexOf("\n", pos - 1) + 1;
   const prefix = source.slice(lineStart, pos);
   const tokens = scanLine(prefix);
@@ -381,6 +411,7 @@ function suggest(
     if (obj === "arena") return propSuggestions(ARENA_PROPS, theme);
     if (obj === "event") return eventFieldSuggestions(ctx.event, theme);
     if (obj === "turret") return turretMembers(theme);
+    if (obj === "radar") return radarMembers(theme);
     return null;
   }
 
@@ -429,6 +460,17 @@ function suggest(
       return byOrTo("Turn to a fixed compass direction", "Turn this far from where you are now");
     case "turret . turn":
       return byOrTo("Point the gun at a fixed direction", "Swing the gun this far");
+    case "radar . turn":
+      return byOrTo("Point the beam at a fixed direction", "Swing the beam this far");
+    case "radar . aim":
+      return [
+        {
+          label: "at",
+          kind: "keyword",
+          detail: "at a bearing",
+          info: `Aims relative to your body, so \`${wordFor("radar", theme)}.aim at event.bearing\` points the beam at whatever an event just told you about.`,
+        },
+      ];
     case "turret . aim":
       return [
         {
@@ -446,9 +488,11 @@ function suggest(
           detail: "your label on screen",
           info: 'Changes the text under your robot, so you can see what it is thinking. `set name = "hunting"`',
         },
-        ...variablesIn(source).map(
-          (v): Suggestion => ({ label: v, kind: "variable", detail: "your variable" }),
-        ),
+        ...variablesIn(source).map((v): Suggestion => ({
+          label: v,
+          kind: "variable",
+          detail: "your variable",
+        })),
       ];
     default:
       break;
@@ -508,6 +552,37 @@ function turretMembers(theme: Theme): Suggestion[] {
   ];
 }
 
+function radarMembers(theme: Theme): Suggestion[] {
+  const radar = wordFor("radar", theme);
+  const ping = wordFor("ping", theme);
+  return [
+    {
+      label: "aim",
+      kind: "action",
+      detail: "point at a bearing",
+      info: `\`${radar}.aim at event.bearing\` points the beam at whatever an event just told you about — useful for keeping a distant target while you drive.`,
+    },
+    {
+      label: "turn",
+      kind: "action",
+      detail: "to or by an angle",
+      info: `\`${radar}.turn to 0\` faces a fixed direction; \`${radar}.turn by 10\` nudges it round.`,
+    },
+    {
+      label: "sweep",
+      kind: "action",
+      detail: "search back and forth",
+      info: `\`${radar}.sweep 60\` swings the beam side to side while you drive. ${ping} as it goes and you will find people long before they are in your cone.`,
+    },
+    {
+      label: ping,
+      kind: "action",
+      detail: "look down the beam now",
+      info: `Same as writing \`${ping}\` on its own.`,
+    },
+  ];
+}
+
 function propSuggestions(props: readonly PropDoc[], theme: Theme): Suggestion[] {
   return props.map((p) => ({
     label:
@@ -526,10 +601,7 @@ function propSuggestions(props: readonly PropDoc[], theme: Theme): Suggestion[] 
  * bearing and distance, and nothing else, because that is genuinely all a wall
  * can tell you.
  */
-function eventFieldSuggestions(
-  event: EventName | null,
-  theme: Theme,
-): Suggestion[] | null {
+function eventFieldSuggestions(event: EventName | null, theme: Theme): Suggestion[] | null {
   if (!event) return null;
   const fields = eventFields(event);
   if (fields.length === 0) return null;
@@ -611,7 +683,12 @@ function expressionSuggestions(
     });
   }
   out.push(
-    { label: "me", kind: "property", detail: "your own state", info: "Type a dot to see what you can look at, like `me.health`." },
+    {
+      label: "me",
+      kind: "property",
+      detail: "your own state",
+      info: "Type a dot to see what you can look at, like `me.health`.",
+    },
     { label: "arena", kind: "property", detail: "the world around you" },
   );
 

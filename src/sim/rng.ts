@@ -65,10 +65,8 @@ export class Rng {
     const carry = ((p00 >>> 16) + (p01 & 0xffff) + (p10 & 0xffff)) >>> 0;
     const newLo = (((carry & 0xffff) << 16) | (p00 & 0xffff)) >>> 0;
 
-    const newHiFromLo =
-      (p11 + (p01 >>> 16) + (p10 >>> 16) + (carry >>> 16)) >>> 0;
-    const newHi =
-      (newHiFromLo + Math.imul(oldLo, mulHi) + Math.imul(oldHi, mulLo)) >>> 0;
+    const newHiFromLo = (p11 + (p01 >>> 16) + (p10 >>> 16) + (carry >>> 16)) >>> 0;
+    const newHi = (newHiFromLo + Math.imul(oldLo, mulHi) + Math.imul(oldHi, mulLo)) >>> 0;
 
     // Add the increment 1442695040888963407 = 0x14057b7e * 2^32 + 0xf767814f
     const addLo = 0xf767814f;
@@ -80,7 +78,7 @@ export class Rng {
     this.hi = (newHi + addHi + carryOut) >>> 0;
 
     // PCG output function: XSH RR on the *old* state.
-    const xorshifted = (((oldHi >>> 13) ^ oldHi) ^ (oldLo >>> 27)) >>> 0;
+    const xorshifted = ((oldHi >>> 13) ^ oldHi ^ (oldLo >>> 27)) >>> 0;
     const rot = oldHi >>> 27;
     return ((xorshifted >>> rot) | (xorshifted << ((-rot >>> 0) & 31))) >>> 0;
   }

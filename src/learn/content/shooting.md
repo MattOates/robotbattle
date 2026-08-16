@@ -4,7 +4,7 @@ titleBio: Stinging
 teaches: firing, power, and waiting to cool down
 teachesBio: the nematocyst, and why it cannot fire continuously
 section: The language
-order: 5
+order: 6
 ---
 
 Noticing something is not much use on its own.

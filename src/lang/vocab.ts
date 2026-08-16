@@ -45,6 +45,15 @@ export const SYNONYMS: readonly Synonym[] = [
   { canonical: "drive", mechanical: "drive", biological: "swim" },
   { canonical: "turret", mechanical: "turret", biological: "stinger" },
   { canonical: "fire", mechanical: "fire", biological: "sting" },
+  // The second sense: a narrow beam you aim and send out deliberately, as
+  // against the wide cone that simply reports what wanders into it.
+  {
+    canonical: "radar",
+    mechanical: "radar",
+    biological: "eyespot",
+    also: ["ocellus"],
+  },
+  { canonical: "ping", mechanical: "ping", biological: "peek", also: ["glance"] },
   {
     canonical: "bullet",
     mechanical: "bullet",
@@ -100,6 +109,9 @@ export function phraseFor(canonical: string, theme: Theme): string {
  * when it appears as a plain variable name.
  */
 export const PROPERTY_ALIASES: Readonly<Record<string, string>> = {
+  eyespot: "radar",
+  ocellus: "radar",
+  peekheat: "pingheat",
   vitality: "health",
   integrity: "health",
   energy: "health",
@@ -121,6 +133,9 @@ export interface ThemeVocab {
   readonly steeredName: string;
   readonly weapon: string;
   readonly fireVerb: string;
+  /** The narrow, aimable sense: radar dish or eyespot. */
+  readonly scanner: string;
+  readonly pingVerb: string;
   readonly driveVerb: string;
   readonly arena: string;
 }
@@ -136,6 +151,8 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     steeredName: "wheels",
     weapon: "turret",
     fireVerb: "fire",
+    scanner: "radar",
+    pingVerb: "ping",
     driveVerb: "drive",
     arena: "arena",
   },
@@ -149,6 +166,8 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     steeredName: "flagellum",
     weapon: "stinger",
     fireVerb: "sting",
+    scanner: "eyespot",
+    pingVerb: "peek",
     driveVerb: "swim",
     arena: "microcosm",
   },

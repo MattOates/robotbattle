@@ -22,12 +22,35 @@ import {
   SECTION_ORDER,
 } from "../../src/learn/markdown.js";
 import { SAMPLE_BOTS } from "../../src/bots/index.js";
+import { RADAR, SENSE } from "../../src/sim/types.js";
 
 const lessons = loadLessons();
 
 describe("the lesson files", () => {
   it("finds some", () => {
     expect(lessons.length).toBeGreaterThan(0);
+  });
+
+  it("quotes the simulation's real numbers", () => {
+    /**
+     * Prose drifts silently. The sensing lesson spent a release telling people
+     * their cone reached 320 steps when the simulation had already cut it, and
+     * nothing anywhere noticed — so the figures a lesson states outright are
+     * held against the constants they describe.
+     */
+    const radar = lessons.find((l) => l.id === "radar");
+    expect(radar, "the radar lesson").toBeDefined();
+    expect(radar!.body, `the cone's range (${SENSE.range})`).toContain(`${SENSE.range} steps`);
+    expect(radar!.body, `the beam's range (${RADAR.range})`).toContain(`${RADAR.range} steps`);
+    expect(radar!.body).toContain(`${SENSE.halfAngle}° either side`);
+    expect(radar!.body).toContain(`${RADAR.halfAngle}° either side`);
+
+    // And no lesson may quote a range the simulation has moved on from.
+    for (const lesson of lessons) {
+      for (const stale of [320, 260, 780]) {
+        expect(lesson.body, `${lesson.id} quotes an old range`).not.toContain(`${stale} steps`);
+      }
+    }
   });
 
   it("gives every lesson a title and a known section", () => {
@@ -96,9 +119,7 @@ describe("shared prose reads correctly in both worlds", () => {
     (_id, body) => {
       const warnings = findBareVocab(body);
       // Reported in full, because "line 12 says robot" is the whole fix.
-      expect(
-        warnings.map((w) => `line ${w.line}: "${w.word}" in — ${w.text}`),
-      ).toEqual([]);
+      expect(warnings.map((w) => `line ${w.line}: "${w.word}" in — ${w.text}`)).toEqual([]);
     },
   );
 });

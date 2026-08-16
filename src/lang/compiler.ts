@@ -7,13 +7,7 @@
  */
 
 import { RoboScriptError, type SourcePos } from "./errors.js";
-import type {
-  ActionKind,
-  EventName,
-  Expr,
-  Program,
-  Stmt,
-} from "./ast.js";
+import type { ActionKind, EventName, Expr, Program, Stmt } from "./ast.js";
 import { EVENT_DOCS, eventFields } from "./events.js";
 import {
   BUILTIN_NAMES,
@@ -35,11 +29,26 @@ const ACTION_ARITY: Readonly<Record<ActionKind, number>> = {
   turretAim: 1,
   turretSweep: 1,
   fire: 1,
+  radarTurnTo: 1,
+  radarTurnBy: 1,
+  radarAim: 1,
+  radarSweep: 1,
+  ping: 0,
 };
 
 /** Properties a script may read, per object. */
 const ME_PROPS = new Set([
-  "x", "y", "heading", "speed", "health", "turret", "gunheat", "ammo", "score",
+  "x",
+  "y",
+  "heading",
+  "speed",
+  "health",
+  "turret",
+  "gunheat",
+  "ammo",
+  "score",
+  "radar",
+  "pingheat",
 ]);
 const ARENA_PROPS = new Set(["width", "height", "time", "robots"]);
 // `event` has no fixed shape: what it carries depends on which handler you are
@@ -248,9 +257,7 @@ class Compiler {
         }
         this.expr(s.expr);
         const slot =
-          s.type === "varDecl"
-            ? this.declareGlobal(s.name)
-            : this.lookupGlobal(s.name, s.pos);
+          s.type === "varDecl" ? this.declareGlobal(s.name) : this.lookupGlobal(s.name, s.pos);
         this.emit(Op.STORE, slot, s.pos);
         return;
       }
@@ -422,11 +429,7 @@ class Compiler {
             `${e.obj} has: ${[...valid].join(", ")}`,
           );
         }
-        this.emit(
-          Op.LOAD_PROP,
-          this.propIndex({ obj: e.obj, prop: e.prop.toLowerCase() }),
-          e.pos,
-        );
+        this.emit(Op.LOAD_PROP, this.propIndex({ obj: e.obj, prop: e.prop.toLowerCase() }), e.pos);
         return;
       }
       case "unary":
@@ -438,11 +441,7 @@ class Compiler {
           // Short-circuit: keep the left value if it already decides the result.
           this.expr(e.left);
           this.emit(Op.DUP, 0, e.pos);
-          const jump = this.emit(
-            e.op === "and" ? Op.JUMP_IF_FALSE : Op.JUMP_IF_TRUE,
-            0,
-            e.pos,
-          );
+          const jump = this.emit(e.op === "and" ? Op.JUMP_IF_FALSE : Op.JUMP_IF_TRUE, 0, e.pos);
           this.emit(Op.POP, 0, e.pos);
           this.expr(e.right);
           this.patch(jump, this.here());

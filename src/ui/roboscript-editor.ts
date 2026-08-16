@@ -15,7 +15,12 @@ import {
   indentUnit,
   type StringStream,
 } from "@codemirror/language";
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completionKeymap,
+} from "@codemirror/autocomplete";
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { linter, lintGutter, lintKeymap, type Diagnostic } from "@codemirror/lint";
@@ -47,19 +52,61 @@ const tColorLiteral = Tag.define();
 
 /** Canonical words, grouped by the role they play when read aloud. */
 const CONTROL = new Set([
-  "on", "end", "var", "set", "if", "else", "then", "loop", "for", "repeat",
-  "break", "continue", "wait", "name", "chassis", "color", "colour",
+  "on",
+  "end",
+  "var",
+  "set",
+  "if",
+  "else",
+  "then",
+  "loop",
+  "for",
+  "repeat",
+  "break",
+  "continue",
+  "wait",
+  "name",
+  "chassis",
+  "color",
+  "colour",
 ]);
 const MODIFIERS = new Set(["to", "by", "at", "forward", "back", "backward", "times", "ticks"]);
-const ACTIONS = new Set(["drive", "stop", "turn", "fire", "turret", "aim", "sweep"]);
+const ACTIONS = new Set([
+  "drive",
+  "stop",
+  "turn",
+  "fire",
+  "turret",
+  "aim",
+  "sweep",
+  "radar",
+  "ping",
+]);
 const EVENT_WORDS = new Set([
-  "start", "tick", "sense", "hit", "bullet", "robot", "wall", "missed", "destroyed",
+  "start",
+  "tick",
+  "sense",
+  "hit",
+  "bullet",
+  "robot",
+  "wall",
+  "missed",
+  "destroyed",
+  "ping",
 ]);
 const OBJECTS = new Set(["me", "arena", "event"]);
 const VALUES = new Set(["true", "false", "none", "skid", "steered"]);
 const OPERATOR_WORDS = new Set(["is", "isnt", "not", "and", "or", "mod"]);
 
-function styleFor(tok: LooseToken, previous: LooseToken | undefined): string | null {
+/**
+ * Which role a token plays, as a style name.
+ *
+ * Exported so a test can hold it against the parser's own reserved-word list:
+ * a word the language knows but the highlighter does not would quietly render
+ * as somebody's variable, which is exactly how a new instruction gets shipped
+ * looking like a typo.
+ */
+export function styleFor(tok: LooseToken, previous: LooseToken | undefined): string | null {
   switch (tok.kind) {
     case "comment":
       return "comment";
@@ -85,6 +132,13 @@ function styleFor(tok: LooseToken, previous: LooseToken | undefined): string | n
   // Words are classified by their CANONICAL form, so themed synonyms highlight
   // exactly like the words they stand for.
   const canonical = tok.canonical[0] ?? tok.text;
+
+  // `ping` is both an action and the first word of two events. Straight after
+  // `on` it is naming an event, and should read like `sense` rather than like
+  // `fire`; anywhere else it is an instruction.
+  const afterOn = previous?.kind === "word" && (previous.canonical[0] ?? previous.text) === "on";
+  if (afterOn && EVENT_WORDS.has(canonical)) return "eventWord";
+
   if (CONTROL.has(canonical)) return "keyword";
   if (ACTIONS.has(canonical)) return "action";
   if (EVENT_WORDS.has(canonical)) return "eventWord";

@@ -4,7 +4,7 @@ titleBio: Deciding
 teaches: doing different things in different situations
 teachesBio: doing different things in different situations
 section: The language
-order: 8
+order: 9
 ---
 
 A {robot} that always does the same thing is easy to beat, because after ten

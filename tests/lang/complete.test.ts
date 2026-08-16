@@ -117,6 +117,23 @@ describe("the action grammar", () => {
     expect(at("on tick\n  turret.aim |\nend\n")).toEqual(["at"]);
   });
 
+  it("offers the radar's abilities after a dot", () => {
+    expect(at("on tick\n  radar.|\nend\n")).toEqual(["aim", "turn", "sweep", "ping"]);
+  });
+
+  it("offers the eyespot's abilities in the other world", () => {
+    expect(at("on tick\n  eyespot.|\nend\n", "biological")).toEqual([
+      "aim",
+      "turn",
+      "sweep",
+      "peek",
+    ]);
+  });
+
+  it("offers `at` after radar.aim", () => {
+    expect(at("on tick\n  radar.aim |\nend\n")).toEqual(["at"]);
+  });
+
   it("suggests firing powers", () => {
     expect(at("on tick\n  fire |\nend\n").slice(0, 3)).toEqual(["1", "2", "3"]);
   });

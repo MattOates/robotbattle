@@ -63,7 +63,10 @@ export const BIOLOGICAL: ArenaTheme = {
       g.stroke({ width: 2, color: membrane, alpha: 0.9 });
 
       g.ellipse(radius * 0.05, 0, radius * 0.95, radius * 0.62).fill(tint);
-      g.ellipse(radius * 0.05, 0, radius * 0.95, radius * 0.62).stroke({ width: 2, color: membrane });
+      g.ellipse(radius * 0.05, 0, radius * 0.95, radius * 0.62).stroke({
+        width: 2,
+        color: membrane,
+      });
       g.ellipse(radius * 0.35, 0, radius * 0.26, radius * 0.22).fill(cytoplasm);
     }
 
@@ -77,16 +80,39 @@ export const BIOLOGICAL: ArenaTheme = {
     g.circle(0, 0, radius * 0.44).fill(darken(tint, 0.2));
     g.circle(0, 0, radius * 0.3).fill(lighten(tint, 0.45));
     g.poly([
-      radius * 0.2, -radius * 0.14,
-      radius * 1.2, -radius * 0.05,
-      radius * 1.2, radius * 0.05,
-      radius * 0.2, radius * 0.14,
+      radius * 0.2,
+      -radius * 0.14,
+      radius * 1.2,
+      -radius * 0.05,
+      radius * 1.2,
+      radius * 0.05,
+      radius * 0.2,
+      radius * 0.14,
     ]).fill(lighten(tint, 0.15));
     // Barbed tip.
-    g.poly([
-      radius * 1.15, -radius * 0.16,
-      radius * 1.35, 0,
-      radius * 1.15, radius * 0.16,
-    ]).fill(darken(tint, 0.35));
+    g.poly([radius * 1.15, -radius * 0.16, radius * 1.35, 0, radius * 1.15, radius * 0.16]).fill(
+      darken(tint, 0.35),
+    );
   },
+
+  /**
+   * A pigment spot on a short stalk: the eyespot really is a patch of
+   * light-sensitive pigment with a shading cup behind it, and it points the
+   * same way this one does — which is the whole reason the biological wording
+   * for a radar is not a stretch.
+   */
+  drawRadar(g: Graphics, tint: number, radius: number): void {
+    const sheen = lighten(tint, 0.6);
+    g.moveTo(0, 0)
+      .lineTo(radius * 0.78, 0)
+      .stroke({ width: 1.4, color: sheen, alpha: 0.85 });
+    // The cup, open toward +x, and the pigment spot inside it.
+    g.arc(radius * 0.82, 0, radius * 0.24, Math.PI * 0.55, Math.PI * 1.45).stroke({
+      width: 2,
+      color: darken(tint, 0.45),
+    });
+    g.circle(radius * 0.84, 0, radius * 0.13).fill(sheen);
+  },
+
+  pingColor: 0xd9ff8a,
 };

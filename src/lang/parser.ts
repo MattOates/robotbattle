@@ -22,20 +22,88 @@ import {
 } from "./ast.js";
 import { canonicalizeProperty } from "./vocab.js";
 
-/** Words that may never be used as a variable name. */
-const RESERVED = new Set([
-  "on", "end", "var", "set", "if", "else", "then", "loop", "for", "to", "repeat",
-  "times", "break", "continue", "wait", "ticks", "tick", "drive", "forward",
-  "back", "backward", "stop", "turn", "chassis", "by", "fire", "turret", "aim",
-  "at", "sweep", "is", "isnt", "not", "and", "or", "mod", "true", "false",
-  "none", "me", "arena", "event", "name", "color", "colour", "skid", "steered",
-  "start", "sense", "hit", "bullet", "robot", "wall", "missed", "destroyed",
+/**
+ * Words that may never be used as a variable name.
+ *
+ * Exported because the editor's highlighter has its own tables, and a word the
+ * language reserves but the highlighter has never heard of renders as an
+ * ordinary variable — which is how a new instruction ships looking like a typo.
+ */
+export const RESERVED = new Set([
+  "on",
+  "end",
+  "var",
+  "set",
+  "if",
+  "else",
+  "then",
+  "loop",
+  "for",
+  "to",
+  "repeat",
+  "times",
+  "break",
+  "continue",
+  "wait",
+  "ticks",
+  "tick",
+  "drive",
+  "forward",
+  "back",
+  "backward",
+  "stop",
+  "turn",
+  "chassis",
+  "by",
+  "fire",
+  "turret",
+  "aim",
+  "at",
+  "sweep",
+  "is",
+  "isnt",
+  "not",
+  "and",
+  "or",
+  "mod",
+  "true",
+  "false",
+  "none",
+  "me",
+  "arena",
+  "event",
+  "name",
+  "color",
+  "colour",
+  "skid",
+  "steered",
+  "start",
+  "sense",
+  "hit",
+  "bullet",
+  "robot",
+  "wall",
+  "missed",
+  "destroyed",
+  "radar",
+  "ping",
 ]);
 
 /** Builtin functions callable from expressions. */
 const BUILTINS = new Set([
-  "abs", "min", "max", "random", "randomint", "sin", "cos", "sqrt",
-  "round", "floor", "ceil", "distance", "bearing",
+  "abs",
+  "min",
+  "max",
+  "random",
+  "randomint",
+  "sin",
+  "cos",
+  "sqrt",
+  "round",
+  "floor",
+  "ceil",
+  "distance",
+  "bearing",
 ]);
 
 /** Event phrases sorted longest-first so `hit by bullet` wins over `hit`. */
@@ -414,9 +482,7 @@ class Parser {
       let cond: Expr | undefined;
       if (this.matchWord("if")) cond = this.parseExpr();
       this.expectEndOfLine(isContinue ? "`continue`" : "`break`");
-      return isContinue
-        ? { type: "continue", cond, pos }
-        : { type: "break", cond, pos };
+      return isContinue ? { type: "continue", cond, pos } : { type: "break", cond, pos };
     }
 
     if (this.matchWord("wait")) {
@@ -444,8 +510,7 @@ class Parser {
       if (this.matchWord("forward")) sign = 1;
       else if (this.matchWord("back") || this.matchWord("backward")) sign = -1;
       const speed = this.parseExpr();
-      const arg: Expr =
-        sign === 1 ? speed : { type: "unary", op: "-", expr: speed, pos };
+      const arg: Expr = sign === 1 ? speed : { type: "unary", op: "-", expr: speed, pos };
       return make("drive", [arg]);
     }
 
@@ -463,10 +528,45 @@ class Parser {
 
     if (this.matchWord("fire")) {
       // Power is optional; a bare `fire` uses the default.
-      const args = this.peek().kind === "newline" || this.peek().kind === "eof"
-        ? []
-        : [this.parseExpr()];
+      const args =
+        this.peek().kind === "newline" || this.peek().kind === "eof" ? [] : [this.parseExpr()];
       return make("fire", args);
+    }
+
+    if (this.matchWord("ping")) {
+      // No power, no argument: a ping goes wherever the radar is pointing, and
+      // the only choice a script makes is *when*.
+      return make("ping", []);
+    }
+
+    if (this.matchWord("radar")) {
+      if (!this.matchOp(".")) {
+        throw new RoboScriptError(
+          "`radar` needs a `.` and then what to do with it",
+          this.pos(),
+          "try `radar.aim at 0`, `radar.turn to 90` or `radar.sweep 45`",
+        );
+      }
+      if (this.matchWord("turn")) {
+        if (this.matchWord("to")) return make("radarTurnTo", [this.parseExpr()]);
+        if (this.matchWord("by")) return make("radarTurnBy", [this.parseExpr()]);
+        throw new RoboScriptError(
+          "`radar.turn` needs `to` or `by`",
+          this.pos(),
+          "try `radar.turn to 90` or `radar.turn by 10`",
+        );
+      }
+      if (this.matchWord("aim")) {
+        this.matchWord("at"); // optional sugar
+        return make("radarAim", [this.parseExpr()]);
+      }
+      if (this.matchWord("sweep")) return make("radarSweep", [this.parseExpr()]);
+      if (this.matchWord("ping")) return make("ping", []);
+      throw new RoboScriptError(
+        `I don't know how to \`${this.describe(this.peek())}\` a radar`,
+        this.pos(),
+        "the radar can `turn`, `aim`, `sweep` or `ping`",
+      );
     }
 
     if (this.matchWord("turret")) {
@@ -549,7 +649,14 @@ class Parser {
       let op: "is" | "isnt" | "<" | ">" | "<=" | ">=" | undefined;
       if (t.kind === "word" && (t.text === "is" || t.text === "isnt")) {
         op = t.text;
-      } else if (t.kind === "op" && (t.text === "<" || t.text === ">" || t.text === "<=" || t.text === ">=" || t.text === "isnt")) {
+      } else if (
+        t.kind === "op" &&
+        (t.text === "<" ||
+          t.text === ">" ||
+          t.text === "<=" ||
+          t.text === ">=" ||
+          t.text === "isnt")
+      ) {
         op = t.text as "<" | ">" | "<=" | ">=" | "isnt";
       } else if (t.kind === "op" && t.text === "=") {
         // A lone `=` in a condition almost always means `is`.
@@ -681,10 +788,7 @@ class Parser {
         return { type: "call", name: lower, args, pos };
       }
       if (RESERVED.has(t.text)) {
-        throw new RoboScriptError(
-          `I didn't expect \`${t.raw}\` in the middle of a value`,
-          pos,
-        );
+        throw new RoboScriptError(`I didn't expect \`${t.raw}\` in the middle of a value`, pos);
       }
       this.advance();
       return { type: "var", name: t.raw, pos };

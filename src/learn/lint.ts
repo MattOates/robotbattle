@@ -28,6 +28,8 @@ const LOADED_WORDS = [
   "darts",
   "turret",
   "stinger",
+  "radar",
+  "eyespot",
   "cilia",
   "flagellum",
   "ciliate",

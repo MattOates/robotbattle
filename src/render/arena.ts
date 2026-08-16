@@ -9,7 +9,7 @@
 
 import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
 import { DEG_TO_RAD } from "../sim/math.js";
-import { ROBOT_RADIUS, SENSE, MAX_HEALTH, type Effect, type World } from "../sim/types.js";
+import { RADAR, ROBOT_RADIUS, SENSE, MAX_HEALTH, type Effect, type World } from "../sim/types.js";
 import { ART, hexToNumber, type ArenaTheme } from "./themes/index.js";
 import type { Theme } from "../lang/vocab.js";
 import { lerp, lerpAngle, snapshot, type Snapshot } from "./interpolate.js";
@@ -22,6 +22,8 @@ interface Particle {
   /** Frames lived so far, and total lifetime in frames. */
   age: number;
   life: number;
+  /** How far a ping reached before it hit something. */
+  range: number;
 }
 
 /** Frames between label rasterisations. Six is about five updates a second. */
@@ -31,6 +33,7 @@ interface RobotView {
   root: Container;
   body: Graphics;
   turretPivot: Container;
+  radarPivot: Container;
   label: Text;
   healthBar: Graphics;
   /** What the cached body Graphics was drawn for, so we redraw only on change. */
@@ -208,7 +211,10 @@ export class ArenaRenderer {
         y: e.y,
         heading: e.heading,
         age: 0,
-        life: e.type === "explosion" ? 28 : e.type === "impact" ? 14 : 8,
+        // A ping lingers a little longer than a muzzle flash: it is the only
+        // way to see where somebody is looking, and it is worth catching.
+        life: e.type === "explosion" ? 28 : e.type === "impact" ? 14 : e.type === "ping" ? 12 : 8,
+        range: e.range ?? 0,
       });
     }
   }
@@ -272,6 +278,11 @@ export class ArenaRenderer {
       const turretPivot = new Container();
       const turret = new Graphics();
       turretPivot.addChild(turret);
+      // A third independent heading, on its own pivot for the same reason the
+      // turret has one: body, gun and radar each point where they were told.
+      const radarPivot = new Container();
+      const radar = new Graphics();
+      radarPivot.addChild(radar);
 
       const label = new Text({
         text: snap.name,
@@ -288,12 +299,15 @@ export class ArenaRenderer {
       const healthBar = new Graphics();
       healthBar.y = ROBOT_RADIUS + 4;
 
-      root.addChild(body, turretPivot, healthBar, label);
+      // Radar under the turret: when both point the same way, the gun is the
+      // one that matters and should be on top.
+      root.addChild(body, radarPivot, turretPivot, healthBar, label);
       this.robotLayer.addChild(root);
       view = {
         root,
         body,
         turretPivot,
+        radarPivot,
         label,
         healthBar,
         drawnColor: "",
@@ -320,6 +334,9 @@ export class ArenaRenderer {
         const turret = view.turretPivot.children[0] as Graphics;
         turret.clear();
         this.theme.drawTurret(turret, tint, ROBOT_RADIUS);
+        const radar = view.radarPivot.children[0] as Graphics;
+        radar.clear();
+        this.theme.drawRadar(radar, tint, ROBOT_RADIUS);
         view.drawnColor = key;
       }
 
@@ -329,6 +346,7 @@ export class ArenaRenderer {
       // The turret carries an absolute heading, so it is NOT parented to the
       // body's rotation — that independence is the whole point of it.
       view.turretPivot.rotation = lerpAngle(was.turret, now.turret, t) * DEG_TO_RAD;
+      view.radarPivot.rotation = lerpAngle(was.radar, now.radar, t) * DEG_TO_RAD;
       // Wrecks stay on the field, faded, so you can see where people died.
       view.root.alpha = now.alive ? 1 : 0.25;
 
@@ -416,6 +434,20 @@ export class ArenaRenderer {
           color: this.theme.explosionColor,
           alpha: fade * 0.35,
         });
+      } else if (p.type === "ping") {
+        // The beam itself, drawn as the thin wedge the simulation actually
+        // tested: its length is how far the ping reached, so a ping that found
+        // somebody visibly stops at them.
+        const spread = (RADAR.halfAngle * Math.PI) / 180;
+        const dir = (p.heading * Math.PI) / 180;
+        const reach = p.range * (0.35 + 0.65 * Math.min(1, k * 2.2));
+        g.moveTo(p.x, p.y)
+          .lineTo(p.x + Math.cos(dir - spread) * reach, p.y + Math.sin(dir - spread) * reach)
+          .lineTo(p.x + Math.cos(dir + spread) * reach, p.y + Math.sin(dir + spread) * reach)
+          .fill({ color: this.theme.pingColor, alpha: fade * 0.28 });
+        g.moveTo(p.x, p.y)
+          .lineTo(p.x + Math.cos(dir) * reach, p.y + Math.sin(dir) * reach)
+          .stroke({ width: 1.2, color: this.theme.pingColor, alpha: fade * 0.85 });
       } else {
         g.circle(p.x, p.y, 2 + k * 5).fill({ color: this.theme.wallColor, alpha: fade * 0.6 });
       }
@@ -446,9 +478,13 @@ function drawBulletAt(
   const long = r * theme.bulletLength;
   const wide = r * theme.bulletWidth;
   g.poly([
-    x + c * long, y + s * long,
-    x - s * wide, y + c * wide,
-    x - c * long, y - s * long,
-    x + s * wide, y - c * wide,
+    x + c * long,
+    y + s * long,
+    x - s * wide,
+    y + c * wide,
+    x - c * long,
+    y - s * long,
+    x + s * wide,
+    y - c * wide,
   ]).fill(theme.bulletColor);
 }

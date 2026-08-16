@@ -17,6 +17,8 @@ export interface RobotSnap {
   y: number;
   heading: number;
   turret: number;
+  /** Absolute radar heading, drawn on the hull like the turret. */
+  radar: number;
   alive: boolean;
   health: number;
   name: string;
@@ -47,6 +49,7 @@ export function snapshot(world: World): Snapshot {
       y: r.y,
       heading: r.heading,
       turret: r.turret,
+      radar: r.radar,
       alive: r.alive,
       health: r.health,
       name: r.name,

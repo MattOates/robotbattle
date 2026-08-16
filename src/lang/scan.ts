@@ -18,14 +18,7 @@
 import { DIGIT, HEX, WORD_PART, WORD_START } from "./lexer.js";
 import { canonicalizeWord } from "./vocab.js";
 
-export type LooseKind =
-  | "comment"
-  | "string"
-  | "number"
-  | "color"
-  | "word"
-  | "punct"
-  | "error";
+export type LooseKind = "comment" | "string" | "number" | "color" | "word" | "punct" | "error";
 
 export interface LooseToken {
   kind: LooseKind;

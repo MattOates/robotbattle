@@ -39,11 +39,38 @@ export const TURRET = {
   maxPower: 3,
 } as const;
 
-/** Sense cone — also identical on both chassis, and locked to chassis heading. */
+/**
+ * The passive sense cone: wide, short, and locked to the chassis heading.
+ *
+ * Shortened twice since the radar arrived, from 320 to 260 to 195. The cone is
+ * what a robot notices without trying, and it should cover about the space it
+ * is driving through — anything further away is the radar's job, and a cone
+ * that reached across the arena would leave the radar nothing to be better at.
+ */
 export const SENSE = {
   /** Half-angle of the cone, in degrees. */
   halfAngle: 30,
-  range: 320,
+  range: 195,
+} as const;
+
+/**
+ * The radar beam: narrow, long, and aimed independently of both body and
+ * turret.
+ *
+ * Three times the cone's reach and a fifth of its width, so it is a genuinely
+ * different instrument rather than a better one — it finds robots far outside
+ * the cone, but only exactly where it is pointed, and only when a script
+ * deliberately sends a ping.
+ */
+export const RADAR = {
+  /** Half-angle of the beam, in degrees. A fifth of the cone's. */
+  halfAngle: 6,
+  /** Three times the cone's range. */
+  range: SENSE.range * 3,
+  /** Degrees per second the radar can slew. Lighter than a turret. */
+  slewRate: 260,
+  /** Ticks before another ping can be sent. */
+  cooldown: 12,
 } as const;
 
 export const BULLET = {
@@ -106,6 +133,11 @@ export interface Robot {
   turret: number;
   gunHeat: number;
 
+  /** Radar heading in ABSOLUTE degrees, independent of chassis and turret. */
+  radar: number;
+  /** Ticks remaining before another ping may be sent. */
+  pingHeat: number;
+
   health: number;
   alive: boolean;
 
@@ -123,6 +155,11 @@ export interface Robot {
   sweepAmplitude: number;
   /** +1 or -1: which way the sweep is currently going. */
   sweepDir: number;
+  /** Absolute heading the radar is slewing toward. */
+  radarGoal: number;
+  /** Non-zero while the radar is sweeping: half-width in degrees. */
+  radarSweepAmplitude: number;
+  radarSweepDir: number;
 
   // ---- scoring and telemetry ----
   // These are observational: nothing in the tick loop reads them, and they are
@@ -144,12 +181,14 @@ export interface Robot {
 
 /** Transient visual events produced by a tick, consumed by the renderer. */
 export interface Effect {
-  type: "muzzle" | "impact" | "explosion" | "wallHit";
+  type: "muzzle" | "impact" | "explosion" | "wallHit" | "ping";
   x: number;
   y: number;
   /** Degrees, where meaningful. */
   heading: number;
   tick: number;
+  /** How far the effect reaches, for the ones that are not point-sized. */
+  range?: number;
 }
 
 /**

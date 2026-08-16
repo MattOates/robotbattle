@@ -23,19 +23,30 @@ const GOLDEN_SEED = 20260815;
 
 const GOLDEN = {
   // 2 — seeded spawn jitter. Regenerated deliberately when spawn positions
-  // stopped being a pure function of entry index.
-  simVersion: 2,
-  ticks: 299,
+  //     stopped being a pure function of entry index.
+  // 3 — the radar. Every robot gained a second heading, a ping cooldown and
+  //     their goals, all of which are hashed; the sense cone was shortened at
+  //     the same time, so the sample bots fight a slightly different match.
+  // 4 — the cone shortened again, to three quarters of what it had been. The
+  //     sample bots all hunt by sense cone, so they now spend far longer
+  //     looking for each other: the same fight takes 525 ticks instead of 302.
+  simVersion: 4,
+  ticks: 525,
   winner: "Hunter",
-  finalHash: "9ab82d36899fe5d3",
+  finalHash: "e70e79f1386ce89a",
   /** Hash at ticks 0, 50, 100, ... */
   every50: [
-    "7a5ef709c4d542d9",
-    "f64c76efd49e3e0f",
-    "9ba870ac4e37f9d8",
-    "978f7fa7b7820ec4",
-    "4e86d44e72623d30",
-    "83d854408fc89eff",
+    "dcb714bffd6ea1e9",
+    "273ce9d18d8a343d",
+    "1594d11e710148e2",
+    "44ff2beda7e04f98",
+    "9d87f4417131aa1e",
+    "db4dba9d5eb05efc",
+    "bdbd654cefd15e58",
+    "8e5acda451168f2b",
+    "ccdf195d51ca8c46",
+    "f9a4db622baeeee2",
+    "022d820cb1095a54",
   ],
 };
 

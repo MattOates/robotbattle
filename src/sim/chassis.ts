@@ -57,11 +57,7 @@ export function turningRadius(spec: ChassisSpec): number {
  * — the turning circle falls straight out of the physics rather than being
  * bolted on as a rule.
  */
-export function steeredAngularVelocity(
-  spec: ChassisSpec,
-  speed: number,
-  steer: number,
-): number {
+export function steeredAngularVelocity(spec: ChassisSpec, speed: number, steer: number): number {
   const s = clamp(steer, -spec.maxSteer, spec.maxSteer);
   return ((speed * tanDeg(s)) / spec.wheelbase) * RAD_TO_DEG;
 }

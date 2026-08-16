@@ -38,6 +38,18 @@ export interface ArenaTheme {
   /** Draw the turret, centred on (0,0) and facing +x. Identical for both chassis. */
   drawTurret(g: Graphics, tint: number, radius: number): void;
 
+  /**
+   * Draw the radar, centred on (0,0) and facing +x.
+   *
+   * Small and distinct from the turret: a player has to be able to tell at a
+   * glance which of the two is pointing at them, because only one of them
+   * shoots.
+   */
+  drawRadar(g: Graphics, tint: number, radius: number): void;
+
+  /** Colour of the ping beam this theme draws. */
+  pingColor: number;
+
   /** Optional decorative backdrop drawn once behind the grid. */
   drawBackdrop?(g: Graphics, width: number, height: number): void;
 }

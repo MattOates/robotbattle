@@ -4,7 +4,7 @@ titleBio: Remembering
 teaches: variables, and watching what your {robot} is thinking
 teachesBio: variables, and watching what your cell is thinking
 section: The language
-order: 7
+order: 8
 ---
 
 Every block so far has started from nothing. It wakes up, does its work, and
