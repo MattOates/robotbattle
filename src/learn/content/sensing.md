@@ -12,8 +12,11 @@ idea anything else exists. This lesson fixes that, and it is where {robots}
 start to look alive.
 
 You have a **sense cone**: a wedge in front of you, thirty degrees to either
-side, reaching about three hundred and twenty steps ahead. It points wherever
-your body points, so it swings as you turn. Anything inside it, you notice.
+side, reaching a couple of hundred steps ahead. It points wherever your body
+points, so it swings as you turn. Anything inside it, you notice.
+
+That is not very far — roughly a fifth of the way across the {arena}. Seeing
+further is what the {radar} is for, a few lessons from here.
 
 :::bot
 Think of it as a radar dish bolted to the hull. It sees a slice of the world in

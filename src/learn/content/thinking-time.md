@@ -4,7 +4,7 @@ titleBio: Thinking time
 teaches: why a correct {robot} can still be slow, and what to do about it
 teachesBio: why a correct cell can still be slow, and what to do about it
 section: The language
-order: 11
+order: 12
 ---
 
 This is the lesson that explains the strange results. Your {robot} looks right,

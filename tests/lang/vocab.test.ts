@@ -34,6 +34,14 @@ describe("themed vocabulary", () => {
       ["on hit by bullet\n  stop\nend\n", "on stung\n  stop\nend\n"],
       ["on sense bullet\n  stop\nend\n", "on sense dart\n  stop\nend\n"],
       ["on tick\n  fire me.health\nend\n", "on tick\n  sting me.vitality\nend\n"],
+      // The radar, in both worlds: same instrument, same bytecode.
+      ["on tick\n  radar.sweep 60\nend\n", "on tick\n  eyespot.sweep 60\nend\n"],
+      ["on tick\n  ping\nend\n", "on tick\n  peek\nend\n"],
+      ["on tick\n  radar.aim at 30\nend\n", "on tick\n  eyespot.aim at 30\nend\n"],
+      ["on ping robot\n  fire\nend\n", "on peek organism\n  sting\nend\n"],
+      ["on ping wall\n  stop\nend\n", "on peek wall\n  stop\nend\n"],
+      ["on tick\n  fire me.radar\nend\n", "on tick\n  sting me.eyespot\nend\n"],
+      ["on tick\n  fire me.pingHeat\nend\n", "on tick\n  sting me.peekHeat\nend\n"],
     ];
     for (const [mech, bio] of pairs) {
       expect(identity(bio), `${bio.trim()} should match ${mech.trim()}`).toBe(

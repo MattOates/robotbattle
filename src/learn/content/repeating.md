@@ -4,7 +4,7 @@ titleBio: Repeating
 teaches: loops, counting, and waiting
 teachesBio: loops, counting, and waiting
 section: The language
-order: 9
+order: 10
 ---
 
 There are four ways to do something more than once, and they suit different

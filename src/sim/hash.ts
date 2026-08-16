@@ -53,8 +53,7 @@ export class Hasher {
   /** Final value as a 16-character hex string. */
   digest(): string {
     return (
-      (this.h2 >>> 0).toString(16).padStart(8, "0") +
-      (this.h1 >>> 0).toString(16).padStart(8, "0")
+      (this.h2 >>> 0).toString(16).padStart(8, "0") + (this.h1 >>> 0).toString(16).padStart(8, "0")
     );
   }
 }
@@ -85,6 +84,8 @@ export function hashWorld(world: World): string {
     h.float(r.speed);
     h.float(r.turret);
     h.float(r.gunHeat);
+    h.float(r.radar);
+    h.float(r.pingHeat);
     h.float(r.health);
     h.bool(r.alive);
     h.float(r.throttle);
@@ -93,6 +94,9 @@ export function hashWorld(world: World): string {
     h.float(r.turretGoal);
     h.float(r.sweepAmplitude);
     h.int(r.sweepDir);
+    h.float(r.radarGoal);
+    h.float(r.radarSweepAmplitude);
+    h.int(r.radarSweepDir);
     h.int(r.kills);
     h.float(r.damageDealt);
     h.int(r.diedAtTick);

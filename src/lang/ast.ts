@@ -14,6 +14,12 @@ export const EVENT_NAMES = [
   "sense robot",
   "sense bullet",
   "sense wall",
+  // Returns from the narrow beam. Kept as their own events rather than as a
+  // field on `sense`, because which instrument found something is the whole
+  // point: the cone sees anything nearby, the beam sees only where it is
+  // pointed, and a script almost always wants to react differently.
+  "ping robot",
+  "ping wall",
   "hit wall",
   "hit robot",
   "hit by bullet",
@@ -37,7 +43,12 @@ export type ActionKind =
   | "turretTurnBy" // [relative degrees]
   | "turretAim" // [bearing relative to chassis heading]
   | "turretSweep" // [degrees to sweep back and forth]
-  | "fire"; // [power 1..3]
+  | "fire" // [power 1..3]
+  | "radarTurnTo" // [absolute heading]
+  | "radarTurnBy" // [relative degrees]
+  | "radarAim" // [bearing relative to chassis heading]
+  | "radarSweep" // [degrees to sweep back and forth]
+  | "ping"; // [] — sends the beam where the radar points
 
 export interface Expr_Num {
   type: "num";

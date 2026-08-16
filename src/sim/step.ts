@@ -10,7 +10,17 @@
  * Robots are always visited in id order. Never iterate a Set or Map here.
  */
 
-import { FUEL_PER_TICK, ROBOT_RADIUS, SENSE, TURRET, BULLET, DT, MAX_HEALTH } from "./types.js";
+import {
+  FUEL_PER_TICK,
+  ROBOT_RADIUS,
+  SENSE,
+  RADAR,
+  TURRET,
+  BULLET,
+  DT,
+  MAX_HEALTH,
+} from "./types.js";
+import { distanceToWall } from "./world.js";
 import type { Bullet, Robot, World } from "./types.js";
 import {
   angleDelta,
@@ -126,18 +136,6 @@ function senseAll(world: World): void {
   }
 }
 
-/** Distance from a point to the arena boundary along a heading. */
-function distanceToWall(world: World, x: number, y: number, heading: number): number {
-  const dx = cosDeg(heading);
-  const dy = sinDeg(heading);
-  let best = Infinity;
-  if (dx > 1e-9) best = Math.min(best, (world.width - x) / dx);
-  if (dx < -1e-9) best = Math.min(best, -x / dx);
-  if (dy > 1e-9) best = Math.min(best, (world.height - y) / dy);
-  if (dy < -1e-9) best = Math.min(best, -y / dy);
-  return best === Infinity ? SENSE.range + 1 : Math.max(0, best - ROBOT_RADIUS);
-}
-
 // ---- phase: scripts ------------------------------------------------------
 
 function enqueueTicks(world: World): void {
@@ -216,7 +214,13 @@ function moveRobots(world: World): void {
         bearing: angleDelta(r.heading, hitWall.normal + 180),
         distance: 0,
       });
-      world.effects.push({ type: "wallHit", x: r.x, y: r.y, heading: hitWall.normal, tick: world.tick });
+      world.effects.push({
+        type: "wallHit",
+        x: r.x,
+        y: r.y,
+        heading: hitWall.normal,
+        tick: world.tick,
+      });
       if (r.health <= 0) killRobot(world, r, null);
     }
   }
@@ -240,6 +244,20 @@ function updateTurret(r: Robot): void {
     }
   }
   r.turret = turnToward(r.turret, r.turretGoal, TURRET.slewRate * DT);
+
+  // The radar slews on exactly the same rules as the turret, on its own goal:
+  // one more thing pointing where it was told, independent of both the body
+  // and the gun.
+  if (r.radarSweepAmplitude > 0) {
+    const goal = normalizeAngle(r.heading + r.radarSweepAmplitude * r.radarSweepDir);
+    if (Math.abs(angleDelta(r.radar, goal)) < 2) {
+      r.radarSweepDir = -r.radarSweepDir;
+      r.radarGoal = normalizeAngle(r.heading + r.radarSweepAmplitude * r.radarSweepDir);
+    } else {
+      r.radarGoal = goal;
+    }
+  }
+  r.radar = turnToward(r.radar, r.radarGoal, RADAR.slewRate * DT);
 }
 
 interface WallHit {
@@ -358,7 +376,13 @@ function moveBullets(world: World): void {
 
       const impactX = x0 + (b.x - x0) * hitT;
       const impactY = y0 + (b.y - y0) * hitT;
-      world.effects.push({ type: "impact", x: impactX, y: impactY, heading: b.heading, tick: world.tick });
+      world.effects.push({
+        type: "impact",
+        x: impactX,
+        y: impactY,
+        heading: b.heading,
+        tick: world.tick,
+      });
 
       hitRobot.vm.enqueue("hit by bullet", {
         // Where the shot came FROM, so `turn body by event.bearing + 90` does
@@ -373,7 +397,10 @@ function moveBullets(world: World): void {
 
       if (shooter && shooter.alive) {
         shooter.vm.enqueue("bullet hit", {
-          bearing: angleDelta(shooter.heading, atan2Deg(hitRobot.y - shooter.y, hitRobot.x - shooter.x)),
+          bearing: angleDelta(
+            shooter.heading,
+            atan2Deg(hitRobot.y - shooter.y, hitRobot.x - shooter.x),
+          ),
           distance: hypot(hitRobot.x - shooter.x, hitRobot.y - shooter.y),
           name: hitRobot.name,
           health: hitRobot.health,
@@ -443,6 +470,9 @@ function coolGuns(world: World): void {
   for (const r of world.robots) {
     if (!r.alive) continue;
     if (r.gunHeat > 0) r.gunHeat = Math.max(0, r.gunHeat - TURRET.coolRate);
+    // The radar recovers in whole ticks rather than by a heat rate: a ping is
+    // an instant either-or, so counting ticks is what a script can reason about.
+    if (r.pingHeat > 0) r.pingHeat = Math.max(0, r.pingHeat - 1);
   }
 }
 

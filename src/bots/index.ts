@@ -195,6 +195,64 @@ on hit wall
 end
 `;
 
+const SCOUT = `-- Sees people long before they can see it, using the radar.
+--
+-- The radar is a third thing you can point, alongside your body and your
+-- turret. It reaches three times as far as your sense cone but is only a
+-- fifth as wide, and it looks only when you ping — so it has to be aimed on
+-- purpose. The trade is worth it: by the time somebody walks into your cone,
+-- your gun is already pointing at them.
+name "Scout"
+chassis tank
+color #6ad98a
+
+on start
+  drive forward 45
+  -- The turret watches the near ground, the radar searches the far ground.
+  turret.sweep 30
+  radar.sweep 90
+end
+
+on tick
+  -- Ping whenever the beam has recovered. me.pingHeat counts down to zero.
+  if me.pingHeat is 0 then
+    ping
+  end
+end
+
+on ping robot
+  -- A contact far outside the cone. Hold the beam on it so the next ping says
+  -- whether it is still there, point the gun the same way, and turn to face it.
+  set name = "contact"
+  radar.aim at event.bearing
+  turret.aim at event.bearing
+  turn body by event.bearing
+end
+
+on ping wall
+  -- Nothing down that line, only the edge of the arena.
+  set name = "searching"
+end
+
+on sense robot
+  -- Close enough for the cone, and the gun is already looking the right way.
+  set name = "in range"
+  turret.aim at event.bearing
+  fire 3
+end
+
+on hit by bullet
+  -- Shot by someone the beam has not found: get off the line of fire.
+  turn body by event.bearing + 90
+  drive forward 80
+end
+
+on hit wall
+  turn body by 150
+  drive forward 50
+end
+`;
+
 export const SAMPLE_BOTS: SampleBot[] = [
   {
     id: "sitting-duck",
@@ -213,6 +271,12 @@ export const SAMPLE_BOTS: SampleBot[] = [
     title: "Hunter",
     teaches: "event.bearing, chasing a target, reacting to being hit",
     source: HUNTER,
+  },
+  {
+    id: "scout",
+    title: "Scout",
+    teaches: "the radar: aiming a third instrument, pinging, and on ping robot",
+    source: SCOUT,
   },
   {
     id: "racer",
@@ -238,4 +302,4 @@ export function sampleById(id: string): SampleBot | undefined {
   return SAMPLE_BOTS.find((b) => b.id === id);
 }
 
-export { SITTING_DUCK, SPINNER, RACER, HUNTER, DODGER, HUNTER_BIO };
+export { SITTING_DUCK, SPINNER, RACER, HUNTER, DODGER, HUNTER_BIO, SCOUT };

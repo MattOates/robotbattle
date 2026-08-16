@@ -201,9 +201,7 @@ export class Vm {
           case Op.LOAD_PROP: {
             const ref = this.chunk.props[arg]!;
             stack.push(
-              ref.obj === "event"
-                ? (fiber.payload?.[ref.prop] ?? null)
-                : this.host.readProp(ref),
+              ref.obj === "event" ? (fiber.payload?.[ref.prop] ?? null) : this.host.readProp(ref),
             );
             break;
           }

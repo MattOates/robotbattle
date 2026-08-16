@@ -39,12 +39,7 @@ export function formatWithSource(err: RoboScriptError, source: string): string {
   const lines = source.split("\n");
   const lineText = lines[err.line - 1] ?? "";
   const caret = " ".repeat(Math.max(0, err.col - 1)) + "^";
-  const parts = [
-    `line ${err.line}: ${err.message}`,
-    "",
-    `  ${lineText}`,
-    `  ${caret}`,
-  ];
+  const parts = [`line ${err.line}: ${err.message}`, "", `  ${lineText}`, `  ${caret}`];
   if (err.hint) parts.push("", `  hint: ${err.hint}`);
   return parts.join("\n");
 }

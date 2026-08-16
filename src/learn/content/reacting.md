@@ -4,7 +4,7 @@ titleBio: Reacting
 teaches: noticing you are being hit, and getting out of the way
 teachesBio: escape responses, and why cells swim off at an angle
 section: The language
-order: 6
+order: 7
 ---
 
 So far your {robot} only reacts to what it can see in front of it. But things

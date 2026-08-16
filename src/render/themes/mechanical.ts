@@ -48,7 +48,9 @@ export const MECHANICAL: ArenaTheme = {
     } else {
       // Four wheels, with the front pair inset to suggest steering geometry.
       const wheel = (x: number, y: number) =>
-        g.roundRect(x - radius * 0.2, y - radius * 0.12, radius * 0.4, radius * 0.24, 2).fill(shadow);
+        g
+          .roundRect(x - radius * 0.2, y - radius * 0.12, radius * 0.4, radius * 0.24, 2)
+          .fill(shadow);
       wheel(-radius * 0.55, -radius * 0.78);
       wheel(-radius * 0.55, radius * 0.78);
       wheel(radius * 0.62, -radius * 0.72);
@@ -56,11 +58,16 @@ export const MECHANICAL: ArenaTheme = {
       // Wedge-shaped hull: the point marks the front, which matters because a
       // car can only go where its nose is pointing.
       g.poly([
-        radius * 0.95, 0,
-        radius * 0.35, -radius * 0.66,
-        -radius * 0.85, -radius * 0.52,
-        -radius * 0.85, radius * 0.52,
-        radius * 0.35, radius * 0.66,
+        radius * 0.95,
+        0,
+        radius * 0.35,
+        -radius * 0.66,
+        -radius * 0.85,
+        -radius * 0.52,
+        -radius * 0.85,
+        radius * 0.52,
+        radius * 0.35,
+        radius * 0.66,
       ]).fill(tint);
     }
 
@@ -75,4 +82,24 @@ export const MECHANICAL: ArenaTheme = {
     g.rect(radius * 0.2, -radius * 0.13, radius * 1.05, radius * 0.26).fill(darken(tint, 0.4));
     g.rect(radius * 1.05, -radius * 0.17, radius * 0.18, radius * 0.34).fill(darken(tint, 0.6));
   },
+
+  /**
+   * A dish on a short mast. Deliberately unlike the barrel: thin, open, and
+   * pale, so that "which of those two is pointing at me" is answerable at a
+   * glance from across the arena.
+   */
+  drawRadar(g: Graphics, tint: number, radius: number): void {
+    const metal = lighten(tint, 0.55);
+    // Mast, from the hub out to the dish.
+    g.rect(0, -radius * 0.05, radius * 0.72, radius * 0.1).fill(darken(tint, 0.5));
+    // Dish: an open arc facing +x, drawn as two struts and a curved face.
+    g.moveTo(radius * 0.62, -radius * 0.34)
+      .lineTo(radius * 0.9, -radius * 0.18)
+      .lineTo(radius * 0.9, radius * 0.18)
+      .lineTo(radius * 0.62, radius * 0.34)
+      .stroke({ width: 1.6, color: metal, alpha: 0.95 });
+    g.circle(radius * 0.86, 0, radius * 0.08).fill(metal);
+  },
+
+  pingColor: 0x9fe8ff,
 };

@@ -49,9 +49,15 @@ const NOSY = `chassis tank
 color #7fd1e0
 on start
   turret.sweep 60
+  radar.sweep 90
   drive forward 80
 end
-${EVENT_NAMES.filter((e) => e !== "start")
+on tick
+  if me.pingHeat is 0 then
+    ping
+  end
+end
+${EVENT_NAMES.filter((e) => e !== "start" && e !== "tick")
   .map((e) => `on ${e}\n  set name = "x"\nend`)
   .join("\n")}
 `;

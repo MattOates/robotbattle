@@ -36,11 +36,11 @@ make help        # everything else
 
 | | |
 |---|---|
-| **Learn** | A dozen short lessons — sensing, turning, shooting, deciding, remembering, thinking time — each with a live playground you can edit and run in place, in whichever vocabulary you chose. |
+| **Learn** | A baker's dozen of short lessons — sensing, turning, shooting, deciding, remembering, thinking time — each with a live playground you can edit and run in place, in whichever vocabulary you chose. |
 | **Workshop** | Write, version, and test a robot. Save named versions, pin them as sparring partners, run trials against the sample bots, and read the telemetry. |
 | **Arena** | Everyone's robot in one arena at once, over WebRTC or between tabs on one machine. |
 | **Trade** | Put robots on a shared table, read each other's scripts, and swap copies — with permission, never without. |
-| **Tournament** | One against one until a single robot is left. The bracket and seeding are built and tested; the screen that draws them is not finished yet. |
+| **Tournament** | A random draw from everything the room puts forward, with a qualifying round robin deciding who is seeded through a round that cannot pair off. Every tie is settled over eleven matches, and any of them can be watched. |
 
 Two people can also open one robot together: a Workshop session shares the
 editor live (Yjs CRDT, cursors and all), plus the chat, the trial and the battle
@@ -109,10 +109,11 @@ end
 ```
 
 **Events** — `start`, `tick`, `sense robot`, `sense bullet`, `sense wall`,
-`hit wall`, `hit robot`, `hit by bullet`, `bullet hit`, `bullet missed`,
-`robot destroyed`. Every event carries `event.bearing` (relative to your chassis,
-so it drops straight into `turret.aim at` or `turn body by`) and
-`event.distance`, plus extras like `event.power` and `event.name`.
+`ping robot`, `ping wall`, `hit wall`, `hit robot`, `hit by bullet`,
+`bullet hit`, `bullet missed`, `robot destroyed`. Every event carries
+`event.bearing` (relative to your chassis, so it drops straight into
+`turret.aim at` or `turn body by`) and `event.distance`, plus extras like
+`event.power` and `event.name`.
 
 **Statements** — `var` / `set`, `if … else … end`, `loop … end`,
 `for i = 1 to N … end`, `repeat N times … end`, `break`, `break if …`,
@@ -120,10 +121,35 @@ so it drops straight into `turret.aim at` or `turn body by`) and
 
 **Actions** — none of them block; they set a goal the robot moves toward:
 `drive forward|back 0-100`, `stop`, `turn body to|by …`,
-`turret.turn to|by …`, `turret.aim at …`, `turret.sweep …`, `fire 1-3`.
+`turret.turn to|by …`, `turret.aim at …`, `turret.sweep …`, `fire 1-3`,
+`radar.turn to|by …`, `radar.aim at …`, `radar.sweep …`, `ping`.
 
-**Readable state** — `me.x/y/heading/speed/health/turret/gunHeat`,
+**Readable state** — `me.x/y/heading/speed/health/turret/gunHeat/radar/pingHeat`,
 `arena.width/height/time/robots`.
+
+## Two ways of seeing
+
+A robot has three independent headings — where its body points, where its gun
+points, and where its **radar** points — and two quite different senses hanging
+off the last two.
+
+| | sense cone | radar beam |
+|---|---|---|
+| reach | 195px | 585px — three times as far |
+| width | 30° either side | 6° either side — a fifth as wide |
+| when | by itself, every tick | only when the script sends a `ping` |
+| aimed | locked to the chassis | wherever you last pointed it |
+
+The beam is not a better cone, it is a different instrument: it finds a robot
+right across the arena and walks straight past one twenty degrees off the line
+that the cone would have caught easily. Which one saw something is answered by
+which handler runs — `on sense robot` means *near me*, `on ping robot` means
+*far away, and I went looking* — so a script never has to ask.
+
+In the biological vocabulary the radar is an **eyespot** and a ping is a
+**peek**, which is not a stretch: an eyespot is a patch of light-sensitive
+pigment behind a shading cup, and the cup is exactly what trades a wide vague
+view for a narrow precise one.
 
 ## The editor teaches the language
 
@@ -132,12 +158,13 @@ with a RoboScript language definition built from the *same tables the compiler
 uses*, which is the point: the dropdown can never offer a word the compiler
 would then reject.
 
-- Typing `on ` lists all eleven events with a plain-English description of each
-  and the fields it carries. `on sense ` narrows to `robot`, `bullet`, `wall`.
+- Typing `on ` lists every event with a plain-English description of each and
+  the fields it carries. `on sense ` narrows to `robot`, `bullet`, `wall`.
 - `event.` offers exactly what the enclosing handler really provides — inside
   `on sense wall` that is `bearing` and `distance`, and nothing else, because a
   wall genuinely has no health to report.
-- `turret.` offers `aim`, `turn`, `sweep`; `drive ` offers `forward`/`back`;
+- `turret.` offers `aim`, `turn`, `sweep`, and `radar.` the same plus `ping`;
+  `drive ` offers `forward`/`back`;
   `chassis ` offers the two locomotion kinds; `color ` offers a palette.
 - Errors are underlined where they happen, with the compiler's own message.
 - All of it follows the theme: in biological mode the same menu reads

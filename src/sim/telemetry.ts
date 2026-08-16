@@ -33,9 +33,7 @@ export function collectTelemetry(world: World): RobotTelemetry[] {
     suspensions: r.vm.suspensions,
     eventsDropped: r.vm.eventsDropped,
     errors: r.vm.errors,
-    lastError: r.scriptError
-      ? `line ${r.scriptError.line}: ${r.scriptError.message}`
-      : null,
+    lastError: r.scriptError ? `line ${r.scriptError.line}: ${r.scriptError.message}` : null,
   }));
 }
 
