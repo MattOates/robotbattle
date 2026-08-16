@@ -49,15 +49,31 @@ describe("building", () => {
   it("keeps everyone who entered", () => {
     const bracket = buildBracket(entrants(7), 3);
     expect(bracket.entrants.map((e) => e.id).sort()).toEqual(
-      entrants(7).map((e) => e.id).sort(),
+      entrants(7)
+        .map((e) => e.id)
+        .sort(),
     );
   });
 
-  it("sizes the bracket to the next power of two", () => {
+  it("pairs everybody off in the first round", () => {
+    // Not padded up to a power of two: a field of twenty plays ten ties, so
+    // nobody sits out the round their robot was entered for.
     expect(buildBracket(entrants(8), 1).rounds[0]).toHaveLength(4);
-    expect(buildBracket(entrants(5), 1).rounds[0]).toHaveLength(4);
+    expect(buildBracket(entrants(5), 1).rounds[0]).toHaveLength(3);
     expect(buildBracket(entrants(3), 1).rounds[0]).toHaveLength(2);
     expect(buildBracket(entrants(2), 1).rounds[0]).toHaveLength(1);
+    expect(buildBracket(entrants(20), 1).rounds.map((r) => r.length)).toEqual([10, 5, 3, 2, 1]);
+  });
+
+  it("halves the field each round until one is left", () => {
+    for (const n of [2, 3, 5, 6, 7, 9, 12, 17, 20, 31, 64]) {
+      const rounds = buildBracket(entrants(n), n).rounds.map((r) => r.length);
+      expect(rounds.at(-1)).toBe(1);
+      // Each round is exactly what the round below it can produce.
+      for (let i = 1; i < rounds.length; i++) {
+        expect(rounds[i]).toBe(Math.ceil(rounds[i - 1]! / 2));
+      }
+    }
   });
 
   it("names the closing rounds properly", () => {
@@ -69,11 +85,41 @@ describe("building", () => {
 });
 
 describe("byes", () => {
-  it("gives nobody two byes in the first round", () => {
-    const bracket = buildBracket(entrants(5), 7);
+  it("never leaves more than one robot out of a round", () => {
+    // The whole point of pairing off rather than padding: an odd count means
+    // exactly one robot goes through unopposed, and an even count means none.
+    for (const n of [2, 3, 4, 5, 6, 7, 8, 9, 12, 17, 20, 21, 31]) {
+      let bracket = buildBracket(entrants(n), n * 3);
+      for (;;) {
+        for (const round of bracket.rounds) {
+          expect(round.filter((m) => m.bye).length).toBeLessThanOrEqual(1);
+        }
+        const match = nextMatch(bracket);
+        if (!match) break;
+        bracket = advance(bracket, match.id, match.a!);
+      }
+      // And the robot with the bye comes in at the next round, having played
+      // nothing — which is only ever one robot.
+      expect(bracket.rounds.every((r) => r.filter((m) => m.bye).length <= 1)).toBe(true);
+    }
+  });
+
+  it("gives the odd one out a place in the next round, once that round is drawn", () => {
+    let bracket = buildBracket(entrants(5), 7);
     const byes = bracket.rounds[0]!.filter((m) => m.bye);
-    expect(byes).toHaveLength(3);
-    expect(new Set(byes.map((m) => m.winner)).size).toBe(3);
+    expect(byes).toHaveLength(1);
+    const throughId = byes[0]!.winner;
+    expect(throughId).not.toBeNull();
+
+    // Pairings are made when a round finishes, not before: who sits out the
+    // next one depends on everybody who survives this one.
+    expect(bracket.rounds[1]!.flatMap((m) => [m.a, m.b])).toEqual([null, null, null, null]);
+    for (;;) {
+      const match = nextMatch(bracket);
+      if (!match || match.round > 0) break;
+      bracket = advance(bracket, match.id, match.a!);
+    }
+    expect(bracket.rounds[1]!.flatMap((m) => [m.a, m.b])).toContain(throughId);
   });
 
   it("resolves byes without needing a match played", () => {
@@ -122,11 +168,26 @@ describe("playing out", () => {
     expect(nextMatch(afterOne)!.round).toBe(0);
   });
 
-  it("carries a winner into the right slot of the next round", () => {
-    const bracket = buildBracket(entrants(8), 11);
-    const match = bracket.rounds[0]![0]!;
-    const next = advance(bracket, match.id, match.a!);
-    expect(next.rounds[1]![0]!.a).toBe(match.a);
+  it("carries winners into the next round once the round below is settled", () => {
+    let bracket = buildBracket(entrants(8), 11);
+    const first = bracket.rounds[0]![0]!.a!;
+
+    // One result is not enough: the next round is drawn from the whole set of
+    // survivors, so nothing moves up until the round is done.
+    bracket = advance(bracket, bracket.rounds[0]![0]!.id, first);
+    expect(bracket.rounds[1]!.flatMap((m) => [m.a, m.b]).every((id) => id === null)).toBe(true);
+
+    const winners = [first];
+    for (const match of bracket.rounds[0]!.slice(1)) {
+      winners.push(match.a!);
+      bracket = advance(bracket, match.id, match.a!);
+    }
+    expect(bracket.rounds[1]!.flatMap((m) => [m.a, m.b])).toEqual(winners);
+    // And each new match remembers which ties fed it, for drawing the tree.
+    expect(bracket.rounds[1]![0]!.from).toEqual([
+      bracket.rounds[0]![0]!.id,
+      bracket.rounds[0]![1]!.id,
+    ]);
   });
 
   it("ignores a result for someone who was not in the match", () => {

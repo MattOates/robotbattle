@@ -2062,50 +2062,187 @@ button {
 
 /* ---------- the tournament draw ---------- */
 
-/* One column per round, scrolling sideways rather than shrinking: a bracket
-   that has been squeezed to fit is a bracket nobody can read. */
+/* A tree, not swim lanes: columns of ties joined by drawn connectors. It
+   scrolls sideways rather than shrinking, because a bracket squeezed to fit is
+   a bracket nobody can read. */
 .bracket {
+  position: relative;
   display: flex;
-  gap: var(--gap);
-  align-items: flex-start;
+  gap: 34px;
+  align-items: stretch;
   overflow-x: auto;
-  padding-bottom: 6px;
+  /* No horizontal padding: the connector overlay is absolutely positioned and
+     sized to the scroll extent, and any side padding would push it past that
+     and raise a scrollbar over a tree that already fits. */
+  padding: 2px 0 8px;
+  min-height: 240px;
 }
 
+/* The connectors, measured from the laid-out cards and painted behind them. */
+.bracket-lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.bracket-line {
+  fill: none;
+  stroke: var(--bezel-light);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+/* The path a winner actually travelled, so the eye can follow a robot up the
+   tree without reading a single name. */
+.bracket-line.taken {
+  stroke: var(--readout);
+  stroke-width: 2;
+}
+
+/* Deliberately NOT positioned: the ties measure their offsets against the
+   `.bracket` container, and a positioned round in between would make every
+   connector relative to the wrong origin. The cards themselves are lifted
+   above the lines instead. */
 .bracket-round {
-  min-width: 210px;
-  flex: 1 0 210px;
+  display: flex;
+  flex-direction: column;
+  min-width: 208px;
+  flex: 1 0 208px;
 }
 
+/* Sticky, because a 32-slot draw is taller than the panel and a column with
+   its heading scrolled away is a column you cannot identify. */
 .bracket-round .entry-label {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  padding: 4px 0 6px;
+  margin-bottom: 2px;
+  min-height: 22px;
+  background: linear-gradient(to bottom, var(--panel) 70%, transparent);
 }
 
-/* Ties spread down the column so a later round sits opposite the pair that
-   feeds it, the way a bracket is drawn on paper. */
+/* A big draw trades comfort for being able to see two rounds at once. */
+.bracket.dense .bracket-round {
+  min-width: 178px;
+  flex: 1 0 178px;
+}
+
+.bracket.dense .bracket-column {
+  gap: 6px;
+}
+
+.bracket.dense .tie {
+  padding: 2px;
+}
+
+.bracket.dense .tie-corner {
+  padding: 1px 3px;
+  gap: 4px;
+}
+
+.bracket.dense .tie-name {
+  font-size: 11px;
+}
+
+.bracket.dense .tie-foot {
+  padding: 2px 3px 0;
+  margin-top: 2px;
+}
+
+/* Ties spread down the column so each round sits opposite the pair feeding it,
+   the way a bracket is drawn on paper. */
 .bracket-column {
+  flex: 1;
   display: flex;
   flex-direction: column;
   justify-content: space-around;
-  gap: 8px;
-  height: 100%;
+  gap: 10px;
 }
 
 .tie {
+  position: relative;
+  z-index: 1;
   border: 1px solid var(--bezel);
   border-radius: var(--radius);
   background: var(--panel-raised);
   padding: 4px;
 }
 
+/* A decided tie is the anchor of its part of the tree; give it the same accent
+   as the line leaving it. */
+.tie.settled {
+  border-color: rgba(95, 208, 197, 0.45);
+}
+
+/* A seeded slot: earned, and said so. */
+.tie.seeded {
+  border-style: dashed;
+  border-color: var(--signal-dim);
+}
+
+.marker.seeded-mark {
+  color: #17190f;
+  background: var(--signal);
+  font-size: 8px;
+  padding: 1px 5px;
+}
+
+/* The qualifying table, under the tree it explains. */
+.qualifying {
+  margin-top: var(--gap);
+}
+
+.qualifying .entry-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.qualifying-table {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qualifying-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--bezel);
+}
+
+.qualifying-place {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  min-width: 18px;
+  text-align: right;
+}
+
+.qualifying-record {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
 .tie.empty {
   border-style: dashed;
-  opacity: 0.35;
+  opacity: 0.3;
   text-align: center;
-  padding: 12px 4px;
+  padding: 14px 4px;
 }
 
 .tie-corner {
@@ -2122,7 +2259,7 @@ button {
 
 /* The loser stays legible: who went out is part of reading a bracket. */
 .tie-corner.lost {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
 .tie-corner.pending {
@@ -2148,10 +2285,43 @@ button {
   margin-top: 3px;
 }
 
-.notice.champion {
+/* Where the tree resolves. */
+.champion-round {
+  min-width: 150px;
+  flex: 0 0 150px;
+}
+
+.champion-slot {
+  position: relative;
+  z-index: 1;
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  border: 1px solid var(--bezel);
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+  text-align: center;
+}
+
+.champion-slot.empty {
+  border-style: dashed;
+  opacity: 0.35;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.champion-slot.won {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 1px rgba(232, 178, 74, 0.25);
+}
+
+.champion-name {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 /* The line over a tournament replay: a sentence, so it stays on one row and

@@ -7,23 +7,49 @@
  */
 
 import { runRound, type DuelJob, type DuelRecord, type RoundProgress } from "./round.js";
+import {
+  runQualifier,
+  type QualifierEntrant,
+  type QualifierProgress,
+  type Standing,
+} from "./qualifier.js";
 
-export type RoundWorkerIn = {
-  type: "run";
-  jobs: DuelJob[];
-  matches: number;
-  /** Echoed back, so a late reply from an abandoned round can be ignored. */
-  round: number;
-};
+export type RoundWorkerIn =
+  | {
+      type: "run";
+      jobs: DuelJob[];
+      matches: number;
+      /** Echoed back, so a late reply from an abandoned round can be ignored. */
+      round: number;
+    }
+  | { type: "qualify"; entrants: QualifierEntrant[]; seedBase: number };
 
 export type RoundWorkerOut =
   | { type: "progress"; round: number; progress: RoundProgress }
   | { type: "done"; round: number; records: DuelRecord[] }
-  | { type: "failed"; round: number; message: string };
+  | { type: "failed"; round: number; message: string }
+  | { type: "qualifying"; progress: QualifierProgress }
+  | { type: "qualified"; standings: Standing[] };
 
 const post = (message: RoundWorkerOut) => self.postMessage(message);
 
 self.onmessage = (event: MessageEvent<RoundWorkerIn>) => {
+  if (event.data?.type === "qualify") {
+    const { entrants, seedBase } = event.data;
+    try {
+      const standings = runQualifier(entrants, seedBase, (progress) =>
+        post({ type: "qualifying", progress }),
+      );
+      post({ type: "qualified", standings });
+    } catch (err) {
+      post({
+        type: "failed",
+        round: -1,
+        message: err instanceof Error ? err.message : "qualifying stopped unexpectedly",
+      });
+    }
+    return;
+  }
   if (event.data?.type !== "run") return;
   const { round, jobs, matches } = event.data;
   try {

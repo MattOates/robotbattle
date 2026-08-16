@@ -52,8 +52,11 @@ export interface DuelResult {
   winner: Side | null;
   /** The winner's share of the matches played, 0-100. */
   winRate: number;
-  /** How the tie was settled, for the UI to explain itself. */
-  decidedBy: "record" | "health" | "walkover" | "none";
+  /**
+   * How the tie was settled, for the UI to explain itself. `toss` means there
+   * was genuinely nothing between them and the draw picked one.
+   */
+  decidedBy: "record" | "health" | "toss" | "walkover" | "none";
   /** A match worth watching, or null when nothing was actually played. */
   showcase: Showcase | null;
 }
@@ -100,6 +103,8 @@ interface Candidate {
   seed: number;
   aFirst: boolean;
   ticks: number;
+  /** False when the match was still going when the clock ran out. */
+  decisive: boolean;
 }
 
 /**
@@ -149,25 +154,45 @@ export function runDuel(
   // sides are alternated against a canonical order of the two scripts rather
   // than against the order they were handed to us. Swapping the corners then
   // plays the identical eleven matches, and the tie comes out the same way.
-  const flip = a.source > b.source;
+  const flip = a.source !== b.source ? a.source > b.source : a.name > b.name;
 
   for (let i = 0; i < total; i++) {
     const canonicalFirst = i % 2 === 0;
     const aFirst = flip ? !canonicalFirst : canonicalFirst;
     const seed = seedBase + i;
-    const result = runMatch(duelManifest(a, b, seed, aFirst));
+    const manifest = duelManifest(a, b, seed, aFirst);
+    const result = runMatch(manifest);
 
-    aHealth += healthOf(result, sideIndex("a", aFirst));
-    bHealth += healthOf(result, sideIndex("b", aFirst));
+    const health = {
+      a: healthOf(result, sideIndex("a", aFirst)),
+      b: healthOf(result, sideIndex("b", aFirst)),
+    };
+    aHealth += health.a;
+    bHealth += health.b;
 
-    if (result.winnerId === null) {
+    /**
+     * A match that ran out of clock is awarded by the arena on health, then on
+     * damage dealt — and when those are level too, on entry order. That last
+     * step makes the first slot win, and over an odd number of matches one side
+     * always gets the extra first slot, so a pair of robots that cannot hurt
+     * each other would come out 6-5 to whoever the alternation favoured. Nobody
+     * won that; it is a draw, and calling it one is what keeps the alternation
+     * honest.
+     */
+    const timedOut = result.ticks >= manifest.maxTicks;
+    const separated =
+      health.a !== health.b ||
+      damageOf(result, sideIndex("a", aFirst)) !== damageOf(result, sideIndex("b", aFirst));
+    const decisive = !timedOut;
+
+    if (result.winnerId === null || (timedOut && !separated)) {
       draws++;
     } else if (result.winnerId === sideIndex("a", aFirst)) {
       aWins++;
-      wonBy.a.push({ seed, aFirst, ticks: result.ticks });
+      wonBy.a.push({ seed, aFirst, ticks: result.ticks, decisive });
     } else {
       bWins++;
-      wonBy.b.push({ seed, aFirst, ticks: result.ticks });
+      wonBy.b.push({ seed, aFirst, ticks: result.ticks, decisive });
     }
 
     onMatch?.(i + 1, total);
@@ -178,12 +203,18 @@ export function runDuel(
   if (aWins !== bWins) {
     winner = aWins > bWins ? "a" : "b";
     decidedBy = "record";
-  } else {
+  } else if (aHealth !== bHealth) {
     // Level on wins, which an odd number of matches only allows once draws are
     // involved. Total health left over the whole tie is the closest thing to
     // "who was winning" that does not depend on a coin toss.
-    winner = aHealth >= bHealth ? "a" : "b";
+    winner = aHealth > bHealth ? "a" : "b";
     decidedBy = "health";
+  } else {
+    // Nothing whatsoever to separate them — two copies of the same robot, or
+    // two that cannot hurt each other. Somebody still has to go through, and
+    // the screen says plainly that this one was not earned.
+    winner = "a";
+    decidedBy = "toss";
   }
 
   const played = aWins + bWins + draws;
@@ -204,18 +235,25 @@ export function runDuel(
 /**
  * Choose the match to put in front of people.
  *
- * The winner's *median* win by length, which is the one worth sitting through.
- * The shortest is usually a rout that shows nothing; the longest is usually two
- * robots circling until the tick limit, and at 30Hz that is a two-minute video
- * of nothing happening. The median is a typical match between these two, which
- * is exactly what somebody trying to learn a robot's behaviour wants.
+ * A win that ended in a kill, in preference to one awarded when the clock ran
+ * out — a robot standing still as the timer expires is the least watchable
+ * thing in the set, and it is the one match where nothing visibly happened.
+ *
+ * Among those, the *median* by length. The shortest is usually a rout that
+ * shows nothing; the longest is usually two robots circling until the limit,
+ * and at 30Hz that is a two-minute video of nothing happening. The median is a
+ * typical match between these two, which is what somebody trying to learn a
+ * robot's behaviour wants.
  *
  * Sorted by length and then by seed so that every peer, given the same duel,
  * picks the same match.
  */
 function pickShowcase(candidates: Candidate[], winner: Side): Showcase | null {
   if (candidates.length === 0) return null;
-  const ordered = [...candidates].sort((x, y) => x.ticks - y.ticks || x.seed - y.seed);
+  const decisive = candidates.filter((c) => c.decisive);
+  const ordered = [...(decisive.length > 0 ? decisive : candidates)].sort(
+    (x, y) => x.ticks - y.ticks || x.seed - y.seed,
+  );
   // Lower median, so an even number of wins leans to the shorter of the middle
   // pair rather than picking arbitrarily.
   const pick = ordered[Math.floor((ordered.length - 1) / 2)]!;
@@ -226,10 +264,15 @@ function healthOf(result: MatchResult, entryIndex: number): number {
   return result.standings.find((s) => s.id === entryIndex)?.health ?? 0;
 }
 
+function damageOf(result: MatchResult, entryIndex: number): number {
+  return result.standings.find((s) => s.id === entryIndex)?.damageDealt ?? 0;
+}
+
 /** A one-line scoreline, e.g. `7–4` or `6–4 (1 draw)`. */
 export function scoreline(result: DuelResult): string {
   if (result.decidedBy === "walkover") return "walkover";
   if (result.decidedBy === "none") return "no contest";
+  if (result.decidedBy === "toss") return "nothing between them";
   const winnerWins = result.winner === "a" ? result.aWins : result.bWins;
   const loserWins = result.winner === "a" ? result.bWins : result.aWins;
   const draws = result.draws > 0 ? ` (${result.draws} draw${result.draws === 1 ? "" : "s"})` : "";
