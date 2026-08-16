@@ -253,6 +253,70 @@ on hit wall
 end
 `;
 
+const TOOLKIT = `-- A robot with no "on" blocks at all.
+--
+-- Each "can" block says which event it is for, and because nothing here
+-- writes "on sense robot" out longhand, the blocks for an event *are* that
+-- handler — running in the order they appear. Paste another one in and it
+-- joins the end; delete one and the rest carry on.
+--
+-- That is the point of writing behaviour this way: each block is a whole
+-- thought you can lift out and give to somebody else.
+name "Toolkit"
+chassis tank
+color #ffd166
+
+var target = 0
+
+can look given start
+  turret.sweep 40
+  radar.sweep 90
+  drive forward 55
+end
+
+can search given tick
+  if me.pingHeat is 0 then
+    ping
+  end
+end
+
+-- A block can be handed something. With a starting value it still runs on its
+-- own; without one it would be a block you could only "do" by hand.
+can engage with power=3 given sense robot
+  set name = "seen"
+  set target = event.bearing
+  turret.aim at event.bearing
+  fire power
+end
+
+can close given sense robot
+  turn body by target
+  if event.distance > 150 then
+    drive forward 80
+  else
+    drive forward 30
+  end
+end
+
+can point given ping robot
+  set name = "far contact"
+  radar.aim at event.bearing
+  turret.aim at event.bearing
+  turn body by event.bearing
+end
+
+can flinch given hit by bullet
+  set name = "hit"
+  turn body by event.bearing + 90
+  drive forward 90
+end
+
+can bounce given hit wall
+  turn body by 150
+  drive forward 60
+end
+`;
+
 export const SAMPLE_BOTS: SampleBot[] = [
   {
     id: "sitting-duck",
@@ -279,6 +343,12 @@ export const SAMPLE_BOTS: SampleBot[] = [
     source: SCOUT,
   },
   {
+    id: "toolkit",
+    title: "Toolkit",
+    teaches: "can blocks: naming behaviour, and letting it run itself",
+    source: TOOLKIT,
+  },
+  {
     id: "racer",
     title: "Racer",
     teaches: "a car's turning circle, variables, and if/else",
@@ -302,4 +372,4 @@ export function sampleById(id: string): SampleBot | undefined {
   return SAMPLE_BOTS.find((b) => b.id === id);
 }
 
-export { SITTING_DUCK, SPINNER, RACER, HUNTER, DODGER, HUNTER_BIO, SCOUT };
+export { SITTING_DUCK, SPINNER, RACER, HUNTER, DODGER, HUNTER_BIO, SCOUT, TOOLKIT };

@@ -26,17 +26,29 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { linter, lintGutter, lintKeymap, type Diagnostic } from "@codemirror/lint";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import {
+  Decoration,
   EditorView,
+  ViewPlugin,
+  WidgetType,
   drawSelection,
   highlightActiveLine,
   highlightActiveLineGutter,
   keymap,
   lineNumbers,
+  type DecorationSet,
+  type ViewUpdate,
 } from "@codemirror/view";
 import { Tag, tags as t } from "@lezer/highlight";
 
 import { scanLine, type LooseToken } from "../lang/scan.js";
-import { completeAt, type Suggestion, type SuggestionKind } from "../lang/complete.js";
+import {
+  completeAt,
+  completionKeepsGoing,
+  routineNote,
+  routinesIn,
+  type Suggestion,
+  type SuggestionKind,
+} from "../lang/complete.js";
 import { checkScript } from "../sim/world.js";
 import type { Theme } from "../lang/vocab.js";
 
@@ -69,6 +81,13 @@ const CONTROL = new Set([
   "chassis",
   "color",
   "colour",
+  "can",
+  "do",
+  "with",
+  "given",
+  "every",
+  "after",
+  "before",
 ]);
 const MODIFIERS = new Set(["to", "by", "at", "forward", "back", "backward", "times", "ticks"]);
 const ACTIONS = new Set([
@@ -253,6 +272,9 @@ function toCompletion(s: Suggestion, index: number): Completion {
   };
   if (s.detail) out.detail = s.detail;
   if (s.info) out.info = infoNode(s.info);
+  // `can shove given` is going somewhere, so hand the line back ready for the
+  // next word rather than pressed up against the one just accepted.
+  if (completionKeepsGoing(s.label)) out.apply = `${s.label} `;
   return out;
 }
 
@@ -302,6 +324,86 @@ const roboLinter = linter((view) => {
 // Theme
 // ---------------------------------------------------------------------------
 
+/**
+ * A dim note at the end of a `can` line, saying what will become of it.
+ *
+ * Whether a block runs by itself is decided by the rest of the file — whether
+ * anything needs handing to it, and whether an `on` block for the same event
+ * exists somewhere else — so the line itself cannot say. Without this the
+ * difference between a block that runs and one that sits there is invisible,
+ * which is exactly the mistake somebody makes after pasting one in.
+ *
+ * Read off the tolerant scanner rather than a compile, so it keeps up with a
+ * half-typed script and costs nothing.
+ */
+class NoteWidget extends WidgetType {
+  constructor(private readonly text: string) {
+    super();
+  }
+
+  override eq(other: NoteWidget): boolean {
+    return other.text === this.text;
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-robo-note";
+    span.textContent = this.text;
+    return span;
+  }
+
+  override ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+function routineNotes(view: EditorView, theme: Theme): DecorationSet {
+  const source = view.state.doc.toString();
+  if (!source.includes("can")) return Decoration.none;
+
+  // Never on the line being worked on. The note sits after the end of the
+  // line, which is exactly where the caret is while that line is being typed —
+  // so leaving it there puts a gap and some italic text between you and your
+  // own cursor, and every accepted completion makes it jump. It is a note about
+  // a finished line, so it waits until the line is finished with.
+  const busy = new Set<number>();
+  for (const range of view.state.selection.ranges) {
+    busy.add(view.state.doc.lineAt(range.head).number);
+    busy.add(view.state.doc.lineAt(range.anchor).number);
+  }
+
+  const { routines, handled } = routinesIn(source);
+  const marks = routines.flatMap((routine) => {
+    // `line` is zero-based from the scan; CodeMirror counts from one.
+    if (routine.line + 1 > view.state.doc.lines) return [];
+    const line = view.state.doc.line(routine.line + 1);
+    if (busy.has(line.number)) return [];
+    const note = routineNote(routine, handled, theme).replace(/`/g, "");
+    if (note === "") return [];
+    return [Decoration.widget({ widget: new NoteWidget(note), side: 1 }).range(line.to)];
+  });
+  return Decoration.set(marks, true);
+}
+
+function routineNotePlugin(theme: Theme): Extension {
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+
+      constructor(view: EditorView) {
+        this.decorations = routineNotes(view, theme);
+      }
+
+      update(update: ViewUpdate): void {
+        if (update.docChanged || update.viewportChanged || update.selectionSet) {
+          this.decorations = routineNotes(update.view, theme);
+        }
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
+}
+
 const roboTheme = EditorView.theme(
   {
     "&": {
@@ -317,6 +419,16 @@ const roboTheme = EditorView.theme(
       caretColor: "var(--signal)",
     },
     ".cm-scroller": { fontFamily: "var(--font-mono)", overflow: "auto" },
+    ".cm-robo-note": {
+      marginLeft: "1.6em",
+      color: "var(--ink-muted)",
+      opacity: "0.75",
+      fontSize: "11px",
+      fontStyle: "italic",
+      // Never let the note take a click meant for the code behind it.
+      pointerEvents: "none",
+      userSelect: "none",
+    },
     "&.cm-focused": { outline: "none" },
     ".cm-gutters": {
       backgroundColor: "transparent",
@@ -433,11 +545,17 @@ export function roboExtensions(theme: Theme): Extension[] {
     indentUnit.of("  "),
     EditorState.tabSize.of(2),
     completionCompartment.of(completionExtension(theme)),
+    routineNotePlugin(theme),
     keymap.of([
+      // Completion goes first, or `defaultKeymap` claims Return and the
+      // highlighted suggestion is passed over for a new line — which is a
+      // strange thing to have to discover about a popup that says "press
+      // Ctrl-Space for suggestions". Every binding here does nothing at all
+      // while the popup is closed, so nothing else is shadowed.
+      ...completionKeymap,
       ...closeBracketsKeymap,
       ...defaultKeymap,
       ...historyKeymap,
-      ...completionKeymap,
       ...lintKeymap,
       indentWithTab,
     ]),

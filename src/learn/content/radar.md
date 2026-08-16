@@ -75,6 +75,11 @@ on tick
 end
 ```
 
+That is the first `on tick` you have seen. A tick is one step of the match, and
+there are thirty of them a second — so `on tick` is the block for anything that
+should be going on continuously. There is a lesson later on how to say "not
+quite so continuously".
+
 A {ping} is instant, and there is a short wait before you can send another.
 `me.pingHeat` counts down to zero, and zero means ready — the same idea as
 `me.gunHeat` for the {turret}.

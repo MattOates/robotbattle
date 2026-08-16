@@ -7,8 +7,9 @@ section: The language
 order: 10
 ---
 
-There are four ways to do something more than once, and they suit different
-jobs.
+There are five ways to do something more than once, and they suit different
+jobs. Four of them repeat *inside* one moment of thinking. The last one repeats
+across the whole match, and it is the one people reach for least and need most.
 
 ## A fixed number of times
 
@@ -62,6 +63,48 @@ carries on; only this block is asleep.
 That makes it good for sequences that need to happen in order with a gap
 between them, and bad for anything that needs to stay responsive — a block that
 is waiting is not reacting.
+
+## Every so often
+
+The fifth way is not a loop at all. `on tick` runs thirty times a second, and a
+tick is a thirtieth of a second — which is nobody's idea of a useful interval.
+Almost nothing you want to do belongs on *every* one of them.
+
+So say how often, on the header:
+
+```robo
+on tick every 30
+  radar.turn by 20
+  ping
+end
+```
+
+That runs once a second instead of thirty times, and costs you a thirtieth of
+the thinking. There are three more words like it:
+
+| | |
+|---|---|
+| `every 30` | one time in every thirty |
+| `after 60` | not until it has happened sixty times |
+| `before 600` | only until it has happened six hundred times |
+| `at 3` | the third time, once, and never again |
+
+They count how many times *that block* has been reached — not how long the
+match has been going — which is why they work just as well on something that
+happens rarely:
+
+```robo
+on hit wall after 2 every 3
+  turn body by 150
+end
+```
+
+Two bumps, then every third bump after that: the fifth, the eighth, the
+eleventh. `after` starts the counting again from where it finishes, so this
+means what it sounds like it means.
+
+`every`, `after` and `before` can be combined in any order. `at` goes on its
+own, since it already says exactly which time.
 
 ## A pattern worth stealing
 

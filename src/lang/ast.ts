@@ -164,6 +164,20 @@ export interface Stmt_Wait {
   ticks: Expr;
   pos: SourcePos;
 }
+/**
+ * `do chase with 3` — run a named routine here.
+ *
+ * The compiler expands the routine's body in place, so this node never reaches
+ * the VM: there is no call instruction and no return address anywhere in the
+ * machine.
+ */
+export interface Stmt_Do {
+  type: "do";
+  name: string;
+  args: Expr[];
+  pos: SourcePos;
+}
+
 export interface Stmt_Action {
   type: "action";
   action: ActionKind;
@@ -181,10 +195,59 @@ export type Stmt =
   | Stmt_Break
   | Stmt_Continue
   | Stmt_Wait
+  | Stmt_Do
   | Stmt_Action;
+
+/**
+ * `every 30`, `after 90`, `before 900`, `at 2` — how often a block runs.
+ *
+ * A tick is not a unit of time anybody thinks in, and almost nobody wanting a
+ * `tick` handler wants one *every* tick: they want a sweep twice a second, or
+ * something that happens the second time they hit a wall. Written by hand that
+ * is a counter variable, an increment, and a `mod` test whose polarity is easy
+ * to get backwards — so the count is worth saying in the header, where it reads
+ * as what it is.
+ *
+ * Each clause is a filter on the same count of how many times the block has
+ * been reached, so they simply combine: `every 30 after 90` is both tests, and
+ * nothing new has to be learned to put them together. `at` is on its own,
+ * because pinning the count exactly leaves the others nothing to say.
+ */
+export interface CountClause {
+  kind: "every" | "after" | "before" | "at";
+  /** Always a plain number: a cadence that changes as you run is nobody's friend. */
+  value: number;
+  pos: SourcePos;
+}
 
 export interface Handler {
   event: EventName;
+  body: Stmt[];
+  counts: CountClause[];
+  pos: SourcePos;
+}
+
+/** One parameter of a routine. A default makes it optional at the call site. */
+export interface Param {
+  name: string;
+  default: Expr | null;
+  pos: SourcePos;
+}
+
+/**
+ * `can chase with power=2 given sense robot` — a named block of behaviour.
+ *
+ * `given` is the routine's contract. It says which event the body may read
+ * through `event.*`, and therefore where the routine may be used — which is
+ * what lets one be pasted into somebody else's robot and still make sense.
+ * With no `on` block for that event, routines like this one *become* the
+ * handler, in source order.
+ */
+export interface Routine {
+  name: string;
+  params: Param[];
+  given: EventName | null;
+  counts: CountClause[];
   body: Stmt[];
   pos: SourcePos;
 }
@@ -197,4 +260,5 @@ export interface Program {
   /** Top-level `var` declarations, initialised once before `on start`. */
   globals: Stmt_Var[];
   handlers: Handler[];
+  routines: Routine[];
 }

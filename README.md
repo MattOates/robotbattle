@@ -34,12 +34,12 @@ make help        # everything else
 
 ## What's in it
 
-| | |
-|---|---|
-| **Learn** | A baker's dozen of short lessons — sensing, turning, shooting, deciding, remembering, thinking time — each with a live playground you can edit and run in place, in whichever vocabulary you chose. |
-| **Workshop** | Write, version, and test a robot. Save named versions, pin them as sparring partners, run trials against the sample bots, and read the telemetry. |
-| **Arena** | Everyone's robot in one arena at once, over WebRTC or between tabs on one machine. |
-| **Trade** | Put robots on a shared table, read each other's scripts, and swap copies — with permission, never without. |
+|                |                                                                                                                                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Learn**      | A baker's dozen of short lessons — sensing, turning, shooting, deciding, remembering, thinking time — each with a live playground you can edit and run in place, in whichever vocabulary you chose.                       |
+| **Workshop**   | Write, version, and test a robot. Save named versions, pin them as sparring partners, run trials against the sample bots, and read the telemetry.                                                                         |
+| **Arena**      | Everyone's robot in one arena at once, over WebRTC or between tabs on one machine.                                                                                                                                        |
+| **Trade**      | Put robots on a shared table, read each other's scripts, and swap copies — with permission, never without.                                                                                                                |
 | **Tournament** | A random draw from everything the room puts forward, with a qualifying round robin deciding who is seeded through a round that cannot pair off. Every tie is settled over eleven matches, and any of them can be watched. |
 
 Two people can also open one robot together: a Workshop session shares the
@@ -58,7 +58,7 @@ notice if they ever disagree. The same manifest is also a replay file.
 That only works if the simulation is bit-identical everywhere, which drives
 three rules enforced by tests in `tests/determinism/`:
 
-- Fixed 30Hz timestep. Real time only decides *how many* ticks to run; the
+- Fixed 30Hz timestep. Real time only decides _how many_ ticks to run; the
   renderer interpolates to 60fps so it still looks smooth.
 - No `Math.sin`/`cos`/`tan`/`atan2`/`pow`/`random`, no `Date.now`. Those are
   implementation-defined or unseeded and silently desync peers. `src/sim/math.ts`
@@ -117,7 +117,30 @@ end
 
 **Statements** — `var` / `set`, `if … else … end`, `loop … end`,
 `for i = 1 to N … end`, `repeat N times … end`, `break`, `break if …`,
-`continue`, `wait N ticks`.
+`continue`, `wait N ticks`, `do NAME [with …]`.
+
+**Conditions** — `is`, `isnt`, `<`, `>`, `<=`, `>=`, joined with `and`, `or`,
+`not`. Arithmetic is `+ - * /` and `mod`. An `if` (or `break if`) must be given
+one of those comparisons, not a bare value: `if arena.time mod 60` is refused,
+because a remainder is a number and every number but 0 would count as true —
+turning "every 60 ticks" into "every tick except every 60th". Write
+`if arena.time mod 60 is 0`. There is no truthiness to learn and no such bug to
+find by staring at it.
+
+**Blocks** — `can NAME [with p, q=2] [given EVENT] … end` names a piece of
+behaviour at the top level. See below.
+
+**How often** — `every N`, `after N`, `before N`, `at N`, on any `on` or `can`
+header: `can scan given tick every 30` runs once a second rather than thirty
+times. Each block keeps its own tally of how many times it has been reached, so
+two blocks on one event can run at two different cadences without a shared
+counter between them. They combine freely and in any order:
+`after 2 every 3` on `hit wall` means two bumps, then every third one from
+there — the fifth, eighth, eleventh — because `after` starts the cadence
+counting rather than merely gating a clock that was already running. `at N`
+pins the count exactly and goes alone. It compiles to a hidden counter and a jump —
+the same thing you would have written by hand, minus the chance of getting the
+`mod` test backwards.
 
 **Actions** — none of them block; they set a goal the robot moves toward:
 `drive forward|back 0-100`, `stop`, `turn body to|by …`,
@@ -127,24 +150,56 @@ end
 **Readable state** — `me.x/y/heading/speed/health/turret/gunHeat/radar/pingHeat`,
 `arena.width/height/time/robots`.
 
+## Behaviour you can name, and pass around
+
+`can` names a block of instructions; `do` runs it. The compiler copies the
+block out wherever it is used, so there is no call stack anywhere in the
+machine — using a block costs a robot exactly what writing it out longhand
+would have cost, and a `wait` inside one suspends like any other line. Blocks
+may take arguments (`with power=2`, defaults optional), and a parameter is the
+block's own for as long as it runs, so it never disturbs a variable of the same
+name.
+
+```
+can flinch given hit by bullet
+  turn body by event.bearing + 90
+  drive forward 90
+end
+```
+
+`given` is the interesting half. It says which event the block works on, which
+means the block may read `event.*`, that the editor can offer exactly those
+fields inside it, and that the compiler refuses the block anywhere it would not
+make sense. A block therefore carries its own contract — which is what makes it
+worth sending to somebody, rather than sending them a whole robot.
+
+And when a script has **no `on` block for that event**, the blocks for it _are_
+the handler, running in the order they were written. Paste a friend's `flinch`
+into your robot and it takes effect; paste two and both run, in order. Write
+`on hit by bullet` out yourself and you take control back — the blocks become a
+library you `do` in whatever order you choose. The editor prints which of those
+is happening at the end of every `can` line, since nothing in the source says
+so. `src/bots/index.ts` ships a sample robot, Toolkit, with no `on` blocks at
+all.
+
 ## Two ways of seeing
 
 A robot has three independent headings — where its body points, where its gun
 points, and where its **radar** points — and two quite different senses hanging
 off the last two.
 
-| | sense cone | radar beam |
-|---|---|---|
-| reach | 195px | 585px — three times as far |
-| width | 30° either side | 6° either side — a fifth as wide |
-| when | by itself, every tick | only when the script sends a `ping` |
-| aimed | locked to the chassis | wherever you last pointed it |
+|       | sense cone            | radar beam                          |
+| ----- | --------------------- | ----------------------------------- |
+| reach | 195px                 | 585px — three times as far          |
+| width | 30° either side       | 6° either side — a fifth as wide    |
+| when  | by itself, every tick | only when the script sends a `ping` |
+| aimed | locked to the chassis | wherever you last pointed it        |
 
 The beam is not a better cone, it is a different instrument: it finds a robot
 right across the arena and walks straight past one twenty degrees off the line
 that the cone would have caught easily. Which one saw something is answered by
-which handler runs — `on sense robot` means *near me*, `on ping robot` means
-*far away, and I went looking* — so a script never has to ask.
+which handler runs — `on sense robot` means _near me_, `on ping robot` means
+_far away, and I went looking_ — so a script never has to ask.
 
 In the biological vocabulary the radar is an **eyespot** and a ping is a
 **peek**, which is not a stretch: an eyespot is a patch of light-sensitive
@@ -154,8 +209,8 @@ view for a narrow precise one.
 ## The editor teaches the language
 
 You cannot guess `event.bearing`, so the editor tells you. It is CodeMirror 6
-with a RoboScript language definition built from the *same tables the compiler
-uses*, which is the point: the dropdown can never offer a word the compiler
+with a RoboScript language definition built from the _same tables the compiler
+uses_, which is the point: the dropdown can never offer a word the compiler
 would then reject.
 
 - Typing `on ` lists every event with a plain-English description of each and
@@ -181,12 +236,12 @@ matches what `step.ts` really emits during live matches.
 Identical hitbox (one circle radius, shared), identical turret, identical sense
 cone. They differ in exactly one thing — how steering becomes rotation:
 
-| | tracks / cilia (`tank`) | wheels / flagellum (`car`) |
-|---|---|---|
-| steering | skid steer | Ackermann |
-| rotate on the spot | yes | **no** — needs forward speed |
-| turning circle | none | `wheelbase / tan(maxSteer)` ≈ 42px |
-| top speed | 95 px/s | 165 px/s |
+|                    | tracks / cilia (`tank`) | wheels / flagellum (`car`)         |
+| ------------------ | ----------------------- | ---------------------------------- |
+| steering           | skid steer              | Ackermann                          |
+| rotate on the spot | yes                     | **no** — needs forward speed       |
+| turning circle     | none                    | `wheelbase / tan(maxSteer)` ≈ 42px |
+| top speed          | 95 px/s                 | 165 px/s                           |
 
 The car's turning circle is emergent from the bicycle model
 (`ω = v·tan(steer)/wheelbase`) rather than a special-cased rule, which is why it
@@ -199,14 +254,14 @@ rewritten to canonical words in the lexer, so a biological script compiles to
 byte-identical bytecode and fights identically — `tests/lang/vocab.test.ts`
 asserts exactly that. Both vocabularies parse in either arena, and can be mixed.
 
-| mechanical | biological |
-|---|---|
+| mechanical             | biological                    |
+| ---------------------- | ----------------------------- |
 | `chassis tank` / `car` | `body ciliate` / `flagellate` |
-| `drive forward` | `swim forward` |
-| `turret` / `fire` | `stinger` / `sting` |
-| `on sense robot` | `on sense organism` |
-| `on hit by bullet` | `on stung` |
-| `me.health` | `me.vitality` |
+| `drive forward`        | `swim forward`                |
+| `turret` / `fire`      | `stinger` / `sting`           |
+| `on sense robot`       | `on sense organism`           |
+| `on hit by bullet`     | `on stung`                    |
+| `me.health`            | `me.vitality`                 |
 
 ## Multiplayer
 

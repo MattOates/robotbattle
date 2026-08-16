@@ -49,7 +49,26 @@ interface Props {
   preview?: boolean;
   /** Extra status text alongside the compile result, e.g. who else is editing. */
   statusSuffix?: React.ReactNode;
+  /**
+   * The live editor, handed back so the shelf can drop a block into it.
+   *
+   * Going through the editor rather than through `source` is what makes an
+   * insertion work mid-session too: in a session the document belongs to the
+   * CRDT, and a dispatch is the only edit everyone else hears about.
+   */
+  viewRef?: React.MutableRefObject<EditorView | null>;
+  /**
+   * Something was dragged in from outside. Given the document and where the
+   * drop landed, return the edit to make, or null to ignore it.
+   *
+   * The editor stays ignorant of what was dropped: it knows about positions and
+   * dispatches, and nothing about `can` blocks.
+   */
+  onDrop?: (doc: string, payload: string, pos: number) => { from: number; text: string } | null;
 }
+
+/** Drag payload carrying a block from the shelf. */
+export const BLOCK_MIME = "application/x-roboscript-block";
 
 /** Swallow an event that would carry text out of the editor. */
 function refuse(event: Event): boolean {
@@ -65,12 +84,16 @@ export function CodeEditor({
   readOnly = false,
   preview = false,
   statusSuffix,
+  viewRef: exposedRef,
+  onDrop,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   // Read inside the update listener without re-creating the editor.
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onDropRef = useRef(onDrop);
+  onDropRef.current = onDrop;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -98,6 +121,39 @@ export function CodeEditor({
                 }),
               ]
             : []),
+          // Accept a block dragged in from the shelf. Anything else dropped —
+          // text from elsewhere in the document, a file — is left to
+          // CodeMirror's own handling.
+          EditorView.domEventHandlers({
+            dragover: (event, view) => {
+              if (!event.dataTransfer?.types.includes(BLOCK_MIME)) return false;
+              if (view.state.readOnly) return false;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+              return true;
+            },
+            drop: (event, view) => {
+              const payload = event.dataTransfer?.getData(BLOCK_MIME);
+              if (!payload || view.state.readOnly) return false;
+              event.preventDefault();
+              const at = view.posAtCoords({ x: event.clientX, y: event.clientY });
+              const edit = onDropRef.current?.(
+                view.state.doc.toString(),
+                payload,
+                at ?? view.state.doc.length,
+              );
+              if (!edit) return true;
+              view.dispatch({
+                changes: { from: edit.from, insert: edit.text },
+                // Land the cursor on what just arrived, so it is obvious where
+                // it went and it can be undone with one keystroke.
+                selection: { anchor: edit.from + edit.text.length },
+                scrollIntoView: true,
+              });
+              view.focus();
+              return true;
+            },
+          }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               onChangeRef.current(update.state.doc.toString());
@@ -107,9 +163,11 @@ export function CodeEditor({
       }),
     });
     viewRef.current = view;
+    if (exposedRef) exposedRef.current = view;
 
     return () => {
       viewRef.current = null;
+      if (exposedRef) exposedRef.current = null;
       view.destroy();
     };
     // Built once. Content and theme are applied below without losing history

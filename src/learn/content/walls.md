@@ -4,7 +4,7 @@ titleBio: Walls and edges
 teaches: staying off the edge, and why corners are dangerous
 teachesBio: staying off the edge, and why corners are dangerous
 section: The language
-order: 11
+order: 12
 ---
 
 The {arena} has hard edges. Drive into one and you stop dead, take a little
