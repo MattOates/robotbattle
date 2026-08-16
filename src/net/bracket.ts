@@ -30,25 +30,37 @@ export interface BracketMatch {
   round: number;
   /** Position within the round. */
   slot: number;
-  /** Entrant ids; null means "not decided yet" or, in round 0, a bye. */
+  /** Entrant ids; null means "not decided yet", or nobody at all in a bye. */
   a: string | null;
   b: string | null;
   winner: string | null;
-  /** True when this match was won without being played. */
+  /** True when this slot was taken without a tie being played. */
   bye: boolean;
+  /**
+   * The matches feeding this slot, by id.
+   *
+   * Held explicitly rather than worked out from the slot number. Pairings for a
+   * round are made when the round below it finishes — because who sits out
+   * depends on the qualifying table, not on geometry — so there is no formula
+   * that maps a slot to its children, and the tree has to remember.
+   */
+  from: Array<string | null>;
 }
 
 export interface Bracket {
   entrants: Entrant[];
   rounds: BracketMatch[][];
   champion: string | null;
-}
-
-/** Smallest power of two that fits everyone, minimum two. */
-function bracketSize(count: number): number {
-  let size = 2;
-  while (size < count) size *= 2;
-  return size;
+  /**
+   * Entrant ids best-first, from the qualifying round robin.
+   *
+   * This is what decides every bye. Any round with an odd number of robots left
+   * has to leave one unpaired, and the free pass goes to the best qualifier
+   * still standing rather than to whoever holds an awkward slot. Empty when the
+   * field is a power of two, because then no round ever has an odd count and
+   * nobody is ever seeded through.
+   */
+  ranking: string[];
 }
 
 function shuffle<T>(items: readonly T[], rng: Rng): T[] {
@@ -65,75 +77,143 @@ function shuffle<T>(items: readonly T[], rng: Rng): T[] {
   return out;
 }
 
-export function buildBracket(entrants: readonly Entrant[], seed: number): Bracket {
+/**
+ * Draw everyone against somebody.
+ *
+ * The textbook single-elimination bracket pads the field up to a power of two
+ * and hands out byes in the first round: twenty entrants become a thirty-two
+ * slot draw with twelve byes, so twelve robots never fight in round one. In a
+ * tournament people watch, that is the wrong trade — most of the room would sit
+ * through a first round their robot was not in.
+ *
+ * So every round pairs off as many as it can, and a bye appears only when a
+ * round has an odd number left: at most one per round, never more. Twenty
+ * entrants play ten ties, then five, then two (one through), then one (one
+ * through), then a final. The same nineteen ties either way — it is only a
+ * question of when they are played, and this way everybody plays at once.
+ *
+ * The cost is honest and small: a bye late in a draw is worth more than a bye
+ * at the start. It lands on whoever holds the last slot of an odd round, and
+ * since the draw itself is shuffled, that is nobody in particular.
+ */
+export function buildBracket(
+  entrants: readonly Entrant[],
+  seed: number,
+  ranking: readonly string[] = [],
+): Bracket {
   const drawn = shuffle(entrants, new Rng(seed));
-  const size = bracketSize(Math.max(2, drawn.length));
-  const byeCount = Math.max(0, size - drawn.length);
 
-  // Entrants drawn first receive the byes. Because the draw is random, this is
-  // fair; because byes are then interleaved with real matches, they do not all
-  // land in one half of the bracket.
-  const byeEntrants = drawn.slice(0, byeCount);
-  const playing = drawn.slice(byeCount);
-
-  const pairs: Array<[string | null, string | null]> = [];
-  for (let i = 0; i < playing.length; i += 2) {
-    pairs.push([playing[i]?.id ?? null, playing[i + 1]?.id ?? null]);
-  }
-
-  const firstRound: Array<[string | null, string | null]> = [];
-  let byeIndex = 0;
-  let pairIndex = 0;
-  const totalFirst = size / 2;
-  for (let i = 0; i < totalFirst; i++) {
-    const takeBye = byeIndex < byeEntrants.length && (i % 2 === 0 || pairIndex >= pairs.length);
-    if (takeBye) {
-      firstRound.push([byeEntrants[byeIndex]!.id, null]);
-      byeIndex++;
-    } else if (pairIndex < pairs.length) {
-      firstRound.push(pairs[pairIndex]!);
-      pairIndex++;
-    } else if (byeIndex < byeEntrants.length) {
-      firstRound.push([byeEntrants[byeIndex]!.id, null]);
-      byeIndex++;
-    } else {
-      firstRound.push([null, null]);
-    }
-  }
-
+  // The shape is known from the start — halve and round up — even though who
+  // is in each round is not. Drawing the empty rounds now is what lets the
+  // screen show the whole tournament ahead of itself.
   const rounds: BracketMatch[][] = [];
-  let width = totalFirst;
-  for (let round = 0; width >= 1; round++) {
-    const matches: BracketMatch[] = [];
-    for (let slot = 0; slot < width; slot++) {
-      const seeded = round === 0 ? firstRound[slot]! : [null, null];
-      matches.push({
+  let count = Math.max(2, drawn.length);
+  let round = 0;
+  for (;;) {
+    const width = Math.ceil(count / 2);
+    rounds.push(
+      Array.from({ length: width }, (_, slot) => ({
         id: `r${round}m${slot}`,
         round,
         slot,
-        a: seeded[0] ?? null,
-        b: seeded[1] ?? null,
+        a: null,
+        b: null,
         winner: null,
         bye: false,
-      });
-    }
-    rounds.push(matches);
+        from: [null, null] as Array<string | null>,
+      })),
+    );
     if (width === 1) break;
-    width = width / 2;
+    count = width;
+    round++;
   }
 
-  let bracket: Bracket = { entrants: [...drawn], rounds, champion: null };
-
-  // Resolve byes immediately: a match with only one entrant was never a match.
-  for (const match of [...rounds[0]!]) {
-    if (match.a !== null && match.b === null) {
-      bracket = advance(bracket, match.id, match.a, true);
-    }
-  }
-  return bracket;
+  const bracket: Bracket = {
+    entrants: [...drawn],
+    rounds,
+    champion: null,
+    ranking: [...ranking],
+  };
+  return seedRound(
+    bracket,
+    0,
+    drawn.map((e) => e.id),
+    [],
+  );
 }
 
-/** Record a winner and carry them into the next round. */
+/**
+ * Fill in a round: pair the survivors off, and seed the odd one out.
+ *
+ * The survivors arrive in bracket order — the order they won their ties in —
+ * so pairings stay a product of the draw. Only the choice of who sits out
+ * consults the qualifying table.
+ */
+function seedRound(
+  bracket: Bracket,
+  round: number,
+  survivors: readonly string[],
+  fromIds: ReadonlyArray<string | null>,
+): Bracket {
+  const matches = bracket.rounds[round];
+  if (!matches) return bracket;
+
+  const order = [...survivors];
+  const feeds = new Map<string, string | null>();
+  order.forEach((id, i) => feeds.set(id, fromIds[i] ?? null));
+
+  let seeded: string | null = null;
+  if (order.length % 2 === 1) {
+    // Who has already been waved through once: a robot that has had a bye goes
+    // to the back of the queue for the next one. Topping the qualifying table
+    // should be worth one free pass, not a walk to the final.
+    const already = new Set(
+      bracket.rounds.flatMap((r) => r.filter((m) => m.bye).map((m) => m.winner)),
+    );
+    const fresh = order.filter((id) => !already.has(id));
+    const pool = fresh.length > 0 ? fresh : order;
+    // Best qualifier still standing takes it. With no qualifying table — a
+    // field that never needed one — the last in bracket order does.
+    seeded = bracket.ranking.find((id) => pool.includes(id)) ?? pool[pool.length - 1] ?? null;
+    if (seeded !== null) order.splice(order.indexOf(seeded), 1);
+  }
+
+  const rounds = bracket.rounds.map((r) => r.map((m) => ({ ...m })));
+  const target = rounds[round]!;
+  for (let slot = 0; slot < target.length; slot++) {
+    const match = target[slot]!;
+    const a = order[slot * 2] ?? null;
+    const b = order[slot * 2 + 1] ?? null;
+    match.a = a;
+    match.b = b;
+    match.from = [
+      a === null ? null : (feeds.get(a) ?? null),
+      b === null ? null : (feeds.get(b) ?? null),
+    ];
+  }
+
+  let next: Bracket = { ...bracket, rounds };
+
+  // The seeded robot takes the last slot, alone, and is through the moment the
+  // round is drawn — there is nobody for it to play.
+  if (seeded !== null) {
+    const slot = target.length - 1;
+    const match = rounds[round]![slot]!;
+    match.a = seeded;
+    match.b = null;
+    match.from = [feeds.get(seeded) ?? null, null];
+    next = advance(next, match.id, seeded, true);
+  }
+  return next;
+}
+
+/**
+ * Record a winner, and draw the next round once this one is finished.
+ *
+ * Nothing is carried forward one winner at a time: the next round cannot be
+ * paired until every tie in this one is settled, because which robot sits out
+ * depends on the whole set of survivors.
+ */
 export function advance(bracket: Bracket, matchId: string, winner: string, bye = false): Bracket {
   const rounds = bracket.rounds.map((round) => round.map((m) => ({ ...m })));
   let found: BracketMatch | undefined;
@@ -150,32 +230,22 @@ export function advance(bracket: Bracket, matchId: string, winner: string, bye =
   found.winner = winner;
   found.bye = bye;
 
-  const nextRound = rounds[found.round + 1];
-  if (!nextRound) {
-    return { ...bracket, rounds, champion: winner };
-  }
-  const target = nextRound[Math.floor(found.slot / 2)];
-  if (target) {
-    if (found.slot % 2 === 0) target.a = winner;
-    else target.b = winner;
-  }
+  const settled = rounds[found.round]!;
+  const complete = settled.every((m) => m.winner !== null);
 
-  let next: Bracket = { ...bracket, rounds, champion: null };
-  // A promotion can create another walkover further up the bracket.
-  if (target && target.a !== null && target.b === null && isRoundSettled(next, target.round - 1)) {
-    const opponentSlot = target.slot * 2 + (found.slot % 2 === 0 ? 1 : 0);
-    const sibling = rounds[found.round]?.[opponentSlot];
-    if (sibling && sibling.a === null && sibling.b === null) {
-      next = advance(next, target.id, target.a, true);
-    }
+  if (!rounds[found.round + 1]) {
+    return { ...bracket, rounds, champion: complete ? winner : null };
   }
-  return next;
-}
+  const next: Bracket = { ...bracket, rounds, champion: null };
+  if (!complete) return next;
 
-function isRoundSettled(bracket: Bracket, round: number): boolean {
-  const matches = bracket.rounds[round];
-  if (!matches) return true;
-  return matches.every((m) => m.winner !== null || (m.a === null && m.b === null));
+  // In bracket order, so the pairings that follow are still the draw's doing.
+  return seedRound(
+    next,
+    found.round + 1,
+    settled.map((m) => m.winner!),
+    settled.map((m) => m.id),
+  );
 }
 
 /** The next match that can actually be played, or null when the bracket is done. */

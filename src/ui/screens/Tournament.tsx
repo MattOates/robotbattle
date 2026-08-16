@@ -21,6 +21,7 @@ import { Lobby } from "./Lobby.js";
 import { BracketView } from "../BracketView.js";
 import { MatchCanvas, type MatchOutcome } from "../MatchCanvas.js";
 import { RobotTable, type TableEntry } from "../RobotTable.js";
+import { RobotGlyph } from "../RobotGlyph.js";
 import { navigate, parseRoute } from "../router.js";
 import { useAutoJoin, useRoom } from "../useRoom.js";
 import type { LibraryApi } from "../useLibrary.js";
@@ -30,7 +31,6 @@ import {
   advance,
   buildBracket,
   entrant,
-  isComplete,
   roundName,
   type Bracket,
   type Entrant,
@@ -39,6 +39,7 @@ import { newMatchSeed } from "../../net/matchsetup.js";
 import { sanitiseEntry, sanitiseText, type Message } from "../../net/protocol.js";
 import { DUEL_MATCHES, duelManifest, scoreline, type Duellist } from "../../tournament/duel.js";
 import { seedForJob, type DuelJob, type DuelRecord } from "../../tournament/round.js";
+import { needsQualifier, qualifierMatches, type Standing } from "../../tournament/qualifier.js";
 import type { RoundWorkerIn, RoundWorkerOut } from "../../tournament/round.worker.js";
 import { pruneOffered, toggleOffered } from "../tradeShelf.js";
 
@@ -86,6 +87,8 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
   const [viewing, setViewing] = useState<Viewing | null>(null);
   /** Replay speed. A settled match is worth skimming; a live one never is. */
   const [speed, setSpeed] = useState(1);
+  const [standings, setStandings] = useState<Standing[] | null>(null);
+  const [qualifying, setQualifying] = useState<{ done: number; total: number } | null>(null);
   const workerRef = useRef<Worker | null>(null);
 
   const selfId = room.state?.selfId ?? "";
@@ -103,6 +106,8 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
     setRunning(null);
     setViewing(null);
     setOffered([]);
+    setStandings(null);
+    setQualifying(null);
   }, [connected]);
 
   useEffect(() => {
@@ -190,6 +195,16 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
             if (isHost) return;
             setBracket(message.bracket);
             setRunning(null);
+            return;
+
+          case "tourQualifier":
+            if (isHost) return;
+            setQualifying(
+              message.done >= message.total ? null : { done: message.done, total: message.total },
+            );
+            if (Array.isArray(message.standings) && message.standings.length > 0) {
+              setStandings(message.standings);
+            }
             return;
 
           case "tourProgress":
@@ -301,7 +316,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
 
     worker.onmessage = (event: MessageEvent<RoundWorkerOut>) => {
       const message = event.data;
-      if (message.round !== currentRound) return;
+      if (!("round" in message) || message.round !== currentRound) return;
 
       if (message.type === "progress") {
         setRunning({
@@ -355,14 +370,83 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
     } satisfies RoundWorkerIn);
   }, [bracket, currentRound, isHost, room.session, running]);
 
+  const draw = useCallback(
+    (ranking: string[]) => {
+      const drawn = buildBracket(field, newMatchSeed(), ranking);
+      setBracket(drawn);
+      setRecords({});
+      caughtUp.current.clear();
+      room.session?.send("all", { t: "bracket", bracket: drawn });
+    },
+    [field, room.session],
+  );
+
+  /**
+   * Make the draw — qualifying first, if the field will ever need a bye.
+   *
+   * A field that halves cleanly all the way down never leaves anybody unpaired,
+   * so there is nothing for a qualifying table to decide and it is not run. Any
+   * other size will strand somebody in some round, and that free pass should go
+   * to the robot with the best record rather than to whoever holds an awkward
+   * slot.
+   */
   const makeDraw = useCallback(() => {
-    if (!isHost || field.length < 2) return;
-    const drawn = buildBracket(field, newMatchSeed());
-    setBracket(drawn);
-    setRecords({});
-    caughtUp.current.clear();
-    room.session?.send("all", { t: "bracket", bracket: drawn });
-  }, [field, isHost, room.session]);
+    const session = room.session;
+    if (!isHost || field.length < 2 || qualifying) return;
+
+    if (!needsQualifier(field.length)) {
+      draw([]);
+      return;
+    }
+
+    workerRef.current?.terminate();
+    const worker = new Worker(new URL("../../tournament/round.worker.ts", import.meta.url), {
+      type: "module",
+    });
+    workerRef.current = worker;
+    const total = qualifierMatches(field.length);
+    setQualifying({ done: 0, total });
+    setStandings(null);
+    session?.send("all", { t: "tourQualifier", standings: [], done: 0, total });
+
+    worker.onmessage = (event: MessageEvent<RoundWorkerOut>) => {
+      const message = event.data;
+      if (message.type === "qualifying") {
+        setQualifying(message.progress);
+        session?.send("all", {
+          t: "tourQualifier",
+          standings: [],
+          done: message.progress.done,
+          total: message.progress.total,
+        });
+        return;
+      }
+      if (message.type === "failed") {
+        setNotice(`Qualifying stopped: ${message.message}`);
+        setQualifying(null);
+        worker.terminate();
+        return;
+      }
+      if (message.type !== "qualified") return;
+
+      setStandings(message.standings);
+      setQualifying(null);
+      session?.send("all", {
+        t: "tourQualifier",
+        standings: message.standings,
+        done: total,
+        total,
+      });
+      draw(message.standings.map((row) => row.id));
+      worker.terminate();
+    };
+
+    worker.postMessage({
+      type: "qualify",
+      entrants: field.map((e) => ({ id: e.id, robot: e.robot })),
+      seedBase: newMatchSeed(),
+    } satisfies RoundWorkerIn);
+  }, [draw, field, isHost, qualifying, room.session]);
 
   const reset = useCallback(() => {
     if (!isHost) return;
@@ -371,6 +455,8 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
     setRecords({});
     setRunning(null);
     setViewing(null);
+    setStandings(null);
+    setQualifying(null);
     caughtUp.current.clear();
     room.session?.send("all", { t: "bracket", bracket: emptyBracket() });
   }, [isHost, room.session]);
@@ -488,7 +574,6 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
   }
 
   const drawn = bracket !== null && bracket.entrants.length > 0;
-  const champion = bracket && isComplete(bracket) ? entrant(bracket, bracket.champion) : null;
 
   return (
     <Lobby
@@ -506,7 +591,11 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       <div className="panel-head">
         <span className="silkscreen">{drawn ? "The draw" : "The table"}</span>
         <span className="spacer" />
-        {running ? (
+        {qualifying ? (
+          <span className="roster-meta">
+            qualifying — {qualifying.done}/{qualifying.total} matches
+          </span>
+        ) : running ? (
           <span className="roster-meta">
             playing {roundName(bracket!, running.round)} — {running.done}/{running.total} matches
           </span>
@@ -525,21 +614,25 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       <div className="panel-body">
         {notice ? <div className="notice">{notice}</div> : null}
 
-        {champion ? (
-          <div className="notice champion">
-            <span className="silkscreen">Champion</span>
-            <strong>{champion.robot.name}</strong>
-            <span className="roster-meta">{champion.ownerName}</span>
+        {/* No separate "champion" banner: the tree ends in the winner's
+            plinth, which says it with more presence and in the right place. */}
+        {running || qualifying ? (
+          <div className="progress" aria-label="progress">
+            <div
+              className="progress-bar"
+              style={{
+                width: `${Math.round(((running ?? qualifying)!.done / Math.max(1, (running ?? qualifying)!.total)) * 100)}%`,
+              }}
+            />
           </div>
         ) : null}
 
-        {running ? (
-          <div className="progress" aria-label="round progress">
-            <div
-              className="progress-bar"
-              style={{ width: `${Math.round((running.done / Math.max(1, running.total)) * 100)}%` }}
-            />
-          </div>
+        {qualifying ? (
+          <p className="roster-meta entering-note">
+            Everybody is playing everybody once. The table decides who is seeded through a round
+            that cannot pair off — with {field.length} entered, some round will have an odd number
+            left.
+          </p>
         ) : null}
 
         {drawn && bracket ? (
@@ -552,6 +645,10 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
               onWatch={watch}
               onWatchRound={watchRound}
             />
+            {standings && standings.length > 0 ? (
+              <QualifyingTable standings={standings} bracket={bracket} theme={theme} />
+            ) : null}
+
             {isHost && currentRound !== null ? (
               <div className="lobby-action">
                 <span className="roster-meta">
@@ -606,9 +703,9 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
             />
 
             <p className="roster-meta entering-note">
-              Entering shares the script: every screen replays the matches itself, so a robot in the
-              draw is a robot everyone in this room has a copy of. To show one without handing it
-              over, use Trade instead.
+              Entering shares the script: every screen replays the matches itself, so{" "}
+              {words.robotPlural} in the draw are ones everyone in this room has a copy of. To show
+              one without handing it over, use Trade instead.
             </p>
 
             {isHost ? (
@@ -616,15 +713,21 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
                 <span className="roster-meta">
                   {field.length < 2
                     ? "Two entries are needed for a draw."
-                    : `Random pairings from ${field.length} entries.`}
+                    : needsQualifier(field.length)
+                      ? `${field.length} entries: everybody plays everybody once first, and the table decides who is seeded through the rounds that cannot pair off.`
+                      : `Random pairings from ${field.length} entries — this field halves cleanly, so nobody sits out.`}
                 </span>
                 <button
                   type="button"
                   className="btn primary"
-                  disabled={field.length < 2}
+                  disabled={field.length < 2 || qualifying !== null}
                   onClick={makeDraw}
                 >
-                  Make the draw
+                  {qualifying
+                    ? "Qualifying…"
+                    : needsQualifier(field.length)
+                      ? "Qualify, then draw"
+                      : "Make the draw"}
                 </button>
               </div>
             ) : (
@@ -634,6 +737,63 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
         )}
       </div>
     </Lobby>
+  );
+}
+
+/**
+ * The qualifying table.
+ *
+ * Shown after the draw rather than instead of it, because its job is done by
+ * then — but it is the only place in the tournament where every robot is
+ * compared with every other, and it explains every bye on the tree.
+ */
+function QualifyingTable({
+  standings,
+  bracket,
+  theme,
+}: {
+  standings: Standing[];
+  bracket: Bracket;
+  theme: Theme;
+}) {
+  const [open, setOpen] = useState(false);
+  const shown = open ? standings : standings.slice(0, 3);
+
+  return (
+    <section className="qualifying">
+      <div className="entry-label">
+        Qualifying
+        <span className="roster-meta">everybody played everybody once</span>
+        <span className="spacer" />
+        <button type="button" className="btn small" onClick={() => setOpen(!open)}>
+          {open ? "Show the top three" : `Show all ${standings.length}`}
+        </button>
+      </div>
+      <ol className="qualifying-table">
+        {shown.map((row, index) => {
+          const who = entrant(bracket, row.id);
+          return (
+            <li key={row.id} className="qualifying-row">
+              <span className="qualifying-place">{index + 1}</span>
+              {who ? (
+                <RobotGlyph
+                  color={who.robot.color}
+                  locomotion={deriveMeta(who.robot.source)?.locomotion ?? "skid"}
+                  theme={theme}
+                  size={20}
+                  name={who.robot.name}
+                />
+              ) : null}
+              <span className="tie-name">{who?.robot.name ?? row.id}</span>
+              <span className="roster-meta">{who?.ownerName}</span>
+              <span className="qualifying-record">
+                {row.broken ? "won't compile" : `${row.wins}W ${row.losses}L ${row.draws}D`}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
 
@@ -651,5 +811,5 @@ function roundsOfRecords(records: Record<string, DuelRecord>): DuelRecord[][] {
 
 /** A cleared draw, so "start over" reaches the guests as well. */
 function emptyBracket(): Bracket {
-  return { entrants: [], rounds: [], champion: null };
+  return { entrants: [], rounds: [], champion: null, ranking: [] };
 }

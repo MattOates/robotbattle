@@ -12,6 +12,7 @@ import type { MatchResult } from "../sim/match.js";
 import type { PeerId } from "./transport.js";
 import type { Bracket } from "./bracket.js";
 import type { DuelRecord } from "../tournament/round.js";
+import type { Standing } from "../tournament/qualifier.js";
 import type { ChatMessage } from "../store/types.js";
 
 /** A robot as offered to a room. */
@@ -64,6 +65,14 @@ export type Message =
    * and the reason entering is an act of publishing rather than of showing.
    */
   | { t: "bracket"; bracket: Bracket }
+  /**
+   * The qualifying table: everybody against everybody, once, before the draw.
+   *
+   * Not a result in itself — it decides who is seeded through a round that
+   * cannot pair off, and it is worth showing because it is the only place the
+   * whole field is compared directly.
+   */
+  | { t: "tourQualifier"; standings: Standing[]; done: number; total: number }
   /** Robots put forward for the draw, before it is made. */
   | { t: "tourField"; entrants: Array<{ id: string; ownerName: string; robot: RobotEntry }> }
   /** The host is playing a round out; a number to watch while waiting. */
@@ -135,7 +144,7 @@ export function isMessage(payload: unknown): payload is Message {
 const KNOWN_TYPES: ReadonlySet<string> = new Set<Message["t"]>([
   "hello", "roster", "ready", "entry", "notice", "nudge",
   "start", "hash", "result",
-  "bracket", "tourField", "tourProgress", "tourRound",
+  "bracket", "tourField", "tourProgress", "tourRound", "tourQualifier",
   "view", "session", "chatHistory", "chat", "ydoc", "bench", "history",
   "kick", "endSession",
   "shelf", "peek", "peekResult", "copyRequest", "copyResponse", "offer", "offerResult",
