@@ -50,6 +50,11 @@ interface Props {
   running: boolean;
   /** Increment to advance exactly one tick while paused. */
   stepSignal?: number;
+  /**
+   * Playback rate. 1 is real time, which is what a live match must always be;
+   * a replay of something already decided can reasonably be skimmed faster.
+   */
+  speed?: number;
   onStatus?: (status: MatchStatus) => void;
   /** Fired once when a match ends, with everything worth keeping. */
   onFinished?: (outcome: MatchOutcome) => void;
@@ -76,6 +81,7 @@ export function MatchCanvas({
   showCones,
   running,
   stepSignal = 0,
+  speed = 1,
   onStatus,
   onFinished,
   autoRestart,
@@ -90,6 +96,7 @@ export function MatchCanvas({
 
   // Read inside the animation frame without re-creating it.
   const runningRef = useRef(running);
+  const speedRef = useRef(speed);
   const statusRef = useRef(onStatus);
   const finishedRef = useRef(onFinished);
   const restartRef = useRef(autoRestart);
@@ -99,6 +106,7 @@ export function MatchCanvas({
    * change, a single step. Cleared as soon as that frame is drawn. */
   const redrawRef = useRef(true);
   runningRef.current = running;
+  speedRef.current = speed;
   statusRef.current = onStatus;
   finishedRef.current = onFinished;
   restartRef.current = autoRestart;
@@ -194,11 +202,19 @@ export function MatchCanvas({
       last = now;
       if (!renderer || !world) return;
 
-      if (runningRef.current && !world.over) {
+      // A match that reaches its tick limit is a draw, and is over as far as
+      // this screen is concerned. Without this the loop would keep stepping a
+      // world nobody can win — forever, and never reporting a result.
+      const limit = manifestRef.current?.maxTicks ?? Number.POSITIVE_INFINITY;
+      const ended = () => world.over || world.tick >= limit;
+
+      if (runningRef.current && !ended()) {
+        const rate = Math.max(0.1, speedRef.current);
         // Clamping stops a backgrounded tab trying to catch up on thousands of
-        // ticks the instant it becomes visible again.
-        accumulator = Math.min(accumulator + elapsed, TICK_MS * MAX_CATCHUP);
-        while (accumulator >= TICK_MS && !world.over) {
+        // ticks the instant it becomes visible again. The allowance scales with
+        // the playback rate, so a fast replay is not clamped back to real time.
+        accumulator = Math.min(accumulator + elapsed * rate, TICK_MS * MAX_CATCHUP * rate);
+        while (accumulator >= TICK_MS && !ended()) {
           step(world);
           renderer.onStep(world);
           accumulator -= TICK_MS;
@@ -216,14 +232,13 @@ export function MatchCanvas({
       // simulation, the end-of-match report, the status callback — runs on
       // every frame regardless, so a mistake in the condition below can cost
       // a wasted repaint but can never stop a match from running.
-      const owed =
-        redrawRef.current || (world.over && !reportedRef.current) || renderer.animating;
+      const owed = redrawRef.current || (ended() && !reportedRef.current) || renderer.animating;
       if (runningRef.current || owed) {
         redrawRef.current = false;
         renderer.draw(accumulator / TICK_MS);
       }
 
-      if (world.over && !reportedRef.current) {
+      if (ended() && !reportedRef.current) {
         reportedRef.current = true;
         statusRef.current?.(readStatus(world));
         finishedRef.current?.({
@@ -265,12 +280,7 @@ export function MatchCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepSignal]);
 
-  const classes = [
-    "match-canvas",
-    `fit-${fit}`,
-    ambient ? "ambient" : "",
-    className ?? "",
-  ]
+  const classes = ["match-canvas", `fit-${fit}`, ambient ? "ambient" : "", className ?? ""]
     .filter(Boolean)
     .join(" ");
 

@@ -11,6 +11,7 @@ import type { MatchManifest } from "../sim/world.js";
 import type { MatchResult } from "../sim/match.js";
 import type { PeerId } from "./transport.js";
 import type { Bracket } from "./bracket.js";
+import type { DuelRecord } from "../tournament/round.js";
 import type { ChatMessage } from "../store/types.js";
 
 /** A robot as offered to a room. */
@@ -55,7 +56,20 @@ export type Message =
   | { t: "result"; matchId: string; result: MatchResult }
 
   // ---- tournament ----
+  /**
+   * The whole draw, from the host, who is authoritative about it.
+   *
+   * Carries the entrants' scripts as well as the shape of the tree, because
+   * every peer replays the matches locally — the same bargain the Arena makes,
+   * and the reason entering is an act of publishing rather than of showing.
+   */
   | { t: "bracket"; bracket: Bracket }
+  /** Robots put forward for the draw, before it is made. */
+  | { t: "tourField"; entrants: Array<{ id: string; ownerName: string; robot: RobotEntry }> }
+  /** The host is playing a round out; a number to watch while waiting. */
+  | { t: "tourProgress"; round: number; done: number; total: number }
+  /** How every tie of a round was settled, including what to replay. */
+  | { t: "tourRound"; round: number; records: DuelRecord[] }
 
   // ---- workshop sessions ----
   /**
@@ -86,7 +100,7 @@ export type Message =
 
   // ---- trade ----
   /** What this peer is willing to show. */
-  | { t: "shelf"; robots: Array<{ id: string; name: string; color: string }> }
+  | { t: "shelf"; robots: ShelfItem[] }
   | { t: "peek"; robotId: string }
   | { t: "peekResult"; robotId: string; source: string | null }
   | { t: "copyRequest"; robotId: string }
@@ -121,7 +135,7 @@ export function isMessage(payload: unknown): payload is Message {
 const KNOWN_TYPES: ReadonlySet<string> = new Set<Message["t"]>([
   "hello", "roster", "ready", "entry", "notice", "nudge",
   "start", "hash", "result",
-  "bracket",
+  "bracket", "tourField", "tourProgress", "tourRound",
   "view", "session", "chatHistory", "chat", "ydoc", "bench", "history",
   "kick", "endSession",
   "shelf", "peek", "peekResult", "copyRequest", "copyResponse", "offer", "offerResult",

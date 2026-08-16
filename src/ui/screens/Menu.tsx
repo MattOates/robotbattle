@@ -53,9 +53,9 @@ const MODES: ModeCard[] = [
   {
     screen: "tournament",
     title: "Tournament",
-    blurb: "One against one, round after round, until a single robot is left standing.",
+    blurb:
+      "A random draw from everything the room puts forward. Every tie is settled over eleven matches, and you can watch the ones that decided it.",
     needsPeople: true,
-    underConstruction: true,
   },
   {
     screen: "trade",

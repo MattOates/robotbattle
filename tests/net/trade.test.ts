@@ -67,7 +67,14 @@ describe("asking for a copy", () => {
     // Ada puts her shelf up; Bob sees titles, not scripts.
     ada.session.send("all", {
       t: "shelf",
-      robots: ada.library.list().map((r) => ({ id: r.id, name: r.name, color: r.color })),
+      robots: ada.library
+        .list()
+        .map((r) => ({
+          id: r.id,
+          name: r.name,
+          color: r.color,
+          locomotion: r.locomotion ?? ("skid" as const),
+        })),
     });
     network.flush();
 

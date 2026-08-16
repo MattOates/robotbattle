@@ -10,9 +10,18 @@
 import { Rng } from "../sim/rng.js";
 import type { RobotEntry } from "./protocol.js";
 
+/**
+ * One robot in the draw.
+ *
+ * Keyed by robot rather than by person: someone who puts three robots on the
+ * table enters three times, and may well meet themselves in round two. The
+ * owner is carried along only so the bracket can say whose robot it is.
+ */
 export interface Entrant {
-  peerId: string;
-  displayName: string;
+  /** Unique within a tournament. */
+  id: string;
+  /** Who put it forward. */
+  ownerName: string;
   robot: RobotEntry;
 }
 
@@ -21,7 +30,7 @@ export interface BracketMatch {
   round: number;
   /** Position within the round. */
   slot: number;
-  /** Entrant peer ids; null means "not decided yet" or, in round 0, a bye. */
+  /** Entrant ids; null means "not decided yet" or, in round 0, a bye. */
   a: string | null;
   b: string | null;
   winner: string | null;
@@ -69,7 +78,7 @@ export function buildBracket(entrants: readonly Entrant[], seed: number): Bracke
 
   const pairs: Array<[string | null, string | null]> = [];
   for (let i = 0; i < playing.length; i += 2) {
-    pairs.push([playing[i]?.peerId ?? null, playing[i + 1]?.peerId ?? null]);
+    pairs.push([playing[i]?.id ?? null, playing[i + 1]?.id ?? null]);
   }
 
   const firstRound: Array<[string | null, string | null]> = [];
@@ -79,13 +88,13 @@ export function buildBracket(entrants: readonly Entrant[], seed: number): Bracke
   for (let i = 0; i < totalFirst; i++) {
     const takeBye = byeIndex < byeEntrants.length && (i % 2 === 0 || pairIndex >= pairs.length);
     if (takeBye) {
-      firstRound.push([byeEntrants[byeIndex]!.peerId, null]);
+      firstRound.push([byeEntrants[byeIndex]!.id, null]);
       byeIndex++;
     } else if (pairIndex < pairs.length) {
       firstRound.push(pairs[pairIndex]!);
       pairIndex++;
     } else if (byeIndex < byeEntrants.length) {
-      firstRound.push([byeEntrants[byeIndex]!.peerId, null]);
+      firstRound.push([byeEntrants[byeIndex]!.id, null]);
       byeIndex++;
     } else {
       firstRound.push([null, null]);
@@ -125,12 +134,7 @@ export function buildBracket(entrants: readonly Entrant[], seed: number): Bracke
 }
 
 /** Record a winner and carry them into the next round. */
-export function advance(
-  bracket: Bracket,
-  matchId: string,
-  winner: string,
-  bye = false,
-): Bracket {
+export function advance(bracket: Bracket, matchId: string, winner: string, bye = false): Bracket {
   const rounds = bracket.rounds.map((round) => round.map((m) => ({ ...m })));
   let found: BracketMatch | undefined;
   for (const round of rounds) {
@@ -190,9 +194,13 @@ export function isComplete(bracket: Bracket): boolean {
   return bracket.champion !== null;
 }
 
-export function entrantName(bracket: Bracket, peerId: string | null): string {
-  if (peerId === null) return "—";
-  return bracket.entrants.find((e) => e.peerId === peerId)?.robot.name ?? "—";
+export function entrant(bracket: Bracket, id: string | null): Entrant | undefined {
+  if (id === null) return undefined;
+  return bracket.entrants.find((e) => e.id === id);
+}
+
+export function entrantName(bracket: Bracket, id: string | null): string {
+  return entrant(bracket, id)?.robot.name ?? "—";
 }
 
 /** Human label for a round, counting back from the final. */

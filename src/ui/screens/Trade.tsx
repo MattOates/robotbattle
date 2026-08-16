@@ -22,6 +22,7 @@ import type { LibraryApi } from "../useLibrary.js";
 import { deriveMeta } from "../../store/library.js";
 import { THEMES, type Theme } from "../../lang/vocab.js";
 import { RobotGlyph } from "../RobotGlyph.js";
+import { RobotTable, type TableEntry } from "../RobotTable.js";
 import type { Locomotion } from "../../lang/ast.js";
 import { offeredSource, pruneOffered, shelfFor, toggleOffered } from "../tradeShelf.js";
 import {
@@ -73,13 +74,6 @@ interface Preview {
   color: string;
   locomotion: Locomotion;
   source: string;
-}
-
-/** One card on the table, and who it belongs to. `null` owner means you. */
-interface TableItem {
-  item: ShelfItem;
-  ownerId: string | null;
-  ownerName: string;
 }
 
 export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Props) {
@@ -303,14 +297,6 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
     );
   }, []);
 
-  const drag = useCallback(
-    (robotId: string) => (event: React.DragEvent) => {
-      event.dataTransfer.setData("text/plain", robotId);
-      event.dataTransfer.effectAllowed = "move";
-    },
-    [],
-  );
-
   const give = useCallback(
     (robotId: string) => {
       const mine = robots.find((r) => r.id === robotId);
@@ -377,7 +363,7 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
    * side of it a robot started on. Ownership stays on the card, because it
    * decides what you can do with it.
    */
-  const table: TableItem[] = [
+  const table: TableEntry[] = [
     ...shelfFor(robots, offered).map((item) => ({ item, ownerId: null, ownerName: "you" })),
     ...others.flatMap((peer) =>
       (shelves[peer.id] ?? []).map((item) => ({
@@ -387,7 +373,6 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
       })),
     ),
   ];
-  const inLibrary = robots.filter((r) => !offered.includes(r.id));
 
   return (
     <Lobby
@@ -469,159 +454,58 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           </div>
         ))}
 
-        <div className="trade-floor">
-          {/* Left: your library. Drag right to show something. */}
-          <section
-            className={`trade-side${dropping === "library" ? " over" : ""}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDropping("library");
-            }}
-            onDragLeave={() => setDropping(null)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDropping(null);
-              put(e.dataTransfer.getData("text/plain"), false);
-            }}
-          >
-            <div className="entry-label">
-              Your {words.robotPlural}
-              <span className="roster-meta">drag onto the table →</span>
-            </div>
-            <div className="trade-list">
-              {robots.length === 0 ? (
-                <div className="empty small">
-                  Nothing to trade yet — build something in the Workshop first.
-                </div>
-              ) : inLibrary.length === 0 ? (
-                <div className="empty small">Everything you have is on the table.</div>
-              ) : (
-                inLibrary.map((robot) => (
-                  <div
-                    key={robot.id}
-                    className="trade-card"
-                    draggable
-                    onDragStart={drag(robot.id)}
-                    onDoubleClick={() => put(robot.id, true)}
-                    title={`${robot.name} — drag onto the table, or double-click`}
-                  >
-                    <RobotGlyph
-                      color={robot.color}
-                      locomotion={robot.locomotion ?? "skid"}
-                      theme={theme}
-                      size={46}
-                      name={robot.name}
-                    />
-                    <span className="trade-card-name">{robot.name}</span>
-                    {/* Dragging is the nice way; a button is the way that works
-                        on a touchscreen and from a keyboard. */}
-                    <button type="button" className="btn small" onClick={() => put(robot.id, true)}>
-                      Put out →
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          {/* Right: the table itself, everyone's. */}
-          <section
-            className={`trade-side table${dropping === "table" ? " over" : ""}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDropping("table");
-            }}
-            onDragLeave={() => setDropping(null)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDropping(null);
-              put(e.dataTransfer.getData("text/plain"), true);
-            }}
-          >
-            <div className="entry-label">
-              On the table
-              <span className="roster-meta">
-                {table.length === 0 ? "nothing out yet" : `${table.length} up for viewing`}
-              </span>
-            </div>
-            <div className="trade-list">
-              {table.length === 0 ? (
-                <div className="empty small">
-                  Empty. Drag one of yours across to show it — until somebody does, nobody in this
-                  room can see anyone&rsquo;s {words.robotPlural}.
-                </div>
-              ) : (
-                table.map(({ item, ownerId, ownerName }) => {
-                  const mine = ownerId === null;
-                  return (
-                    <div
-                      key={`${ownerId ?? "me"}:${item.id}`}
-                      className={`trade-card${mine ? " mine" : ""}`}
-                      draggable={mine}
-                      onDragStart={mine ? drag(item.id) : undefined}
-                      title={mine ? `${item.name} — drag back to take it off the table` : item.name}
-                    >
-                      <RobotGlyph
-                        color={item.color}
-                        locomotion={item.locomotion}
-                        theme={theme}
-                        size={46}
-                        name={item.name}
-                      />
-                      <span className="trade-card-name">{item.name}</span>
-                      <span className="roster-meta">{ownerName}</span>
-                      {mine ? (
-                        <div className="trade-card-actions">
-                          {target === null ? null : (
-                            <button
-                              type="button"
-                              className="btn small"
-                              onClick={() => give(item.id)}
-                            >
-                              Give to {nameOf(target)}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="btn small"
-                            onClick={() => put(item.id, false)}
-                          >
-                            Take back
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="trade-card-actions">
-                          <button
-                            type="button"
-                            className="btn small"
-                            onClick={() =>
-                              room.session?.send(ownerId, { t: "peek", robotId: item.id })
-                            }
-                          >
-                            Read
-                          </button>
-                          <button
-                            type="button"
-                            className="btn small"
-                            onClick={() => {
-                              room.session?.send(ownerId, {
-                                t: "copyRequest",
-                                robotId: item.id,
-                              });
-                              setNotice(`Asked ${ownerName} for ${item.name}.`);
-                            }}
-                          >
-                            Ask
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </section>
-        </div>
+        <RobotTable
+          theme={theme}
+          robotPlural={words.robotPlural}
+          robots={robots}
+          offered={offered}
+          onPut={put}
+          entries={table}
+          tableLabel="On the table"
+          tableHint={table.length === 0 ? "nothing out yet" : `${table.length} up for viewing`}
+          emptyTable={
+            <>
+              Empty. Drag one of yours across to show it — until somebody does, nobody in this room
+              can see anyone&rsquo;s {words.robotPlural}.
+            </>
+          }
+          dropping={dropping}
+          onDropping={setDropping}
+          actionsFor={({ item, ownerId, ownerName }) =>
+            ownerId === null ? (
+              <>
+                {target === null ? null : (
+                  <button type="button" className="btn small" onClick={() => give(item.id)}>
+                    Give to {nameOf(target)}
+                  </button>
+                )}
+                <button type="button" className="btn small" onClick={() => put(item.id, false)}>
+                  Take back
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => room.session?.send(ownerId, { t: "peek", robotId: item.id })}
+                >
+                  Read
+                </button>
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => {
+                    room.session?.send(ownerId, { t: "copyRequest", robotId: item.id });
+                    setNotice(`Asked ${ownerName} for ${item.name}.`);
+                  }}
+                >
+                  Ask
+                </button>
+              </>
+            )
+          }
+        />
 
         {preview ? (
           /* Their script in a real editor rather than a block of text: the
