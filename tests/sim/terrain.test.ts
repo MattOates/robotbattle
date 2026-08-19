@@ -29,7 +29,7 @@ import {
   type TerrainConfig,
 } from "../../src/sim/types.js";
 import { normalizeAngle } from "../../src/sim/math.js";
-import { RACER, SITTING_DUCK } from "../../src/bots/index.js";
+import { GOAT, RACER, SITTING_DUCK } from "../../src/bots/index.js";
 
 const W = 900;
 const H = 620;
@@ -518,5 +518,74 @@ end
     const flat = driveAlone(TERRAIN_PRESETS.off);
     expect(flat.avgClimb).toBe(0);
     expect(flat.distance).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The Goat walks uphill until the ground runs out of up, then holds what it
+ * found. Height is worth something in this simulation: anyone coming at it is
+ * climbing, so they arrive slow and out of fuel, while the Goat sits still and
+ * pays almost nothing.
+ *
+ * Measured as height gained, because "it climbs" is the claim and a robot that
+ * merely stops somewhere flat would pass everything else.
+ */
+describe("the Goat takes the high ground", () => {
+  const field = makeTerrain(TERRAIN_PRESETS.arena, W, H);
+
+  function run(seed: number, terrain: TerrainConfig) {
+    const w = createWorld(
+      makeManifest([{ source: GOAT }, { source: SITTING_DUCK }], {
+        seed,
+        fuel: FUEL_PRESETS.arena,
+        terrain,
+      }),
+    );
+    const g = w.robots[0]!;
+    const from = field.heightAt(g.x, g.y);
+    // Tracked over the run rather than read at the end: this match ends when
+    // the duck dies, after which `step` returns immediately and the final
+    // frame says nothing about what the Goat spent the match doing.
+    let saidHighGround = false;
+    let travelled = 0;
+    let px = g.x;
+    let py = g.y;
+    for (let i = 0; i < 900; i++) {
+      step(w);
+      if (g.name === "high ground") saidHighGround = true;
+      travelled += Math.abs(g.x - px) + Math.abs(g.y - py);
+      px = g.x;
+      py = g.y;
+    }
+    return { from, to: field.heightAt(g.x, g.y), robot: g, saidHighGround, travelled };
+  }
+
+  it("ends higher than it started, wherever it starts", () => {
+    for (let seed = 1; seed <= 12; seed++) {
+      const r = run(seed, TERRAIN_PRESETS.arena);
+      expect(r.to, `seed ${seed}`).toBeGreaterThan(r.from);
+    }
+  });
+
+  it("stops on ground that has genuinely run out of up", () => {
+    // The bug this replaced: an early version stopped at any slope under 8,
+    // which is a tenth of the map, so it halted on the first gentle stretch
+    // having climbed nothing at all. A summit is where the slope is nearly
+    // zero, not merely where it is comfortable.
+    for (let seed = 1; seed <= 12; seed++) {
+      const r = run(seed, TERRAIN_PRESETS.arena);
+      expect(r.saidHighGround, `seed ${seed}`).toBe(true);
+      expect(slopeAt(field, r.robot.x, r.robot.y), `seed ${seed}`).toBeLessThan(3);
+    }
+  });
+
+  it("goes hunting instead when there is no hill to take", () => {
+    // Every robot has to work with terrain switched off, and a robot whose
+    // whole plan is the high ground has nowhere to stand on a flat map.
+    for (let seed = 1; seed <= 6; seed++) {
+      const r = run(seed, TERRAIN_PRESETS.off);
+      expect(r.saidHighGround, `seed ${seed}`).toBe(false);
+      expect(r.travelled, `seed ${seed}`).toBeGreaterThan(200);
+    }
   });
 });

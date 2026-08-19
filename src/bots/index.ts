@@ -189,6 +189,79 @@ end
  * never a gameplay advantage — and the vocab test asserts exactly that against
  * HUNTER above.
  */
+const GOAT = `-- Goat: gets to the high ground and holds it.
+--
+-- Height is worth something here. Anyone coming up at you is slowed to a
+-- crawl and paying three times the fuel for it, while you sit still at the
+-- top and pay almost nothing. So the whole plan is: walk up, stop, shoot down.
+--
+-- me.slope says how steep the ground is right here, 0 to 100. me.uphill says
+-- which way is up, turned so that 0 means straight ahead.
+--
+-- The clever bit is how it knows it has arrived. The top of a hill is level,
+-- the same as the bottom is \u2014 so when the slope runs out after a climb, that
+-- is the summit. On a flat map the slope never turns up at all, and then there
+-- is nothing to climb and the goat just goes hunting instead.
+name "Goat"
+chassis tank
+color #6ad98a
+
+var climbed = 0
+
+on start
+  turret.sweep 90
+  drive forward 70
+end
+
+on tick
+  -- 2 is nearly level. Almost all of the ground is steeper than that, so any
+  -- reading this low really is a top rather than a merely gentle patch. The
+  -- first version used 8 and the goat kept stopping on the first easy stretch
+  -- it found, pleased with itself, having climbed nothing.
+  if me.slope > 2 then
+    set climbed = 1
+    set name = "climbing"
+    turn body by me.uphill
+    -- Ease off as the ground levels out, so it settles on the top instead of
+    -- charging over it and having to come back. A slow climb is cheaper too.
+    if me.slope > 20 then
+      drive forward 70
+    else
+      drive forward 35
+    end
+  else
+    if climbed = 1 then
+      -- Level ground, after a climb. This is the top: hold it.
+      set name = "high ground"
+      stop
+    else
+      -- Never found a hill, so there is no high ground to take. Go and look
+      -- for somebody instead.
+      set name = "no hills here"
+      drive forward 70
+    end
+  end
+end
+
+on sense robot
+  turret.aim at event.bearing
+  fire 3
+end
+
+on hit by bullet
+  -- Somebody is shooting up at us. Point the gun back down at them, but do
+  -- not chase: giving up the hill is how you lose it.
+  set name = "get off"
+  turret.aim at event.bearing
+  fire 3
+end
+
+on hit wall
+  turn body by 140
+  drive forward 70
+end
+`;
+
 const HUNTER_BIO = `-- The very same robot as Hunter, in biology words.
 name "Hunter"
 body ciliate
@@ -622,6 +695,12 @@ export const SAMPLE_BOTS: SampleBot[] = [
     source: HUNGRY_HIPPO,
   },
   {
+    id: "goat",
+    title: "Goat",
+    teaches: "me.slope and me.uphill: reading the ground and taking the high ground",
+    source: GOAT,
+  },
+  {
     id: "apex",
     title: "Apex",
     teaches: "the one to beat: fighting and foraging, budgeted against the cost table",
@@ -649,5 +728,6 @@ export {
   SCOUT,
   TOOLKIT,
   HUNGRY_HIPPO,
+  GOAT,
   APEX,
 };
