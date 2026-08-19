@@ -59,11 +59,19 @@ const RACER = `-- A car: much faster than a tank, but it cannot turn on the spot
 -- me.downhill say which way is up and which way is down, turned so that 0
 -- means straight ahead. On a flat map slope is 0, so the racing bit never
 -- runs and this is simply a fast car.
+--
+-- It also watches for the wall and starts the corner early. A car turns in a
+-- circle it cannot tighten, so by the time a wall is close there is no room
+-- left to miss it \u2014 the turn has to begin while it is still a long way off.
 name "Racer"
 chassis car
 color #ffd166
 
 var bumps = 0
+-- Ticks left of a corner. While this is counting down the racing line is
+-- ignored: finishing the turn matters more than taking the cheap route, and
+-- two bits of code steering the same wheel would just fight each other.
+var corner = 0
 
 on start
   drive forward 100
@@ -73,6 +81,17 @@ end
 on sense robot
   turret.aim at event.bearing
   fire 1
+end
+
+on sense wall
+  -- 150 steps is about four car lengths, which is what it takes to come round
+  -- at speed. event.bearing points at the wall, so turning by a bit less than a
+  -- half turn from it sends us away without doubling back on ourselves.
+  if event.distance < 150 and corner is 0 then
+    set name = "corner"
+    set corner = 26
+    turn body by event.bearing + 140
+  end
 end
 
 on hit wall
@@ -87,26 +106,33 @@ on tick
     drive forward 100
   end
 
-  if me.slope > 12 then
-    if me.downhill < 50 and me.downhill > -50 then
-      -- The drop is more or less ahead. That is free speed: take it.
-      set name = "flat out"
-      turn body by me.downhill
-      drive forward 100
-    else
-      -- No drop worth having, so hold the line across the slope. A quarter
-      -- turn from straight up the hill is the flattest way through.
-      --
-      -- Turning the short way matters for a car. If the hill is on the right
-      -- we take the line to its left, and the other way round \u2014 either way the
-      -- wheel only ever moves a little, which is what keeps the speed up.
-      set name = "on the line"
-      if me.uphill > 0 then
-        turn body by me.uphill - 90
+  if corner > 0 then
+    -- Mid-corner. Leave the wheel where it was put and let the turn finish.
+    -- Easing off does not tighten the circle, but it does buy room.
+    set corner = corner - 1
+    drive forward 70
+  else
+    if me.slope > 12 then
+      if me.downhill < 50 and me.downhill > -50 then
+        -- The drop is more or less ahead. That is free speed: take it.
+        set name = "flat out"
+        turn body by me.downhill
+        drive forward 100
       else
-        turn body by me.uphill + 90
+        -- No drop worth having, so hold the line across the slope. A quarter
+        -- turn from straight up the hill is the flattest way through.
+        --
+        -- Turning the short way matters for a car. If the hill is on the right
+        -- we take the line to its left, and the other way round \u2014 either way
+        -- the wheel only ever moves a little, which keeps the speed up.
+        set name = "on the line"
+        if me.uphill > 0 then
+          turn body by me.uphill - 90
+        else
+          turn body by me.uphill + 90
+        end
+        drive forward 90
       end
-      drive forward 90
     end
   end
 end

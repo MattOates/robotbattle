@@ -67,23 +67,55 @@ const GOLDEN = {
   //     robot standing on it. Flat ground is level everywhere, so nothing here
   //     can ever block anything, and `ping` defaults to the power it always
   //     had: not one number below moved, hashes included.
+  // 8 — line of sight, and then the Racer learned to see a wall coming. The
+  //     version bump is the line of sight; the numbers below moved because of
+  //     the Racer. It used to drive into walls about two hundred and twenty
+  //     times a match and grind itself down doing it, so this fight is very
+  //     different now: 1833 ticks instead of 532, and Racer wins it rather
+  //     than dying to the scenery.
   simVersion: 8,
-  ticks: 532,
-  winner: "Hunter",
-  finalHash: "ee38dcac90e1ded5",
+  ticks: 1833,
+  winner: "Racer",
+  finalHash: "349a068135dcc387",
   /** Hash at ticks 0, 50, 100, ... */
   every50: [
     "39a9bf70a87e1511",
     "18db2eab6b88176b",
-    "766204a5b9bdad94",
-    "966a7ab1a6d204b8",
-    "8e9307f0b0de6a06",
-    "9e59e8dbb67c07fd",
-    "7305fd28978151b2",
-    "0ea37c3844697205",
-    "b91a02cae3ca1f5a",
-    "d1e6bf95831b63f4",
-    "469af15116233c04",
+    "b206883fc66a4140",
+    "cfe0c352560d1c3f",
+    "3c9e2ff818b3a440",
+    "ce33258723173c3b",
+    "882efcdcdc75a5c3",
+    "798b3b58b6167b12",
+    "a1822b994644e059",
+    "947231702c0daeeb",
+    "1a2fa3debd2a1b8d",
+    "37383e0738ac00a9",
+    "8499764619bbc400",
+    "de93c6a344f790c8",
+    "0afb2967a2e18410",
+    "e1c0f54a1f8815e9",
+    "eb1e7da20554b066",
+    "01c8fa051d9cc93d",
+    "2826810fa2ba2742",
+    "a60d492bef4fbc15",
+    "d8e5b2a6cd445ec7",
+    "2f48829e8c0d1e9d",
+    "1475dd74aef84a97",
+    "de5e3d7170551e97",
+    "6c5d91ba940dac43",
+    "c4590dd4f7f64ecf",
+    "8719f9daeca56116",
+    "bb5a17a7a5cf852e",
+    "7241d276be9c7261",
+    "98bb07cc30271ed7",
+    "9f2358631bc738ea",
+    "7deee0cc07afad76",
+    "4972826cedbffe06",
+    "3584c5ea001f3fbc",
+    "aed94bb4f99e13b9",
+    "a1e6b015e34cf899",
+    "08f083642859456a",
   ],
 };
 
@@ -99,8 +131,13 @@ const GOLDEN = {
  * The hash is deliberately not pinned here: `hashWorld` now covers the tank and
  * the cell list, so the digest legitimately differs even though the physics do
  * not.
+ *
+ * The numbers themselves are no longer the ones the pre-fuel game produced —
+ * the Racer learned to avoid walls since, and it is in this fight. What the
+ * pair still does, and the only thing it was ever for, is prove that the fuel
+ * switch is a real switch: this match and the one below have to differ.
  */
-const BEFORE_FUEL = { ticks: 525, winner: "Hunter" };
+const BEFORE_FUEL = { ticks: 2494, winner: "Hunter" };
 
 describe("with fuel switched off", () => {
   const result = runMatch(
@@ -110,7 +147,7 @@ describe("with fuel switched off", () => {
     ),
   );
 
-  it("plays the match the game had before fuel existed", () => {
+  it("plays a different match from the one with fuel in it", () => {
     expect(result.ticks).toBe(BEFORE_FUEL.ticks);
     expect(result.winnerName).toBe(BEFORE_FUEL.winner);
   });
