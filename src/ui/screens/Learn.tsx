@@ -270,6 +270,7 @@ function CodeBlock({ className, children, node, theme }: CodeProps) {
           opponents={params["opponents"] ?? ""}
           theme={theme}
           cones={params["cones"] === "true"}
+          fuel={params["fuel"] === "true"}
         />
       </PlaygroundBoundary>
     );

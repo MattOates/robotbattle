@@ -338,13 +338,19 @@ function makeHost(world: World, robot: Robot): VmHost {
  * Charge a robot for actuated work. Clamped at zero, because the floor is a
  * brownout rather than a debt — there is nothing below empty.
  */
-export function spendFuel(robot: Robot, amount: number): void {
-  if (amount <= 0) return;
+export function spendFuel(world: World, robot: Robot, amount: number): void {
+  if (!world.fuelConfig.enabled || amount <= 0) return;
   robot.fuel = Math.max(0, robot.fuel - amount);
 }
 
-/** How much of its capability a robot currently has, from its tank. */
-export function fuelFactor(robot: Robot): number {
+/**
+ * How much of its capability a robot currently has, from its tank.
+ *
+ * Exactly 1 when the mechanic is off, so a match without fuel is the match the
+ * game had before fuel existed rather than one quietly scaled by a full tank.
+ */
+export function fuelFactor(world: World, robot: Robot): number {
+  if (!world.fuelConfig.enabled) return 1;
   return FUEL.floorFactor + (1 - FUEL.floorFactor) * (robot.fuel / MAX_FUEL);
 }
 
@@ -367,7 +373,7 @@ export function fire(world: World, robot: Robot, powerRaw: number): void {
   });
 
   robot.gunHeat = TURRET.heatPerPower * power;
-  spendFuel(robot, FUEL.fire * power);
+  spendFuel(world, robot, FUEL.fire * power);
   robot.shotsFired++;
   world.effects.push({
     type: "muzzle",
@@ -398,7 +404,7 @@ export function fire(world: World, robot: Robot, powerRaw: number): void {
 export function ping(world: World, robot: Robot): void {
   if (!robot.alive || robot.pingHeat > 0) return;
   robot.pingHeat = RADAR.cooldown;
-  spendFuel(robot, FUEL.ping);
+  spendFuel(world, robot, FUEL.ping);
 
   let best: Robot | null = null;
   let bestDist = Infinity;
@@ -418,7 +424,7 @@ export function ping(world: World, robot: Robot): void {
   // urgent fact, and reporting both would need a second event anyway.
   let cell: FuelCell | null = null;
   let cellDist = Infinity;
-  if (!best) {
+  if (!best && world.fuelConfig.enabled) {
     for (const f of world.fuel) {
       const dx = f.x - robot.x;
       const dy = f.y - robot.y;

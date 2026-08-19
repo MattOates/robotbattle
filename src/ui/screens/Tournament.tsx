@@ -65,9 +65,10 @@ interface Viewing {
  * decided by something other than who happened to spawn nearer a cell.
  */
 const TOUR_FUEL = {
-  scarce: { spawnEveryTicks: 200, maxOnField: 2, amount: 18, radius: 10 },
+  off: FUEL_PRESETS.off,
+  scarce: { enabled: true, spawnEveryTicks: 200, maxOnField: 2, amount: 18, radius: 10 },
   normal: FUEL_PRESETS.tournament,
-  plentiful: { spawnEveryTicks: 60, maxOnField: 8, amount: 28, radius: 12 },
+  plentiful: { enabled: true, spawnEveryTicks: 60, maxOnField: 8, amount: 28, radius: 12 },
 } satisfies Record<string, FuelConfig>;
 
 type TourFuelLevel = keyof typeof TOUR_FUEL;

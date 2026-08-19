@@ -80,7 +80,7 @@ describe("running a match across a room", () => {
       });
     });
 
-    const lean = { spawnEveryTicks: 40, maxOnField: 9, amount: 35, radius: 13 };
+    const lean = { enabled: true, spawnEveryTicks: 40, maxOnField: 9, amount: 35, radius: 13 };
     const participants = sessions[0]!.entries() as Participant[];
     const manifest = manifestFromParticipants(participants, 4242, { fuel: lean });
     sessions[0]!.broadcast({ t: "start", matchId: newMatchId(), manifest, label: "Arena" });

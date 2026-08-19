@@ -135,6 +135,14 @@ export const FUEL = {
  * spawn the identical sequence of cells.
  */
 export interface FuelConfig {
+  /**
+   * Whether the mechanic exists in this match at all.
+   *
+   * Off means off in both directions: nothing spawns, and nothing is spent
+   * either. Stopping the spawns alone would be the cruellest possible setting,
+   * since robots would still drain and brown out with nothing to refuel from.
+   */
+  enabled: boolean;
   /** Ticks between spawn attempts. */
   spawnEveryTicks: number;
   /** Nothing spawns while this many cells are already out. */
@@ -151,8 +159,13 @@ export interface FuelConfig {
  * that drive flat out — and a knockout wants to be decided by something.
  */
 export const FUEL_PRESETS = {
-  arena: { spawnEveryTicks: 90, maxOnField: 6, amount: 25, radius: 10 },
-  tournament: { spawnEveryTicks: 120, maxOnField: 4, amount: 20, radius: 10 },
+  arena: { enabled: true, spawnEveryTicks: 90, maxOnField: 6, amount: 25, radius: 10 },
+  tournament: { enabled: true, spawnEveryTicks: 120, maxOnField: 4, amount: 20, radius: 10 },
+  /**
+   * The mechanic switched off. The rest of the numbers are kept rather than
+   * zeroed so that a screen which lets you toggle it can put back what you had.
+   */
+  off: { enabled: false, spawnEveryTicks: 90, maxOnField: 6, amount: 25, radius: 10 },
 } as const satisfies Record<string, FuelConfig>;
 
 /**
@@ -161,6 +174,7 @@ export const FUEL_PRESETS = {
  */
 export function clampFuelConfig(cfg: FuelConfig): FuelConfig {
   return {
+    enabled: cfg.enabled,
     spawnEveryTicks: Math.max(1, Math.min(36000, Math.round(cfg.spawnEveryTicks))),
     maxOnField: Math.max(0, Math.min(64, Math.round(cfg.maxOnField))),
     amount: clamp(cfg.amount, 0, MAX_FUEL),

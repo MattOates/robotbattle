@@ -131,7 +131,7 @@ function senseAll(world: World): void {
     }
 
     // --- nearest fuel cell in cone ---
-    if (r.vm.handles("sense fuel") && !r.vm.hasQueued("sense fuel")) {
+    if (world.fuelConfig.enabled && r.vm.handles("sense fuel") && !r.vm.hasQueued("sense fuel")) {
       let best: FuelCell | null = null;
       let bestDist = Infinity;
       for (const f of world.fuel) {
@@ -200,7 +200,7 @@ function moveRobots(world: World): void {
     // Brownout: an empty tank leaves a robot slow and vague, never stopped.
     // Sampled once, before anything is spent, so a robot's capability within a
     // tick is one consistent number rather than drifting as it pays for itself.
-    const fuelled = fuelFactor(r);
+    const fuelled = fuelFactor(world, r);
     const maxSpeed = spec.maxSpeed * terrainFactor * fuelled;
 
     // --- longitudinal: accelerate toward the throttle target ---
@@ -231,14 +231,14 @@ function moveRobots(world: World): void {
     }
 
     // --- turret, independent of the chassis ---
-    updateTurret(r, fuelled);
+    updateTurret(world, r, fuelled);
 
     // --- pay for the work actually done, not for asking ---
     // Charged on outcomes: a robot pinned against a wall at full throttle is
     // not moving and is not billed for movement.
-    spendFuel(r, FUEL.basal);
-    if (maxSpeed > 0) spendFuel(r, FUEL.drive * (Math.abs(r.speed) / maxSpeed));
-    spendFuel(r, FUEL.bodyTurn * Math.abs(angleDelta(headingBefore, r.heading)));
+    spendFuel(world, r, FUEL.basal);
+    if (maxSpeed > 0) spendFuel(world, r, FUEL.drive * (Math.abs(r.speed) / maxSpeed));
+    spendFuel(world, r, FUEL.bodyTurn * Math.abs(angleDelta(headingBefore, r.heading)));
 
     // --- translate ---
     r.x += cosDeg(r.heading) * r.speed * DT;
@@ -272,7 +272,7 @@ function moveRobots(world: World): void {
  * the world while the chassis turns underneath it — which is exactly what makes
  * `turret.aim at event.bearing` behave the way a beginner expects.
  */
-function updateTurret(r: Robot, fuelled: number): void {
+function updateTurret(world: World, r: Robot, fuelled: number): void {
   const turretBefore = r.turret;
   const radarBefore = r.radar;
   if (r.sweepAmplitude > 0) {
@@ -304,7 +304,7 @@ function updateTurret(r: Robot, fuelled: number): void {
 
   const slewed =
     Math.abs(angleDelta(turretBefore, r.turret)) + Math.abs(angleDelta(radarBefore, r.radar));
-  spendFuel(r, FUEL.slew * slewed);
+  spendFuel(world, r, FUEL.slew * slewed);
 }
 
 interface WallHit {
@@ -551,6 +551,7 @@ function collectFuel(world: World): void {
  */
 function spawnFuel(world: World): void {
   const cfg = world.fuelConfig;
+  if (!cfg.enabled) return;
   if (world.tick % cfg.spawnEveryTicks !== 0) return;
   if (world.fuel.length >= cfg.maxOnField) return;
 

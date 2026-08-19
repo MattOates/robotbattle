@@ -74,7 +74,7 @@ describe("fuel", () => {
     r.fuel = 0.01;
     for (let i = 0; i < 400; i++) step(w);
     expect(r.fuel).toBe(0);
-    spendFuel(r, 1000);
+    spendFuel(w, r, 1000);
     expect(r.fuel).toBe(0);
   });
 
@@ -156,5 +156,56 @@ describe("fuel", () => {
     w.fuel = [];
     w.robots[0]!.fuel -= 1;
     expect(hashWorld(w)).not.toBe(before);
+  });
+});
+
+describe("switched off", () => {
+  const OFF = { enabled: false };
+
+  it("spawns nothing", () => {
+    const w = world([IDLE], { ...OFF, spawnEveryTicks: 1 });
+    for (let i = 0; i < 300; i++) step(w);
+    expect(w.fuel).toHaveLength(0);
+  });
+
+  it("spends nothing, so the tank never moves", () => {
+    // The important half. Stopping the spawns alone would leave robots draining
+    // with nothing to refuel from — strictly crueller than either setting.
+    const w = world([DRIVER], OFF);
+    for (let i = 0; i < 600; i++) step(w);
+    expect(w.robots[0]!.fuel).toBe(MAX_FUEL);
+  });
+
+  it("does not brown out, even with an empty tank forced on it", () => {
+    const off = world([DRIVER], OFF);
+    const on = world([DRIVER], NO_SPAWN);
+    for (let i = 0; i < 60; i++) {
+      off.robots[0]!.fuel = 0;
+      on.robots[0]!.fuel = 0;
+      step(off);
+      step(on);
+    }
+    // Same robot, same script, same tank — the only difference is the switch.
+    expect(off.robots[0]!.speed).toBeGreaterThan(on.robots[0]!.speed);
+  });
+
+  it("never raises a fuel event", () => {
+    const forager = `name "Forager"\nchassis tank\non sense fuel\n  set name = "saw it"\nend\n`;
+    const w = world([forager], { ...OFF, spawnEveryTicks: 1 });
+    // A cell placed by hand, right on top of it: nothing should notice.
+    for (let i = 0; i < 60; i++) {
+      w.fuel.push({ id: 1, x: w.robots[0]!.x, y: w.robots[0]!.y, amount: 25 });
+      step(w);
+    }
+    expect(w.robots[0]!.name).toBe("Forager");
+  });
+
+  it("still compiles and runs a script written for fuel", () => {
+    // A robot that forages must not break in a match that has none.
+    const forager = `name "Forager"\nchassis tank\non sense fuel\n  drive forward 50\nend\non tick every 30\n  if me.fuel < 30 then\n    drive forward 10\n  end\nend\n`;
+    const w = world([forager], OFF);
+    for (let i = 0; i < 300; i++) step(w);
+    expect(w.robots[0]!.alive).toBe(true);
+    expect(w.robots[0]!.scriptError).toBeNull();
   });
 });

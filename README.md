@@ -238,6 +238,19 @@ plentiful they are is the host's call in the Arena lobby and in the tournament
 setup, and it travels inside the manifest — a guest is never told separately,
 and so can never simulate the same match under different terms.
 
+**The whole mechanic switches off**, and off means off in both directions:
+nothing spawns, and nothing is spent either. Stopping only the spawns would be
+the cruellest setting in the game, since robots would still drain and brown out
+with nothing to refuel from. A match with fuel off is the match the game had
+before fuel existed — `tests/determinism/golden.test.ts` pins that against the
+pre-fuel golden numbers, so any drain or spawn leaking into the disabled path
+fails the build. A robot written to forage still runs there; it simply never
+hears `on sense fuel`.
+
+Lesson playgrounds have it off unless the lesson asks for it with `fuel=true`,
+the same way they opt into sense cones. A lesson teaches one idea, and cells
+appearing during the lesson on sense cones are an unexplained second one.
+
 ```
 on sense fuel
   turn body by event.bearing        -- it is close; go and get it

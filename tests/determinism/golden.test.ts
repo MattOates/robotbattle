@@ -15,8 +15,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { runMatchWithHashes } from "../../src/sim/match.js";
+import { runMatch, runMatchWithHashes } from "../../src/sim/match.js";
 import { makeManifest, SIM_VERSION } from "../../src/sim/world.js";
+import { FUEL_PRESETS } from "../../src/sim/types.js";
 import { DODGER, HUNTER, RACER, SPINNER } from "../../src/bots/index.js";
 
 const GOLDEN_SEED = 20260815;
@@ -52,6 +53,40 @@ const GOLDEN = {
     "e577bd0722a07bfa",
   ],
 };
+
+/**
+ * What the same match was before fuel existed.
+ *
+ * Switching fuel off must not mean "fuel with a full tank" — it must mean the
+ * mechanic is not there. These two numbers are the SIM_VERSION 4 golden match,
+ * from before any of this was written, and a disabled match still has to
+ * reproduce them. Any drain, brownout, spawn or RNG draw leaking into the
+ * disabled path moves one of them.
+ *
+ * The hash is deliberately not pinned here: `hashWorld` now covers the tank and
+ * the cell list, so the digest legitimately differs even though the physics do
+ * not.
+ */
+const BEFORE_FUEL = { ticks: 525, winner: "Hunter" };
+
+describe("with fuel switched off", () => {
+  const result = runMatch(
+    makeManifest(
+      [{ source: HUNTER }, { source: RACER }, { source: SPINNER }, { source: DODGER }],
+      { seed: GOLDEN_SEED, fuel: FUEL_PRESETS.off },
+    ),
+  );
+
+  it("plays the match the game had before fuel existed", () => {
+    expect(result.ticks).toBe(BEFORE_FUEL.ticks);
+    expect(result.winnerName).toBe(BEFORE_FUEL.winner);
+  });
+
+  it("is a different match from the one with fuel on", () => {
+    // Otherwise the test above would pass just as well with a broken switch.
+    expect(GOLDEN.ticks).not.toBe(BEFORE_FUEL.ticks);
+  });
+});
 
 describe("golden match", () => {
   const { result, hashes } = runMatchWithHashes(

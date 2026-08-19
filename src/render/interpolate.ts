@@ -53,6 +53,8 @@ export interface Snapshot {
   robots: RobotSnap[];
   bullets: BulletSnap[];
   fuel: FuelSnap[];
+  /** False when the match has no fuel mechanic, so no gauge is drawn. */
+  fuelEnabled: boolean;
   /**
    * Pickup radius for this match. Carried so that what is drawn is the size a
    * cell actually is — a player judging whether they will clip one has to be
@@ -86,6 +88,7 @@ export function snapshot(world: World): Snapshot {
       power: b.power,
     })),
     fuel: world.fuel.map((f) => ({ id: f.id, x: f.x, y: f.y, amount: f.amount })),
+    fuelEnabled: world.fuelConfig.enabled,
     fuelRadius: world.fuelConfig.radius,
   };
 }

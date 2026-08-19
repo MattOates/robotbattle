@@ -14,6 +14,7 @@ import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { CodeEditor } from "../ui/CodeEditor.js";
 import { MatchCanvas, type MatchStatus } from "../ui/MatchCanvas.js";
 import { checkScript, makeManifest, type MatchManifest } from "../sim/world.js";
+import { FUEL_PRESETS } from "../sim/types.js";
 import { SAMPLE_BOTS } from "../bots/index.js";
 import type { Theme } from "../lang/vocab.js";
 
@@ -30,11 +31,22 @@ interface Props {
   theme: Theme;
   /** Draw the sense cones — worth it in the lesson about sensing. */
   cones?: boolean;
+  /**
+   * Put fuel in the playground. Off by default, and opted into per lesson the
+   * same way `cones` is.
+   *
+   * A lesson teaches one idea, and cells appearing during the lesson on sense
+   * cones are an unexplained second one — the reader has no way to find out
+   * what the turquoise circles are until much later. So the world a lesson
+   * shows stays as small as the lesson, and the lesson that introduces fuel
+   * turns it on.
+   */
+  fuel?: boolean;
 }
 
 const ARENA = { width: 460, height: 320 } as const;
 
-export function Playground({ source, opponents, theme, cones = false }: Props) {
+export function Playground({ source, opponents, theme, cones = false, fuel = false }: Props) {
   const [code, setCode] = useState(source);
   const [seed, setSeed] = useState(1);
   const [running, setRunning] = useState(false);
@@ -61,10 +73,16 @@ export function Playground({ source, opponents, theme, cones = false }: Props) {
     if (!check.ok) return null;
     return makeManifest(
       [{ source: code }, ...others.map((bot) => ({ source: bot.source }))],
-      { seed, width: ARENA.width, height: ARENA.height, maxTicks: 30 * 45 },
+      {
+        seed,
+        width: ARENA.width,
+        height: ARENA.height,
+        maxTicks: 30 * 45,
+        fuel: fuel ? FUEL_PRESETS.arena : FUEL_PRESETS.off,
+      },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seed, others]);
+  }, [seed, others, fuel]);
 
   const play = () => {
     if (!check.ok) return;

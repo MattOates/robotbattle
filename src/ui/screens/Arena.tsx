@@ -43,14 +43,16 @@ interface Props {
  * is not a change at all — and a lobby is not the place to learn that.
  */
 const FUEL_SETTINGS = {
-  scarce: { spawnEveryTicks: 150, maxOnField: 3, amount: 20, radius: 10 },
+  off: FUEL_PRESETS.off,
+  scarce: { enabled: true, spawnEveryTicks: 150, maxOnField: 3, amount: 20, radius: 10 },
   normal: FUEL_PRESETS.arena,
-  plentiful: { spawnEveryTicks: 45, maxOnField: 10, amount: 30, radius: 12 },
+  plentiful: { enabled: true, spawnEveryTicks: 45, maxOnField: 10, amount: 30, radius: 12 },
 } satisfies Record<string, FuelConfig>;
 
 type FuelLevel = keyof typeof FUEL_SETTINGS;
 
 const FUEL_BLURB: Record<FuelLevel, string> = {
+  off: "No fuel in this match. Nothing to collect, and nothing spends it either.",
   scarce: "Thin pickings. Robots that drive everywhere will be crawling by the end.",
   normal: "Enough to keep a robot that looks for it running.",
   plentiful: "Plenty about. Almost nobody will run low.",

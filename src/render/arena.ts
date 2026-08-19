@@ -401,7 +401,7 @@ export class ArenaRenderer {
 
       const fb = view.fuelBar;
       fb.clear();
-      if (now.alive) {
+      if (now.alive && to.fuelEnabled) {
         const w = ROBOT_RADIUS * 2;
         const frac = Math.max(0, Math.min(1, now.fuel));
         fb.rect(-w / 2, 0, w, 2).fill({ color: 0x000000, alpha: 0.45 });
