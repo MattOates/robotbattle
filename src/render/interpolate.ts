@@ -8,8 +8,17 @@
  */
 
 import { normalizeAngle } from "../sim/math.js";
+import { SKID, STEERED } from "../sim/chassis.js";
 import { MAX_FUEL, type World } from "../sim/types.js";
 import type { Locomotion } from "../lang/ast.js";
+
+/**
+ * Normalising divisor for the speed the renderer sees. The faster of the two
+ * chassis, so the number is comparable between them: a tank at full tilt reads
+ * below 1, which is honest, rather than each chassis having its own private
+ * meaning of "flat out".
+ */
+const CHASSIS_TOP_SPEED = Math.max(SKID.maxSpeed, STEERED.maxSpeed);
 
 export interface RobotSnap {
   id: number;
@@ -23,6 +32,14 @@ export interface RobotSnap {
   health: number;
   /** 0..1 of a full tank, for the gauge under the robot. */
   fuel: number;
+  /**
+   * How hard this robot is fighting the ground, -1..1. Positive is uphill.
+   * Carried so the art can show the effort: dust off a climbing machine, a bow
+   * wave in front of an organism shoving through thick goop.
+   */
+  climb: number;
+  /** -1..1 of top speed. Effort needs both: shoving hard, not merely being on a hill. */
+  speed: number;
   name: string;
   color: string;
   locomotion: Locomotion;
@@ -76,6 +93,8 @@ export function snapshot(world: World): Snapshot {
       alive: r.alive,
       health: r.health,
       fuel: r.fuel / MAX_FUEL,
+      climb: r.climb,
+      speed: r.speed / CHASSIS_TOP_SPEED,
       name: r.name,
       color: r.color,
       locomotion: r.locomotion,

@@ -21,7 +21,12 @@ import {
   type Participant,
 } from "../../net/matchsetup.js";
 import type { MatchManifest } from "../../sim/world.js";
-import { FUEL_PRESETS, type FuelConfig } from "../../sim/types.js";
+import {
+  FUEL_PRESETS,
+  TERRAIN_PRESETS,
+  type FuelConfig,
+  type TerrainConfig,
+} from "../../sim/types.js";
 import { accuracy, executionWarning } from "../../sim/telemetry.js";
 import type { RobotTelemetry } from "../../store/types.js";
 import type { Theme } from "../../lang/vocab.js";
@@ -58,6 +63,28 @@ const FUEL_BLURB: Record<FuelLevel, string> = {
   plentiful: "Plenty about. Almost nobody will run low.",
 };
 
+/**
+ * How dramatic the host wants the ground to be.
+ *
+ * Same reasoning as the fuel settings above: three words, because feature size
+ * and amplitude only mean anything together. The seed is left alone \u2014 a
+ * different map every match would make the setting impossible to judge, and
+ * anyone who wants one can start another match.
+ */
+const TERRAIN_SETTINGS = {
+  flat: TERRAIN_PRESETS.off,
+  rolling: { enabled: true, seed: 1, featureSize: 340, amplitude: 0.6 },
+  hilly: TERRAIN_PRESETS.arena,
+} satisfies Record<string, TerrainConfig>;
+
+type TerrainLevel = keyof typeof TERRAIN_SETTINGS;
+
+const TERRAIN_BLURB: Record<TerrainLevel, string> = {
+  flat: "Level ground everywhere. Every direction costs the same.",
+  rolling: "Gentle ground. Worth noticing, not worth planning around.",
+  hilly: "Real hills. Going up is slow and expensive, going down is quick and nearly free, and going across is neither.",
+};
+
 interface LiveMatch {
   matchId: string;
   manifest: MatchManifest;
@@ -84,6 +111,7 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
   // Host-only, and only read when the host presses start: it rides to everyone
   // else inside the manifest, so there is nothing here to keep in sync.
   const [fuelLevel, setFuelLevel] = useState<FuelLevel>("normal");
+  const [terrainLevel, setTerrainLevel] = useState<TerrainLevel>("flat");
   const hashesRef = useRef(new Map<number, string>());
 
   useAutoJoin(room, initialRoom);
@@ -191,6 +219,7 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
     session.setNotice(null);
     const manifest = manifestFromParticipants(participants, newMatchSeed(), {
       fuel: FUEL_SETTINGS[fuelLevel],
+      terrain: TERRAIN_SETTINGS[terrainLevel],
     });
     session.broadcast({ t: "start", matchId: newMatchId(), manifest, label: "Arena" });
   };
@@ -312,6 +341,29 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
               ))}
             </div>
             <p className="empty small">{FUEL_BLURB[fuelLevel]}</p>
+          </div>
+          <div className="panel-head">
+            <span className="silkscreen">Ground</span>
+          </div>
+          <div className="panel-body">
+            <p className="empty small">
+              Hills, or thick goop if you are playing in the microcosm. Driving uphill is slower and
+              costs more; driving downhill is quicker and costs less; driving along a slope costs
+              exactly what flat ground does.
+            </p>
+            <div className="row">
+              {(Object.keys(TERRAIN_SETTINGS) as TerrainLevel[]).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`btn small${terrainLevel === level ? " primary" : ""}`}
+                  onClick={() => setTerrainLevel(level)}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+            <p className="empty small">{TERRAIN_BLURB[terrainLevel]}</p>
           </div>
         </>
       ) : null}

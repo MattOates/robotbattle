@@ -135,7 +135,7 @@ describe("the match offered for watching", () => {
 
       // Exactly what the screen does to watch it.
       const replay = runMatch(
-        duelManifest(a, b, showcase.seed, showcase.aFirst, showcase.fuel),
+        duelManifest(a, b, showcase.seed, showcase.aFirst, showcase.fuel, showcase.terrain),
       );
       expect(replay.winnerId).toBe(sideIndex(showcase.winner, showcase.aFirst));
       expect(showcase.winner).toBe(duel.winner);
@@ -157,6 +157,29 @@ describe("the match offered for watching", () => {
     );
     expect(replay.winnerId).toBe(sideIndex(showcase.winner, showcase.aFirst));
     expect(replay.ticks).toBe(showcase.ticks);
+  });
+
+  it("replays a duel fought over real ground", () => {
+    // The same silent failure as the fuel case above, and the one the plan
+    // called the sharp edge: `duelManifest` is reached from three places, and a
+    // showcase that loses the map illustrates a different match while claiming
+    // to be this one.
+    const hills = { enabled: true, seed: 77, featureSize: 240, amplitude: 1 };
+    const duel = runDuel(hunter, racer, 8181, DUEL_MATCHES, undefined, undefined, hills);
+    const showcase = duel.showcase!;
+    expect(showcase.terrain).toEqual(hills);
+
+    const faithful = runMatch(
+      duelManifest(hunter, racer, showcase.seed, showcase.aFirst, showcase.fuel, showcase.terrain),
+    );
+    expect(faithful.winnerId).toBe(sideIndex(showcase.winner, showcase.aFirst));
+    expect(faithful.ticks).toBe(showcase.ticks);
+
+    // And rebuilt on flat ground it is visibly a different match.
+    const careless = runMatch(
+      duelManifest(hunter, racer, showcase.seed, showcase.aFirst, showcase.fuel),
+    );
+    expect(careless.finalHash).not.toBe(faithful.finalHash);
   });
 
   it("carries the settings rather than assuming them", () => {

@@ -11,11 +11,20 @@ import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
 import { DEG_TO_RAD } from "../sim/math.js";
 import { RADAR, ROBOT_RADIUS, SENSE, MAX_HEALTH, type Effect, type World } from "../sim/types.js";
 import { ART, hexToNumber, type ArenaTheme } from "./themes/index.js";
+import type { TerrainField } from "../sim/terrain.js";
 import type { Theme } from "../lang/vocab.js";
 import { lerp, lerpAngle, snapshot, type Snapshot } from "./interpolate.js";
 
 interface Particle {
-  type: Effect["type"];
+  /**
+   * `wake` is renderer-only: it is shed by a robot labouring against the
+   * ground, frame by frame, rather than emitted by the simulation. That is
+   * deliberate. The sim has no business knowing about dust, and because this
+   * never crosses back into it the scatter below is free to use `Math.random`
+   * \u2014 two peers can watch differently shaped dust clouds above a match that is
+   * still bit-identical underneath.
+   */
+  type: Effect["type"] | "wake";
   x: number;
   y: number;
   heading: number;
@@ -24,6 +33,8 @@ interface Particle {
   life: number;
   /** How far a ping reached before it hit something. */
   range: number;
+  /** Wake only: how hard the robot was working when it shed this, 0..1. */
+  effort?: number;
 }
 
 /** Frames between label rasterisations. Six is about five updates a second. */
@@ -37,6 +48,8 @@ interface RobotView {
   label: Text;
   healthBar: Graphics;
   fuelBar: Graphics;
+  /** Drawn under the body, rotated with it: the fluid or dirt being shoved aside. */
+  strain: Graphics;
   /** What the cached body Graphics was drawn for, so we redraw only on change. */
   drawnColor: string;
   drawnLabel: string;
@@ -62,12 +75,23 @@ export interface ArenaOptions {
  */
 export const FUEL_BAR_COLOR = 0x2fe0c8;
 
+/**
+ * Ceiling on shed wake particles. Eight robots all climbing at once would
+ * otherwise spawn faster than they expire and quietly turn the arena into
+ * fog \u2014 at which point the effect stops meaning anything anyway.
+ */
+const MAX_WAKE_PARTICLES = 220;
+
 export class ArenaRenderer {
   private app: Application | null = null;
   private theme: ArenaTheme;
   private options: ArenaOptions;
 
   private backdrop = new Graphics();
+  /** The shape of the ground. Static for a whole match, so drawn once. */
+  private terrain = new Graphics();
+  /** Grid and walls, above the terrain so the map reads as ground, not as paint. */
+  private grid = new Graphics();
   private cones = new Graphics();
   private bullets = new Graphics();
   private fuel = new Graphics();
@@ -82,6 +106,13 @@ export class ArenaRenderer {
   private curr: Snapshot | null = null;
   private width = 0;
   private height = 0;
+  /**
+   * The ground for the current match, or null for a flat one. Taken from the
+   * world on the first step rather than plumbed in separately: the renderer is
+   * already handed the world, and one source beats two that can disagree.
+   */
+  private terrainField: TerrainField | null = null;
+  private terrainKey = "";
 
   constructor(options: ArenaOptions) {
     this.options = options;
@@ -117,6 +148,8 @@ export class ArenaRenderer {
     parent.appendChild(app.canvas);
 
     app.stage.addChild(this.backdrop);
+    app.stage.addChild(this.terrain);
+    app.stage.addChild(this.grid);
     app.stage.addChild(this.cones);
     // Under everything that moves: a cell is scenery until somebody reaches it,
     // and it must never hide a robot or a bullet.
@@ -126,6 +159,7 @@ export class ArenaRenderer {
     app.stage.addChild(this.effects);
 
     this.drawBackdrop();
+    this.drawTerrain();
   }
 
   destroy(): void {
@@ -172,6 +206,10 @@ export class ArenaRenderer {
     if (this.app) {
       this.app.renderer.background.color = this.theme.background;
       this.drawBackdrop();
+      // The two art packs read the same field completely differently \u2014 one as
+      // contoured ground, the other as pooled fluid \u2014 so a theme swap has to
+      // redraw the map, not just recolour it.
+      this.drawTerrain();
       // Force every cached body to be redrawn in the new art pack.
       for (const view of this.views.values()) view.drawnColor = "";
     }
@@ -217,10 +255,23 @@ export class ArenaRenderer {
     this.fuel.clear();
     this.effects.clear();
     this.cones.clear();
+    // Not the terrain: `reset` is for a rerun of the same match, and the ground
+    // does not change between attempts. `onStep` redraws it if the map really
+    // did change.
   }
 
   /** Called once per simulation tick, after the world has stepped. */
   onStep(world: World): void {
+    // Cheap identity check on the map's recipe. A new match with different
+    // ground redraws; the same match stepping again does not.
+    const cfg = world.terrainConfig;
+    const key = cfg.enabled ? `${cfg.seed}|${cfg.featureSize}|${cfg.amplitude}` : "";
+    if (key !== this.terrainKey) {
+      this.terrainKey = key;
+      this.terrainField = cfg.enabled ? world.terrain : null;
+      this.drawTerrain();
+    }
+
     this.prev = this.curr;
     this.curr = snapshot(world);
     for (const e of world.effects) {
@@ -270,10 +321,11 @@ export class ArenaRenderer {
   // ---- pieces -----------------------------------------------------------
 
   private drawBackdrop(): void {
-    const g = this.backdrop;
-    g.clear();
-    this.theme.drawBackdrop?.(g, this.width, this.height);
+    this.backdrop.clear();
+    this.theme.drawBackdrop?.(this.backdrop, this.width, this.height);
 
+    const g = this.grid;
+    g.clear();
     if (this.theme.gridSize > 0) {
       for (let x = this.theme.gridSize; x < this.width; x += this.theme.gridSize) {
         g.moveTo(x, 0).lineTo(x, this.height);
@@ -288,6 +340,26 @@ export class ArenaRenderer {
       width: 2,
       color: this.theme.wallColor,
     });
+  }
+
+  /**
+   * Redraw the ground.
+   *
+   * Once per match, not once per frame: terrain never changes while a match is
+   * running, and sampling a noise field across the whole arena is far too much
+   * work to repeat sixty times a second.
+   */
+  private drawTerrain(): void {
+    const g = this.terrain;
+    g.clear();
+    const field = this.terrainField;
+    if (!field || !this.theme.drawTerrain) return;
+    this.theme.drawTerrain(
+      g,
+      (x: number, y: number) => field.heightAt(x, y),
+      this.width,
+      this.height,
+    );
   }
 
   private viewFor(snap: Snapshot["robots"][number]): RobotView {
@@ -324,9 +396,13 @@ export class ArenaRenderer {
       const fuelBar = new Graphics();
       fuelBar.y = ROBOT_RADIUS + 8;
 
+      // Displaced ground or fluid, under everything: it is what the robot is
+      // shoving through, so the robot has to be on top of it.
+      const strain = new Graphics();
+
       // Radar under the turret: when both point the same way, the gun is the
       // one that matters and should be on top.
-      root.addChild(body, radarPivot, turretPivot, healthBar, fuelBar, label);
+      root.addChild(strain, body, radarPivot, turretPivot, healthBar, fuelBar, label);
       this.robotLayer.addChild(root);
       view = {
         root,
@@ -336,6 +412,7 @@ export class ArenaRenderer {
         label,
         healthBar,
         fuelBar,
+        strain,
         drawnColor: "",
         drawnLabel: "",
         labelAge: LABEL_INTERVAL,
@@ -343,6 +420,19 @@ export class ArenaRenderer {
       this.views.set(snap.id, view);
     }
     return view;
+  }
+
+  /**
+   * How hard a robot is visibly working: uphill, under power, right now.
+   *
+   * Both factors are needed. A robot parked on a hill is not straining, and a
+   * robot flat out across a contour is not either \u2014 it is the product that
+   * shows, which is also exactly what the fuel bill is proportional to.
+   */
+  private static effortOf(snap: Snapshot["robots"][number]): number {
+    if (!snap.alive) return 0;
+    const e = snap.climb * Math.abs(snap.speed);
+    return e > 0 ? Math.min(1, e / 0.5) : 0;
   }
 
   private drawRobots(from: Snapshot, to: Snapshot, t: number): void {
@@ -397,6 +487,34 @@ export class ArenaRenderer {
         hb.rect(-w / 2, 0, w * frac, 3).fill(
           frac > 0.5 ? 0x6ad98a : frac > 0.25 ? 0xffd166 : 0xff6b6b,
         );
+      }
+
+      // --- fighting the ground ---
+      const effort = ArenaRenderer.effortOf(now);
+      const strain = view.strain;
+      strain.clear();
+      if (effort > 0 && this.theme.drawStrain) {
+        // Rotated with the body: a bow wave piles up at the nose, and the nose
+        // is wherever the chassis is pointing.
+        strain.rotation = view.body.rotation;
+        this.theme.drawStrain(strain, effort, now.speed, ROBOT_RADIUS);
+      }
+      if (effort > 0.12 && this.theme.drawWake && this.particles.length < MAX_WAKE_PARTICLES) {
+        // Shed behind the robot, in world space, so it stays where it was made
+        // while the robot drives on out of it.
+        const heading = lerpAngle(was.heading, now.heading, t);
+        const back = (heading + 180) * DEG_TO_RAD;
+        const spread = (Math.random() - 0.5) * ROBOT_RADIUS * 1.4;
+        this.particles.push({
+          type: "wake",
+          x: view.root.x + Math.cos(back) * ROBOT_RADIUS + Math.cos(back + Math.PI / 2) * spread,
+          y: view.root.y + Math.sin(back) * ROBOT_RADIUS + Math.sin(back + Math.PI / 2) * spread,
+          heading,
+          age: 0,
+          life: 16 + Math.floor(Math.random() * 10),
+          range: 0,
+          effort,
+        });
       }
 
       const fb = view.fuelBar;
@@ -499,6 +617,8 @@ export class ArenaRenderer {
         g.moveTo(p.x, p.y)
           .lineTo(p.x + Math.cos(dir) * reach, p.y + Math.sin(dir) * reach)
           .stroke({ width: 1.2, color: this.theme.pingColor, alpha: fade * 0.85 });
+      } else if (p.type === "wake") {
+        this.theme.drawWake?.(g, p.x, p.y, p.heading, k, p.effort ?? 0);
       } else if (p.type === "pickup") {
         // An expanding ring where the cell was, so a pickup is legible even
         // when it happens off to the side of whatever you were watching.

@@ -18,7 +18,12 @@
 import { runMatch } from "../sim/match.js";
 import { checkScript } from "../sim/world.js";
 import { duelManifest, type Duellist } from "./duel.js";
-import { FUEL_PRESETS, type FuelConfig } from "../sim/types.js";
+import {
+  FUEL_PRESETS,
+  TERRAIN_PRESETS,
+  type FuelConfig,
+  type TerrainConfig,
+} from "../sim/types.js";
 
 export interface QualifierEntrant {
   id: string;
@@ -74,6 +79,7 @@ export function runQualifier(
   seedBase: number,
   onProgress?: (progress: QualifierProgress) => void,
   fuel: FuelConfig = FUEL_PRESETS.tournament,
+  terrain: TerrainConfig = TERRAIN_PRESETS.off,
 ): Standing[] {
   const table = new Map<string, Standing>();
   for (const entrant of entrants) {
@@ -125,7 +131,7 @@ export function runQualifier(
       // which happens the moment somebody enters a robot they were given.
       const xFirst =
         x.robot.source !== y.robot.source ? x.robot.source < y.robot.source : x.id <= y.id;
-      const manifest = duelManifest(x.robot, y.robot, seed, xFirst, fuel);
+      const manifest = duelManifest(x.robot, y.robot, seed, xFirst, fuel, terrain);
       const result = runMatch(manifest);
 
       const xIndex = xFirst ? 0 : 1;

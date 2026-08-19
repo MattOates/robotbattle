@@ -13,6 +13,7 @@ import { EVENT_DOCS } from "../../src/lang/events.js";
 import { EVENT_NAMES, type EventName } from "../../src/lang/ast.js";
 import { createWorld, makeManifest } from "../../src/sim/world.js";
 import { step } from "../../src/sim/step.js";
+import { FUEL_PRESETS, TERRAIN_PRESETS } from "../../src/sim/types.js";
 import { DODGER, HUNTER, RACER, SPINNER } from "../../src/bots/index.js";
 
 interface Seen {
@@ -76,7 +77,15 @@ function playOut(): Seen[] {
           { source: SPINNER },
           { source: DODGER },
         ],
-        { seed: 31337, maxTicks: 30 * 90 },
+        // Fuel and terrain both switched on, because both gate events: the
+        // documentation for `sense fuel` and `ping slope` would otherwise go
+        // unchecked in the one test whose job is checking it.
+        {
+          seed: 31337,
+          maxTicks: 30 * 90,
+          fuel: FUEL_PRESETS.arena,
+          terrain: TERRAIN_PRESETS.arena,
+        },
       ),
     );
     while (!world.over && world.tick < world.maxTicks) step(world);
@@ -109,6 +118,19 @@ describe("event payloads", () => {
     // `bullet missed` and `sense wall` need particular geometry, so we assert a
     // healthy majority rather than all eleven.
     expect(names.size).toBeGreaterThanOrEqual(8);
+  });
+
+  it("actually reaches the two events that only exist when a switch is on", () => {
+    // Without this the manifest above could quietly lose its fuel or terrain
+    // settings and the field checks for those two events would pass by never
+    // running at all.
+    const names = new Set(seen.map((s) => s.name));
+    // `ping fuel` for the fuel switch and `ping slope` for the terrain one.
+    // Not `sense fuel`: a cell has to drift into a narrow forward cone, which
+    // this seed never happens to arrange, and a test that depends on that is a
+    // test that will fail one day for no reason worth investigating.
+    expect(names).toContain("ping fuel");
+    expect(names).toContain("ping slope");
   });
 });
 

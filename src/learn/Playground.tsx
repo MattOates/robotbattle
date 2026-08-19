@@ -14,7 +14,7 @@ import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { CodeEditor } from "../ui/CodeEditor.js";
 import { MatchCanvas, type MatchStatus } from "../ui/MatchCanvas.js";
 import { checkScript, makeManifest, type MatchManifest } from "../sim/world.js";
-import { FUEL_PRESETS } from "../sim/types.js";
+import { FUEL_PRESETS, TERRAIN_PRESETS } from "../sim/types.js";
 import { SAMPLE_BOTS } from "../bots/index.js";
 import type { Theme } from "../lang/vocab.js";
 
@@ -42,11 +42,24 @@ interface Props {
    * turns it on.
    */
   fuel?: boolean;
+  /**
+   * Put terrain in the playground. Off for the same reason as fuel: a lesson
+   * about turning should not have its robot mysteriously slowing down on a hill
+   * nobody has explained yet.
+   */
+  terrain?: boolean;
 }
 
 const ARENA = { width: 460, height: 320 } as const;
 
-export function Playground({ source, opponents, theme, cones = false, fuel = false }: Props) {
+export function Playground({
+  source,
+  opponents,
+  theme,
+  cones = false,
+  fuel = false,
+  terrain = false,
+}: Props) {
   const [code, setCode] = useState(source);
   const [seed, setSeed] = useState(1);
   const [running, setRunning] = useState(false);
@@ -79,10 +92,11 @@ export function Playground({ source, opponents, theme, cones = false, fuel = fal
         height: ARENA.height,
         maxTicks: 30 * 45,
         fuel: fuel ? FUEL_PRESETS.arena : FUEL_PRESETS.off,
+        terrain: terrain ? TERRAIN_PRESETS.arena : TERRAIN_PRESETS.off,
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seed, others, fuel]);
+  }, [seed, others, fuel, terrain]);
 
   const play = () => {
     if (!check.ok) return;

@@ -67,8 +67,55 @@ export interface ArenaTheme {
    */
   drawFuel(g: Graphics, radius: number): void;
 
-  /** Optional decorative backdrop drawn once behind the grid. */
+  /** Optional decorative backdrop drawn once, beneath everything else. */
   drawBackdrop?(g: Graphics, width: number, height: number): void;
+
+  /**
+   * Draw the shape of the ground, once per match.
+   *
+   * `sample` returns the height at a point, 0 (easiest going) to 1 (worst).
+   * It is the same number for both art packs and they are expected to disagree
+   * about it completely: one reads it as elevation and draws contoured
+   * hillside, the other as viscosity and draws pooled fluid. Nothing about the
+   * gameplay changes between them, so the drawing is free to.
+   *
+   * A sampler rather than a baked grid, because the right resolution is a
+   * question about the art, not about the field.
+   */
+  drawTerrain?(
+    g: Graphics,
+    sample: (x: number, y: number) => number,
+    width: number,
+    height: number,
+  ): void;
+
+  /**
+   * Draw what it looks like to fight the ground, in the robot's own frame:
+   * +x is forward, (0,0) is the middle of the chassis.
+   *
+   * `climb` is -1 (straight down the steepest slope) to +1 (straight up it),
+   * `speed` is -1..1 of top speed. Called every frame for every live robot, so
+   * a theme that has nothing to say should return without drawing.
+   */
+  drawStrain?(g: Graphics, effort: number, speed: number, radius: number): void;
+
+  /**
+   * Draw one shed particle, in WORLD coordinates, left behind by a robot
+   * working against the ground. `t` is 0 when new and 1 when it is about to
+   * expire; `effort` is how hard the robot was pushing when it shed this.
+   *
+   * Separate from `drawStrain` because the two behave differently in the world:
+   * a bow wave belongs to the thing pushing it and travels with it, while dust
+   * hangs where it was thrown and is left behind.
+   */
+  drawWake?(
+    g: Graphics,
+    x: number,
+    y: number,
+    heading: number,
+    t: number,
+    effort: number,
+  ): void;
 }
 
 /** `#ff8800` -> 0xff8800. Falls back to a neutral grey. */

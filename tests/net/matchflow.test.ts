@@ -98,6 +98,45 @@ describe("running a match across a room", () => {
     expect(runMatch(manifest).finalHash).not.toBe(runMatch(dflt).finalHash);
   });
 
+  it("carries the host's map to every peer, and every peer draws it the same", () => {
+    // Terrain is the first thing in the manifest that is not a number the sim
+    // reads directly: it is a recipe each peer expands into a whole field of
+    // noise. So this is really asking whether the noise itself is deterministic
+    // across independent constructions of the same world.
+    const { network, sessions } = room(3);
+    const received = new Map<number, MatchManifest>();
+    sessions.forEach((session, i) => {
+      session.onMessage((_from, message: Message) => {
+        if (message.t === "start") received.set(i, message.manifest);
+      });
+    });
+
+    const hills = { enabled: true, seed: 31337, featureSize: 210, amplitude: 1 };
+    const participants = sessions[0]!.entries() as Participant[];
+    const manifest = manifestFromParticipants(participants, 909, { terrain: hills });
+    sessions[0]!.broadcast({ t: "start", matchId: newMatchId(), manifest, label: "Arena" });
+    network.flush();
+
+    expect(received.size).toBe(4);
+    for (const m of received.values()) expect(m.terrain).toEqual(hills);
+
+    const streams = [...received.values()].map((m) => runMatchWithHashes(m).hashes);
+    for (const stream of streams) expect(stream).toEqual(streams[0]);
+    expect(streams[0]!.length).toBeGreaterThan(20);
+
+    // The ground really was underfoot: on a flat map the same seed and the same
+    // robots produce a different match.
+    const flat = manifestFromParticipants(participants, 909);
+    expect(runMatch(manifest).finalHash).not.toBe(runMatch(flat).finalHash);
+
+    // And a peer handed a DIFFERENT map diverges immediately rather than
+    // drifting apart quietly \u2014 which is what hashing the config buys.
+    const wrongMap = manifestFromParticipants(participants, 909, {
+      terrain: { ...hills, seed: 4 },
+    });
+    expect(runMatchWithHashes(wrongMap).hashes[0]).not.toBe(streams[0]![0]);
+  });
+
   it("lets every peer work out which robot is theirs", () => {
     const { sessions } = room(3);
     const participants = sessions[0]!.entries() as Participant[];

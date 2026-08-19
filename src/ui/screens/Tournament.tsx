@@ -40,7 +40,7 @@ import { sanitiseEntry, sanitiseText, type Message } from "../../net/protocol.js
 import { DUEL_MATCHES, duelManifest, scoreline, type Duellist } from "../../tournament/duel.js";
 import { seedForJob, type DuelJob, type DuelRecord } from "../../tournament/round.js";
 import { needsQualifier, qualifierMatches, type Standing } from "../../tournament/qualifier.js";
-import { FUEL_PRESETS, type FuelConfig } from "../../sim/types.js";
+import { FUEL_PRESETS, TERRAIN_PRESETS, type FuelConfig, type TerrainConfig } from "../../sim/types.js";
 import type { RoundWorkerIn, RoundWorkerOut } from "../../tournament/round.worker.js";
 import { pruneOffered, toggleOffered } from "../tradeShelf.js";
 
@@ -73,6 +73,19 @@ const TOUR_FUEL = {
 
 type TourFuelLevel = keyof typeof TOUR_FUEL;
 
+/**
+ * Tournament ground. Broader and gentler than the arena's when it is on: bigger
+ * features give a script room to commit to a route, and the lower amplitude
+ * keeps a knockout from turning on which half of the map somebody spawned in.
+ */
+const TOUR_TERRAIN = {
+  flat: TERRAIN_PRESETS.off,
+  rolling: { enabled: true, seed: 1, featureSize: 400, amplitude: 0.5 },
+  hilly: TERRAIN_PRESETS.tournament,
+} satisfies Record<string, TerrainConfig>;
+
+type TourTerrainLevel = keyof typeof TOUR_TERRAIN;
+
 export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }: Props) {
   const { robots } = lib;
   const words = THEMES[theme];
@@ -87,6 +100,8 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
   // later ones incomparable, and the bracket is a claim about one contest.
   const [fuelLevel, setFuelLevel] = useState<TourFuelLevel>("normal");
   const fuel = TOUR_FUEL[fuelLevel];
+  const [terrainLevel, setTerrainLevel] = useState<TourTerrainLevel>("flat");
+  const terrain = TOUR_TERRAIN[terrainLevel];
 
   useEffect(() => {
     if (connected && room.roomCode && parseRoute(window.location.hash).room !== room.roomCode) {
@@ -318,6 +333,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
         b,
         seedBase: seedForJob(seedBase, match.id),
         fuel,
+        terrain,
       });
     }
     if (jobs.length === 0) return;
@@ -389,7 +405,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       matches: DUEL_MATCHES,
       round: currentRound,
     } satisfies RoundWorkerIn);
-  }, [bracket, currentRound, fuel, isHost, room.session, running]);
+  }, [bracket, currentRound, fuel, terrain, isHost, room.session, running]);
 
   const draw = useCallback(
     (ranking: string[]) => {
@@ -467,8 +483,9 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       entrants: field.map((e) => ({ id: e.id, robot: e.robot })),
       seedBase: newMatchSeed(),
       fuel,
+      terrain,
     } satisfies RoundWorkerIn);
-  }, [draw, field, fuel, isHost, qualifying, room.session]);
+  }, [draw, field, fuel, terrain, isHost, qualifying, room.session]);
 
   const reset = useCallback(() => {
     if (!isHost) return;
@@ -519,6 +536,10 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       showcase.seed,
       showcase.aFirst,
       showcase.fuel,
+      // From the showcase, never from the control above. The host may have
+      // moved the setting since this duel was fought, and a replay has to show
+      // the match that actually happened.
+      showcase.terrain,
     );
   }, [bracket, viewingRecord]);
 
@@ -638,20 +659,36 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
         {notice ? <div className="notice">{notice}</div> : null}
 
         {isHost && !drawn ? (
-          <div className="row" aria-label="fuel">
-            <span className="roster-meta">Fuel</span>
-            {(Object.keys(TOUR_FUEL) as TourFuelLevel[]).map((level) => (
-              <button
-                key={level}
-                type="button"
-                className={`btn small${fuelLevel === level ? " primary" : ""}`}
-                onClick={() => setFuelLevel(level)}
-                disabled={qualifying !== null}
-              >
-                {level}
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="row" aria-label="fuel">
+              <span className="roster-meta">Fuel</span>
+              {(Object.keys(TOUR_FUEL) as TourFuelLevel[]).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`btn small${fuelLevel === level ? " primary" : ""}`}
+                  onClick={() => setFuelLevel(level)}
+                  disabled={qualifying !== null}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+            <div className="row" aria-label="ground">
+              <span className="roster-meta">Ground</span>
+              {(Object.keys(TOUR_TERRAIN) as TourTerrainLevel[]).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`btn small${terrainLevel === level ? " primary" : ""}`}
+                  onClick={() => setTerrainLevel(level)}
+                  disabled={qualifying !== null}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+          </>
         ) : null}
 
         {/* No separate "champion" banner: the tree ends in the winner's

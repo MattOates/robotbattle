@@ -109,7 +109,7 @@ end
 ```
 
 **Events** — `start`, `tick`, `sense robot`, `sense bullet`, `sense wall`,
-`sense fuel`, `ping robot`, `ping fuel`, `ping wall`, `hit wall`, `hit robot`,
+`sense fuel`, `ping robot`, `ping fuel`, `ping wall`, `ping slope`, `hit wall`, `hit robot`,
 `hit by bullet`, `bullet hit`, `bullet missed`, `robot destroyed`. Every event carries
 `event.bearing` (relative to your chassis, so it drops straight into
 `turret.aim at` or `turn body by`) and `event.distance`, plus extras like
@@ -148,7 +148,16 @@ the same thing you would have written by hand, minus the chance of getting the
 `radar.turn to|by …`, `radar.aim at …`, `radar.sweep …`, `ping`.
 
 **Readable state** — `me.x/y/heading/speed/health/fuel/turret/gunHeat/radar/pingHeat/aiming`,
-`arena.width/height/time/robots`.
+`me.slope/uphill/downhill`, `arena.width/height/time/robots`.
+
+**The ground has a shape.** When a match is played with terrain on, the arena
+carries a height field — hills in the mechanical theme, thick and thin goop in
+the biological one. Driving up the gradient is slower and costs more fuel;
+driving down is quicker and nearly free; driving *along* a contour costs exactly
+what flat ground costs. `me.slope` and `me.uphill` read the ground under you for
+nothing, and `ping slope` reports it out along the radar beam for the usual ping
+cost. Terrain and fuel are independent switches: with fuel off, hills still slow
+you down, they just cost nothing to climb.
 
 **Firing is committed, not instant.** `fire` does not discharge along wherever
 the barrel happens to be pointing — it commits a shot, which leaves on the first
@@ -376,6 +385,8 @@ asserts exactly that. Both vocabularies parse in either arena, and can be mixed.
 | `on hit by bullet`     | `on stung`                    |
 | `me.health`            | `me.vitality`                 |
 | `on sense fuel`        | `on sense food`               |
+| `on ping slope`        | `on peek thickness`           |
+| `me.uphill`            | `me.thickest`                 |
 
 ## Multiplayer
 

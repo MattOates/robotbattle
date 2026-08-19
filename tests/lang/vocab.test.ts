@@ -49,6 +49,11 @@ describe("themed vocabulary", () => {
       ["on ping wall\n  stop\nend\n", "on peek wall\n  stop\nend\n"],
       ["on tick\n  fire me.radar\nend\n", "on tick\n  sting me.eyespot\nend\n"],
       ["on tick\n  fire me.pingHeat\nend\n", "on tick\n  sting me.peekHeat\nend\n"],
+      // The ground: hills to a machine, goop to an organism, one field either way.
+      ["on ping slope\n  stop\nend\n", "on peek thickness\n  stop\nend\n"],
+      ["on tick\n  fire me.slope\nend\n", "on tick\n  sting me.thickness\nend\n"],
+      ["on tick\n  turn body to me.uphill\nend\n", "on tick\n  turn body to me.thickest\nend\n"],
+      ["on tick\n  turn body to me.downhill\nend\n", "on tick\n  turn body to me.thinnest\nend\n"],
     ];
     for (const [mech, bio] of pairs) {
       expect(identity(bio), `${bio.trim()} should match ${mech.trim()}`).toBe(
