@@ -29,6 +29,7 @@ import {
   type TerrainConfig,
 } from "../../src/sim/types.js";
 import { normalizeAngle } from "../../src/sim/math.js";
+import { RACER, SITTING_DUCK } from "../../src/bots/index.js";
 
 const W = 900;
 const H = 620;
@@ -421,5 +422,101 @@ describe("what a script can read", () => {
     r.y = p.y;
     step(w);
     expect(Number(r.name)).toBe(0);
+  });
+});
+
+/**
+ * The Racer reads the ground the way a driver reads a track: uphill is slow and
+ * dear, downhill is free speed, and the line ACROSS a slope costs exactly what
+ * flat ground costs. Which makes the contour the track.
+ *
+ * Measured as average climb over a long run, because that is the claim. A robot
+ * that merely says it follows contours and actually grinds up the hill would
+ * pass any test of its handlers and fail this one.
+ */
+describe("the Racer drives the racing line", () => {
+  function driveAlone(terrain: TerrainConfig) {
+    const w = createWorld(
+      makeManifest([{ source: RACER }, { source: SITTING_DUCK }], {
+        seed: 31,
+        // No cells: refuelling mid-run would muddy how far it got on a tank.
+        fuel: { ...FUEL_PRESETS.arena, maxOnField: 0 },
+        terrain,
+      }),
+    );
+    const r = w.robots[0]!;
+    let distance = 0;
+    let climbSum = 0;
+    let px = r.x;
+    let py = r.y;
+    for (let i = 0; i < 600; i++) {
+      step(w);
+      distance += Math.abs(r.x - px) + Math.abs(r.y - py);
+      px = r.x;
+      py = r.y;
+      climbSum += r.climb;
+    }
+    return { distance, avgClimb: climbSum / 600, fuel: r.fuel };
+  }
+
+  it("spends its run across the slope rather than climbing it", () => {
+    const hills = driveAlone({ ...TERRAIN_PRESETS.arena, seed: 1 });
+    // Zero is the contour. Anything much above it is a robot going up a hill
+    // for the whole match, which is what this replaced.
+    expect(Math.abs(hills.avgClimb)).toBeLessThan(0.12);
+  });
+
+  it("covers far more ground on hills than a robot that ignores them", () => {
+    // The same car with the terrain handling removed \u2014 which is exactly what
+    // Racer was before it learned to read the ground. Written out rather than
+    // cut from RACER by pattern, so it stays a fixed thing to measure against.
+    const BLIND = `name "Blind"
+chassis car
+color #ffd166
+on start
+  drive forward 100
+  turret.sweep 60
+end
+on sense robot
+  turret.aim at event.bearing
+  fire 1
+end
+on hit wall
+  turn body by 120
+end
+on tick
+  if me.speed < 20 then
+    drive forward 100
+  end
+end
+`;
+    const w = createWorld(
+      makeManifest([{ source: BLIND }, { source: SITTING_DUCK }], {
+        seed: 31,
+        fuel: { ...FUEL_PRESETS.arena, maxOnField: 0 },
+        terrain: { ...TERRAIN_PRESETS.arena, seed: 1 },
+      }),
+    );
+    const b = w.robots[0]!;
+    let blindDistance = 0;
+    let px = b.x;
+    let py = b.y;
+    for (let i = 0; i < 600; i++) {
+      step(w);
+      blindDistance += Math.abs(b.x - px) + Math.abs(b.y - py);
+      px = b.x;
+      py = b.y;
+    }
+    expect(driveAlone({ ...TERRAIN_PRESETS.arena, seed: 1 }).distance).toBeGreaterThan(
+      blindDistance * 1.5,
+    );
+  });
+
+  it("behaves exactly as it always did on flat ground", () => {
+    // The racing line is gated on `me.slope`, which is 0 when terrain is off.
+    // Every robot written before hills existed still has to fight the same way.
+    const flat = driveAlone(TERRAIN_PRESETS.off);
+    expect(flat.avgClimb).toBe(0);
+    expect(flat.distance).toBeGreaterThan(0);
   });
 });

@@ -49,6 +49,16 @@ end
 
 const RACER = `-- A car: much faster than a tank, but it cannot turn on the spot,
 -- so it has to drive its way around a corner.
+--
+-- It drives the ground like a race track. Going uphill is slow and burns fuel,
+-- going downhill is quick and costs almost nothing, and going ACROSS a slope
+-- costs exactly what flat ground does. So the line across a hill is the track,
+-- and a drop is the straight where you open it up.
+--
+-- me.slope says how steep the ground is here, 0 to 100. me.uphill and
+-- me.downhill say which way is up and which way is down, turned so that 0
+-- means straight ahead. On a flat map slope is 0, so the racing bit never
+-- runs and this is simply a fast car.
 name "Racer"
 chassis car
 color #ffd166
@@ -75,6 +85,29 @@ on tick
   -- A car that has stopped cannot steer, so always keep rolling.
   if me.speed < 20 then
     drive forward 100
+  end
+
+  if me.slope > 12 then
+    if me.downhill < 50 and me.downhill > -50 then
+      -- The drop is more or less ahead. That is free speed: take it.
+      set name = "flat out"
+      turn body by me.downhill
+      drive forward 100
+    else
+      -- No drop worth having, so hold the line across the slope. A quarter
+      -- turn from straight up the hill is the flattest way through.
+      --
+      -- Turning the short way matters for a car. If the hill is on the right
+      -- we take the line to its left, and the other way round \u2014 either way the
+      -- wheel only ever moves a little, which is what keeps the speed up.
+      set name = "on the line"
+      if me.uphill > 0 then
+        turn body by me.uphill - 90
+      else
+        turn body by me.uphill + 90
+      end
+      drive forward 90
+    end
   end
 end
 `;
