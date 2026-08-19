@@ -6,7 +6,8 @@
  *  1. **Safety.** Scripts arrive from strangers over WebRTC, so they are never
  *     JavaScript and never see a JS scope. The VM's entire world is this
  *     instruction set plus a fixed table of properties and actions.
- *  2. **Suspendability.** Each robot gets a fuel budget per tick. Because
+ *  2. **Suspendability.** Each robot gets a fixed quantum of instructions per
+ *     tick and is preempted when it runs out. Because
  *     execution state is just a program counter plus a value stack, pausing a
  *     half-finished handler and resuming it next tick is trivial — an infinite
  *     `loop` makes a robot sluggish rather than hanging the game.

@@ -24,8 +24,18 @@ export const ROBOT_RADIUS = 18;
 
 export const MAX_HEALTH = 100;
 
-/** Instructions each robot may execute per tick before being suspended. */
-export const FUEL_PER_TICK = 2000;
+/**
+ * The scheduling quantum: instructions a robot may execute before the VM
+ * preempts it and moves on to the next robot.
+ *
+ * This is an implementation constraint, not a game resource. It is the same for
+ * every robot, refilled in full every tick, and nothing in the world can raise
+ * or lower it. It exists to bound the work one tick can cost — so a runaway
+ * `loop` cannot hang the sim — and to bound it *identically on every peer*, so
+ * that where a handler gets suspended is part of the deterministic state rather
+ * than a function of how fast the machine is.
+ */
+export const OPS_PER_TICK = 2000;
 
 /** Shared turret specification — identical on both chassis. */
 export const TURRET = {

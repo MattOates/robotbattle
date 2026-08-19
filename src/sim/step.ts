@@ -11,7 +11,7 @@
  */
 
 import {
-  FUEL_PER_TICK,
+  OPS_PER_TICK,
   ROBOT_RADIUS,
   SENSE,
   RADAR,
@@ -152,7 +152,7 @@ function enqueueTicks(world: World): void {
 function runScripts(world: World): void {
   for (const r of world.robots) {
     if (!r.alive) continue;
-    r.vm.run(FUEL_PER_TICK);
+    r.vm.run(OPS_PER_TICK);
     if (r.vm.lastError) r.scriptError = r.vm.lastError;
   }
 }
