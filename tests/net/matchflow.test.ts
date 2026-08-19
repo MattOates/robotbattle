@@ -68,6 +68,36 @@ describe("running a match across a room", () => {
     expect(streams[0]!.length).toBeGreaterThan(20);
   });
 
+  it("carries the host's fuel settings to every peer", () => {
+    // Fuel rides inside the manifest rather than in a message of its own, so
+    // the property to prove is that a guest never has to be told separately —
+    // and never simulates the host's match under different terms.
+    const { network, sessions } = room(3);
+    const received = new Map<number, MatchManifest>();
+    sessions.forEach((session, i) => {
+      session.onMessage((_from, message: Message) => {
+        if (message.t === "start") received.set(i, message.manifest);
+      });
+    });
+
+    const lean = { spawnEveryTicks: 40, maxOnField: 9, amount: 35, radius: 13 };
+    const participants = sessions[0]!.entries() as Participant[];
+    const manifest = manifestFromParticipants(participants, 4242, { fuel: lean });
+    sessions[0]!.broadcast({ t: "start", matchId: newMatchId(), manifest, label: "Arena" });
+    network.flush();
+
+    expect(received.size).toBe(4);
+    for (const m of received.values()) expect(m.fuel).toEqual(lean);
+
+    const streams = [...received.values()].map((m) => runMatchWithHashes(m).hashes);
+    for (const stream of streams) expect(stream).toEqual(streams[0]);
+
+    // And the settings genuinely changed the battle, so the agreement above is
+    // about these settings rather than about them being ignored.
+    const dflt = manifestFromParticipants(participants, 4242);
+    expect(runMatch(manifest).finalHash).not.toBe(runMatch(dflt).finalHash);
+  });
+
   it("lets every peer work out which robot is theirs", () => {
     const { sessions } = room(3);
     const participants = sessions[0]!.entries() as Participant[];

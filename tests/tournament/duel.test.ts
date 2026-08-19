@@ -134,11 +134,42 @@ describe("the match offered for watching", () => {
       if (!showcase) continue;
 
       // Exactly what the screen does to watch it.
-      const replay = runMatch(duelManifest(a, b, showcase.seed, showcase.aFirst));
+      const replay = runMatch(
+        duelManifest(a, b, showcase.seed, showcase.aFirst, showcase.fuel),
+      );
       expect(replay.winnerId).toBe(sideIndex(showcase.winner, showcase.aFirst));
       expect(showcase.winner).toBe(duel.winner);
       expect(replay.ticks).toBe(showcase.ticks);
     }
+  });
+
+  it("replays a tie played under non-default fuel settings", () => {
+    // The failure this guards against is silent: a tie played under one set of
+    // fuel settings and replayed under another still produces *a* match, just
+    // not the one the bracket is describing.
+    const lean = { spawnEveryTicks: 45, maxOnField: 8, amount: 40, radius: 14 };
+    const duel = runDuel(hunter, racer, 4242, DUEL_MATCHES, undefined, lean);
+    const showcase = duel.showcase!;
+    expect(showcase.fuel).toEqual(lean);
+
+    const replay = runMatch(
+      duelManifest(hunter, racer, showcase.seed, showcase.aFirst, showcase.fuel),
+    );
+    expect(replay.winnerId).toBe(sideIndex(showcase.winner, showcase.aFirst));
+    expect(replay.ticks).toBe(showcase.ticks);
+  });
+
+  it("carries the settings rather than assuming them", () => {
+    // Rebuilt without the recorded settings, the same recipe describes a
+    // different match — which is exactly why Showcase carries them.
+    const lean = { spawnEveryTicks: 30, maxOnField: 10, amount: 60, radius: 16 };
+    const duel = runDuel(hunter, racer, 555, DUEL_MATCHES, undefined, lean);
+    const showcase = duel.showcase!;
+    const faithful = runMatch(
+      duelManifest(hunter, racer, showcase.seed, showcase.aFirst, showcase.fuel),
+    );
+    const careless = runMatch(duelManifest(hunter, racer, showcase.seed, showcase.aFirst));
+    expect(faithful.finalHash).not.toBe(careless.finalHash);
   });
 
   it("is one of the matches that were actually played", () => {

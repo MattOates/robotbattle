@@ -109,8 +109,8 @@ end
 ```
 
 **Events** — `start`, `tick`, `sense robot`, `sense bullet`, `sense wall`,
-`ping robot`, `ping wall`, `hit wall`, `hit robot`, `hit by bullet`,
-`bullet hit`, `bullet missed`, `robot destroyed`. Every event carries
+`sense fuel`, `ping robot`, `ping fuel`, `ping wall`, `hit wall`, `hit robot`,
+`hit by bullet`, `bullet hit`, `bullet missed`, `robot destroyed`. Every event carries
 `event.bearing` (relative to your chassis, so it drops straight into
 `turret.aim at` or `turn body by`) and `event.distance`, plus extras like
 `event.power` and `event.name`.
@@ -147,7 +147,7 @@ the same thing you would have written by hand, minus the chance of getting the
 `turret.turn to|by …`, `turret.aim at …`, `turret.sweep …`, `fire 1-3`,
 `radar.turn to|by …`, `radar.aim at …`, `radar.sweep …`, `ping`.
 
-**Readable state** — `me.x/y/heading/speed/health/turret/gunHeat/radar/pingHeat`,
+**Readable state** — `me.x/y/heading/speed/health/fuel/turret/gunHeat/radar/pingHeat`,
 `arena.width/height/time/robots`.
 
 ## Behaviour you can name, and pass around
@@ -206,6 +206,55 @@ In the biological vocabulary the radar is an **eyespot** and a ping is a
 pigment behind a shading cup, and the cup is exactly what trades a wide vague
 view for a narrow precise one.
 
+## Fuel, and what it is not
+
+Two budgets, deliberately unrelated.
+
+The first is the **ops budget**: 2000 instructions per robot per tick, refilled
+in full, identical for everybody. It is a scheduling quantum, not a resource —
+it exists so a runaway `loop` cannot hang the sim, and so the point at which a
+handler gets suspended is the same on every peer. Nothing in the game can raise
+or lower it. Thinking is free, and it is free in equal measure for the beginner
+and for the robot with a thousand lines of tactics.
+
+The second is **fuel** — `food` in the biological vocabulary — and it is a real
+resource. Only *actuated* work spends it: driving, turning, slewing the turret
+and radar, firing, pinging. The passive sense cone is free, because it is not
+actuated and every robot has it always on, so charging for it would only be a
+tax everybody pays equally. Charges land on what actually happened rather than
+on the instruction that asked, so a robot pinned against a wall at full throttle
+is not billed for movement it did not achieve.
+
+Running dry is a **brownout, never a death**. Capability falls toward a quarter
+of normal and stops there: an empty robot is slow and vague, still driving,
+still shooting, still able to reach the next cell. That also makes the economy
+self-limiting, since a slower robot spends less to move — an empty tank
+approaches the floor asymptotically instead of falling off a cliff. It is why a
+robot written before fuel existed still finishes its matches.
+
+Cells spawn on a fixed cadence from the seeded RNG, so they are part of the
+manifest like everything else and a replay puts them in the same places. How
+plentiful they are is the host's call in the Arena lobby and in the tournament
+setup, and it travels inside the manifest — a guest is never told separately,
+and so can never simulate the same match under different terms.
+
+```
+on sense fuel
+  turn body by event.bearing        -- it is close; go and get it
+  drive forward 80
+end
+
+on ping fuel
+  turn body by event.bearing        -- it is far away, and I went looking
+end
+
+on tick every 30
+  if me.fuel < 30 then
+    radar.sweep 90                  -- start hunting for a refill
+  end
+end
+```
+
 ## The editor teaches the language
 
 You cannot guess `event.bearing`, so the editor tells you. It is CodeMirror 6
@@ -262,6 +311,7 @@ asserts exactly that. Both vocabularies parse in either arena, and can be mixed.
 | `on sense robot`       | `on sense organism`           |
 | `on hit by bullet`     | `on stung`                    |
 | `me.health`            | `me.vitality`                 |
+| `on sense fuel`        | `on sense food`               |
 
 ## Multiplayer
 

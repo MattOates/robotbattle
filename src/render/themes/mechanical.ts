@@ -102,4 +102,18 @@ export const MECHANICAL: ArenaTheme = {
   },
 
   pingColor: 0x9fe8ff,
+
+  fuelColor: 0x7fd1e0,
+
+  drawFuel(g: Graphics, radius: number): void {
+    // A squat canister: a bright core in a darker casing, with a band across
+    // it so it reads as machinery rather than as a stray bullet.
+    const core = 0x7fd1e0;
+    g.circle(0, 0, radius).fill({ color: darken(core, 0.55), alpha: 0.95 });
+    g.circle(0, 0, radius * 0.62).fill(core);
+    g.rect(-radius, -radius * 0.16, radius * 2, radius * 0.32).fill({
+      color: lighten(core, 0.45),
+      alpha: 0.8,
+    });
+  },
 };

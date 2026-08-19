@@ -40,6 +40,7 @@ import { sanitiseEntry, sanitiseText, type Message } from "../../net/protocol.js
 import { DUEL_MATCHES, duelManifest, scoreline, type Duellist } from "../../tournament/duel.js";
 import { seedForJob, type DuelJob, type DuelRecord } from "../../tournament/round.js";
 import { needsQualifier, qualifierMatches, type Standing } from "../../tournament/qualifier.js";
+import { FUEL_PRESETS, type FuelConfig } from "../../sim/types.js";
 import type { RoundWorkerIn, RoundWorkerOut } from "../../tournament/round.worker.js";
 import { pruneOffered, toggleOffered } from "../tradeShelf.js";
 
@@ -58,6 +59,19 @@ interface Viewing {
   round: number;
 }
 
+/**
+ * Tournament fuel, leaner than the arena's by default: scarcity is what makes
+ * a robot's movement budget part of how good it is, and a knockout wants to be
+ * decided by something other than who happened to spawn nearer a cell.
+ */
+const TOUR_FUEL = {
+  scarce: { spawnEveryTicks: 200, maxOnField: 2, amount: 18, radius: 10 },
+  normal: FUEL_PRESETS.tournament,
+  plentiful: { spawnEveryTicks: 60, maxOnField: 8, amount: 28, radius: 12 },
+} satisfies Record<string, FuelConfig>;
+
+type TourFuelLevel = keyof typeof TOUR_FUEL;
+
 export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }: Props) {
   const { robots } = lib;
   const words = THEMES[theme];
@@ -67,6 +81,11 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
 
   const connected = room.phase === "connected" && room.session !== null;
   const isHost = room.state?.isHost ?? false;
+  // Fixed for the whole tournament, and deliberately only settable before the
+  // draw: changing the terms halfway through would make earlier rounds and
+  // later ones incomparable, and the bracket is a claim about one contest.
+  const [fuelLevel, setFuelLevel] = useState<TourFuelLevel>("normal");
+  const fuel = TOUR_FUEL[fuelLevel];
 
   useEffect(() => {
     if (connected && room.roomCode && parseRoute(window.location.hash).room !== room.roomCode) {
@@ -297,6 +316,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
         a,
         b,
         seedBase: seedForJob(seedBase, match.id),
+        fuel,
       });
     }
     if (jobs.length === 0) return;
@@ -368,7 +388,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       matches: DUEL_MATCHES,
       round: currentRound,
     } satisfies RoundWorkerIn);
-  }, [bracket, currentRound, isHost, room.session, running]);
+  }, [bracket, currentRound, fuel, isHost, room.session, running]);
 
   const draw = useCallback(
     (ranking: string[]) => {
@@ -445,8 +465,9 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       type: "qualify",
       entrants: field.map((e) => ({ id: e.id, robot: e.robot })),
       seedBase: newMatchSeed(),
+      fuel,
     } satisfies RoundWorkerIn);
-  }, [draw, field, isHost, qualifying, room.session]);
+  }, [draw, field, fuel, isHost, qualifying, room.session]);
 
   const reset = useCallback(() => {
     if (!isHost) return;
@@ -496,6 +517,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       { name: b.robot.name, color: b.robot.color, source: b.robot.source },
       showcase.seed,
       showcase.aFirst,
+      showcase.fuel,
     );
   }, [bracket, viewingRecord]);
 
@@ -613,6 +635,23 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
 
       <div className="panel-body">
         {notice ? <div className="notice">{notice}</div> : null}
+
+        {isHost && !drawn ? (
+          <div className="row" aria-label="fuel">
+            <span className="roster-meta">Fuel</span>
+            {(Object.keys(TOUR_FUEL) as TourFuelLevel[]).map((level) => (
+              <button
+                key={level}
+                type="button"
+                className={`btn small${fuelLevel === level ? " primary" : ""}`}
+                onClick={() => setFuelLevel(level)}
+                disabled={qualifying !== null}
+              >
+                {level}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {/* No separate "champion" banner: the tree ends in the winner's
             plinth, which says it with more presence and in the right place. */}

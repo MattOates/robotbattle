@@ -50,6 +50,17 @@ export interface ArenaTheme {
   /** Colour of the ping beam this theme draws. */
   pingColor: number;
 
+  /** Fuel cell colour, also used for the pickup flash and the tank gauge. */
+  fuelColor: number;
+
+  /**
+   * Draw one fuel cell, centred on (0,0).
+   *
+   * Cells do not rotate and are not aimed at anything, so unlike the body and
+   * the turret there is no facing to respect — only a radius to fill.
+   */
+  drawFuel(g: Graphics, radius: number): void;
+
   /** Optional decorative backdrop drawn once behind the grid. */
   drawBackdrop?(g: Graphics, width: number, height: number): void;
 }

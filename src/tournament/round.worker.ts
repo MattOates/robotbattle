@@ -13,6 +13,7 @@ import {
   type QualifierProgress,
   type Standing,
 } from "./qualifier.js";
+import type { FuelConfig } from "../sim/types.js";
 
 export type RoundWorkerIn =
   | {
@@ -22,7 +23,7 @@ export type RoundWorkerIn =
       /** Echoed back, so a late reply from an abandoned round can be ignored. */
       round: number;
     }
-  | { type: "qualify"; entrants: QualifierEntrant[]; seedBase: number };
+  | { type: "qualify"; entrants: QualifierEntrant[]; seedBase: number; fuel?: FuelConfig };
 
 export type RoundWorkerOut =
   | { type: "progress"; round: number; progress: RoundProgress }
@@ -35,10 +36,13 @@ const post = (message: RoundWorkerOut) => self.postMessage(message);
 
 self.onmessage = (event: MessageEvent<RoundWorkerIn>) => {
   if (event.data?.type === "qualify") {
-    const { entrants, seedBase } = event.data;
+    const { entrants, seedBase, fuel } = event.data;
     try {
-      const standings = runQualifier(entrants, seedBase, (progress) =>
-        post({ type: "qualifying", progress }),
+      const standings = runQualifier(
+        entrants,
+        seedBase,
+        (progress) => post({ type: "qualifying", progress }),
+        fuel,
       );
       post({ type: "qualified", standings });
     } catch (err) {

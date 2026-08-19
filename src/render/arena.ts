@@ -36,6 +36,7 @@ interface RobotView {
   radarPivot: Container;
   label: Text;
   healthBar: Graphics;
+  fuelBar: Graphics;
   /** What the cached body Graphics was drawn for, so we redraw only on change. */
   drawnColor: string;
   drawnLabel: string;
@@ -56,6 +57,7 @@ export class ArenaRenderer {
   private backdrop = new Graphics();
   private cones = new Graphics();
   private bullets = new Graphics();
+  private fuel = new Graphics();
   private effects = new Graphics();
   private robotLayer = new Container();
   private views = new Map<number, RobotView>();
@@ -103,6 +105,9 @@ export class ArenaRenderer {
 
     app.stage.addChild(this.backdrop);
     app.stage.addChild(this.cones);
+    // Under everything that moves: a cell is scenery until somebody reaches it,
+    // and it must never hide a robot or a bullet.
+    app.stage.addChild(this.fuel);
     app.stage.addChild(this.bullets);
     app.stage.addChild(this.robotLayer);
     app.stage.addChild(this.effects);
@@ -196,6 +201,7 @@ export class ArenaRenderer {
     this.prev = null;
     this.curr = null;
     this.bullets.clear();
+    this.fuel.clear();
     this.effects.clear();
     this.cones.clear();
   }
@@ -230,6 +236,7 @@ export class ArenaRenderer {
     const t = this.prev ? Math.min(1, Math.max(0, alpha)) : 1;
 
     try {
+      this.drawFuel(to);
       this.drawRobots(from, to, t);
       this.drawBullets(from, to, t);
       this.drawCones(from, to, t);
@@ -299,9 +306,14 @@ export class ArenaRenderer {
       const healthBar = new Graphics();
       healthBar.y = ROBOT_RADIUS + 4;
 
+      // Directly under the health bar, thinner: the two read as one gauge, and
+      // which is which stays obvious because they never share a colour.
+      const fuelBar = new Graphics();
+      fuelBar.y = ROBOT_RADIUS + 8;
+
       // Radar under the turret: when both point the same way, the gun is the
       // one that matters and should be on top.
-      root.addChild(body, radarPivot, turretPivot, healthBar, label);
+      root.addChild(body, radarPivot, turretPivot, healthBar, fuelBar, label);
       this.robotLayer.addChild(root);
       view = {
         root,
@@ -310,6 +322,7 @@ export class ArenaRenderer {
         radarPivot,
         label,
         healthBar,
+        fuelBar,
         drawnColor: "",
         drawnLabel: "",
         labelAge: LABEL_INTERVAL,
@@ -372,6 +385,31 @@ export class ArenaRenderer {
           frac > 0.5 ? 0x6ad98a : frac > 0.25 ? 0xffd166 : 0xff6b6b,
         );
       }
+
+      const fb = view.fuelBar;
+      fb.clear();
+      if (now.alive) {
+        const w = ROBOT_RADIUS * 2;
+        const frac = Math.max(0, Math.min(1, now.fuel));
+        fb.rect(-w / 2, 0, w, 2).fill({ color: 0x000000, alpha: 0.45 });
+        fb.rect(-w / 2, 0, w * frac, 2).fill({ color: this.theme.fuelColor, alpha: 0.95 });
+      }
+    }
+  }
+
+  /**
+   * Cells are static, so there is nothing to interpolate and only the current
+   * snapshot is needed. Redrawn each frame anyway: there are a handful at most,
+   * and a cached container would have to be invalidated every time one is
+   * eaten, which costs more thought than the redraw costs cycles.
+   */
+  private drawFuel(to: Snapshot): void {
+    const g = this.fuel;
+    g.clear();
+    for (const f of to.fuel) {
+      g.translateTransform(f.x, f.y);
+      this.theme.drawFuel(g, to.fuelRadius);
+      g.resetTransform();
     }
   }
 
@@ -448,6 +486,14 @@ export class ArenaRenderer {
         g.moveTo(p.x, p.y)
           .lineTo(p.x + Math.cos(dir) * reach, p.y + Math.sin(dir) * reach)
           .stroke({ width: 1.2, color: this.theme.pingColor, alpha: fade * 0.85 });
+      } else if (p.type === "pickup") {
+        // An expanding ring where the cell was, so a pickup is legible even
+        // when it happens off to the side of whatever you were watching.
+        g.circle(p.x, p.y, 4 + k * 14).stroke({
+          width: 2,
+          color: this.theme.fuelColor,
+          alpha: fade * 0.85,
+        });
       } else {
         g.circle(p.x, p.y, 2 + k * 5).fill({ color: this.theme.wallColor, alpha: fade * 0.6 });
       }
