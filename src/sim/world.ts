@@ -58,8 +58,10 @@ export interface MatchManifest {
  *
  * 2 — seeded spawn jitter, so different seeds give genuinely different matches.
  * 5 — fuel: a consumable resource, spawned pickups, and two new sense events.
+ * 6 — committed shots: `fire` waits for the gun to come round, so a handler can
+ *     aim and shoot at the same place and leading a target becomes possible.
  */
-export const SIM_VERSION = 5;
+export const SIM_VERSION = 6;
 
 /**
  * How far a spawn may vary from its slot on the ring.
@@ -165,6 +167,7 @@ export function createWorld(manifest: MatchManifest): World {
       gunHeat: 0,
       radar: facing,
       pingHeat: 0,
+      pendingPower: 0,
       health: MAX_HEALTH,
       fuel: MAX_FUEL,
       alive: true,
@@ -229,6 +232,11 @@ function makeHost(world: World, robot: Robot): VmHost {
             return robot.pingHeat;
           case "fuel":
             return robot.fuel;
+          case "aiming":
+            // 1 while a committed shot is waiting for the gun to come round.
+            // Re-aiming now would move the goal and delay it further, so this
+            // is how a script says "leave the gun alone, it is busy".
+            return robot.pendingPower > 0 ? 1 : 0;
           case "ammo":
             return robot.gunHeat <= 0 ? 1 : 0;
           case "score":
@@ -368,9 +376,43 @@ export function fuelFactor(world: World, robot: Robot): number {
   return 1 - (1 - FUEL.floorFactor) * empty * empty;
 }
 
-/** Fire the turret, if it has cooled. */
+/**
+ * Ask for a shot.
+ *
+ * The shot is *committed*, not discharged: if the gun already bears on what it
+ * was last aimed at, it leaves immediately, and otherwise it waits for the
+ * turret to come round and leaves the moment it does. That is what makes
+ * `turret.aim at <somewhere> ... fire` mean one thing rather than two, and it
+ * is what makes leading a moving target possible — a script has to predict
+ * where the target will be after the slew *and* after the flight.
+ *
+ * A gun that is still cooling ignores the request outright, exactly as before,
+ * so spamming `fire` costs nothing.
+ */
 export function fire(world: World, robot: Robot, powerRaw: number): void {
   if (robot.gunHeat > 0 || !robot.alive) return;
+  const power = clamp(Math.round(powerRaw) || TURRET.minPower, TURRET.minPower, TURRET.maxPower);
+  if (gunBears(robot)) {
+    releaseShot(world, robot, power);
+    return;
+  }
+  robot.pendingPower = power;
+}
+
+/**
+ * Whether the gun is pointing where it was told to.
+ *
+ * A sweeping turret has no aim to wait for — its goal is a moving target of its
+ * own making — so a sweep-and-shoot robot fires the instant it asks to, the way
+ * it always did.
+ */
+export function gunBears(robot: Robot): boolean {
+  if (robot.sweepAmplitude > 0) return true;
+  return Math.abs(angleDelta(robot.turret, robot.turretGoal)) <= TURRET.fireTolerance;
+}
+
+/** Discharge a committed shot along the barrel. */
+export function releaseShot(world: World, robot: Robot, powerRaw: number): void {
   const power = clamp(Math.round(powerRaw) || TURRET.minPower, TURRET.minPower, TURRET.maxPower);
   const speed = BULLET.baseSpeed - BULLET.speedPerPower * power;
   const muzzle = ROBOT_RADIUS + BULLET.radius + 1;

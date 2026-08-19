@@ -147,8 +147,25 @@ the same thing you would have written by hand, minus the chance of getting the
 `turret.turn to|by …`, `turret.aim at …`, `turret.sweep …`, `fire 1-3`,
 `radar.turn to|by …`, `radar.aim at …`, `radar.sweep …`, `ping`.
 
-**Readable state** — `me.x/y/heading/speed/health/fuel/turret/gunHeat/radar/pingHeat`,
+**Readable state** — `me.x/y/heading/speed/health/fuel/turret/gunHeat/radar/pingHeat/aiming`,
 `arena.width/height/time/robots`.
+
+**Firing is committed, not instant.** `fire` does not discharge along wherever
+the barrel happens to be pointing — it commits a shot, which leaves on the first
+tick the gun has actually come round to what it was aimed at. Without that,
+`turret.aim at event.bearing` followed by `fire` shot along the *old* heading,
+because aiming only sets a goal the turret slews toward over the following
+ticks. Nearly every robot is written that way, so nearly every robot was
+missing: Spinner used to hit 34% of the time and now hits 71%, Dodger 47% and
+now 100%. The two that were already accurate, Scout and Toolkit, barely moved —
+both pre-aim with the radar on `ping robot`, which was the only way to beat the
+latency, and is why Toolkit was the robot to beat for so long.
+
+It also makes leading a moving target possible, which is the interesting part:
+flight time is distance over bullet speed, bullet speed is `460 - 40 × power`,
+and `event` carries the target's heading and speed, so a shot at where something
+*will be* is arithmetic rather than guesswork. `me.aiming` reads 1 while a shot
+is still waiting for the gun.
 
 ## Behaviour you can name, and pass around
 
@@ -260,7 +277,13 @@ pre-fuel golden numbers, so any drain or spawn leaking into the disabled path
 fails the build. A robot written to forage still runs there; it simply never
 hears `on sense fuel`.
 
-`src/bots/index.ts` ships **Hungry Hippo**, which ignores the battle entirely
+`src/bots/index.ts` ships **Apex**, the robot to beat: it leads its target,
+stops dead the moment somebody enters its cone rather than charging them, fires
+light at range and heavy up close, and eats whatever crosses its path without
+ever making a special trip. It takes 83% of a three-seed round robin against
+everything else here.
+
+`src/bots/index.ts` also ships **Hungry Hippo**, which ignores the battle entirely
 and forages: it never fires and never sweeps its turret, because both cost fuel
 and neither finds food, but it does ping, because food you cannot see is food
 you cannot eat. It is the economy with the fighting taken out, and the only

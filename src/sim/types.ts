@@ -48,6 +48,19 @@ export const TURRET = {
   coolRate: 0.06,
   minPower: 1,
   maxPower: 3,
+  /**
+   * How close to its goal the gun must be before a committed shot leaves, in
+   * degrees.
+   *
+   * `fire` does not discharge along wherever the barrel happens to be pointing
+   * at that instant. It commits a shot, which leaves on the first tick the gun
+   * has actually come round to what it was aimed at. Without this a handler
+   * could never aim and shoot at the same place — `turret.aim at` only sets a
+   * goal the turret slews toward over the following ticks, so the shot in the
+   * next line always left along the old heading, and leading a moving target
+   * was not expressible at all.
+   */
+  fireTolerance: 5,
 } as const;
 
 /**
@@ -282,6 +295,11 @@ export interface Robot {
   radar: number;
   /** Ticks remaining before another ping may be sent. */
   pingHeat: number;
+  /**
+   * Power of a shot that has been committed but has not left yet, or 0 for
+   * none. It discharges as soon as the gun bears on what it was aimed at.
+   */
+  pendingPower: number;
 
   health: number;
   /** 0..MAX_FUEL. Drains from actuated work; refilled by driving over a cell. */

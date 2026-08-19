@@ -22,7 +22,7 @@ import {
   MAX_FUEL,
   MAX_HEALTH,
 } from "./types.js";
-import { distanceToWall, fuelFactor, spendFuel } from "./world.js";
+import { distanceToWall, fuelFactor, gunBears, releaseShot, spendFuel } from "./world.js";
 import type { Bullet, FuelCell, Robot, World } from "./types.js";
 import {
   angleDelta,
@@ -232,6 +232,14 @@ function moveRobots(world: World): void {
 
     // --- turret, independent of the chassis ---
     updateTurret(world, r, fuelled);
+
+    // A shot committed earlier leaves the moment the gun arrives. Checked here,
+    // straight after the slew, so it goes on the tick the turret gets there
+    // rather than the one after.
+    if (r.pendingPower > 0 && r.gunHeat <= 0 && gunBears(r)) {
+      releaseShot(world, r, r.pendingPower);
+      r.pendingPower = 0;
+    }
 
     // --- pay for the work actually done, not for asking ---
     // Charged on outcomes: a robot pinned against a wall at full throttle is

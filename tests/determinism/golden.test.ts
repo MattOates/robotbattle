@@ -46,23 +46,28 @@ const GOLDEN = {
   //     slewing and pinging were priced per degree without regard for how fast
   //     turrets actually move, which had every sweeping robot pinned at an
   //     empty tank: 533 ticks against the pre-fuel 525.
-  simVersion: 5,
-  ticks: 533,
+  // 6 — committed shots. `fire` now waits for the gun to come round instead of
+  //     discharging along whatever heading the barrel happened to hold, so every
+  //     robot here that writes `turret.aim at ...` and then `fire` — which is
+  //     most of them — became markedly more accurate without a line changing.
+  //     Spinner went from hitting 34% of the time to 71%.
+  simVersion: 6,
+  ticks: 532,
   winner: "Hunter",
-  finalHash: "3cd291228123bc9f",
+  finalHash: "e445107e9af49a96",
   /** Hash at ticks 0, 50, 100, ... */
   every50: [
-    "e6ae9f5548451dd8",
-    "8070c2696f5ba6da",
-    "fd6ea7dcccf3f611",
-    "c2ca7aed9841ddc8",
-    "63cbfeac8448a856",
-    "b29a4d470f61bdaa",
-    "a5750565b29af58d",
-    "790d6d55e81963b2",
-    "cdb6730ad2cb6686",
-    "53b8e1b4d476b0ec",
-    "da4ce1a6255b2730",
+    "89cdc9278850b288",
+    "33fffc4bd894b6ae",
+    "8d56091f9cc1456d",
+    "f54a58f58a4317b5",
+    "a6bdb3a174739c57",
+    "03fbd0ad447486e4",
+    "c9baf5ad9920e775",
+    "2d7047aa5c6ffa22",
+    "5fd1bfc3cf538ba1",
+    "f5e14bc284620feb",
+    "0a1afe215e96442f",
   ],
 };
 

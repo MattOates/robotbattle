@@ -86,6 +86,7 @@ export function hashWorld(world: World): string {
     h.float(r.gunHeat);
     h.float(r.radar);
     h.float(r.pingHeat);
+    h.int(r.pendingPower);
     h.float(r.health);
     h.float(r.fuel);
     h.bool(r.alive);

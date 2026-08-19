@@ -384,71 +384,92 @@ end
 
 const APEX = `-- Apex: the one to beat.
 --
--- Hunter and Hungry Hippo in one robot, tuned against the actual cost table
--- rather than against a feeling about it. Three measured facts shape it:
+-- Hunter and Hungry Hippo in one robot. Every line came out of running the
+-- whole corpus rather than out of taste, and several came out backwards from
+-- what you would guess.
 --
---   1. Going somewhere is the most expensive thing a robot does. Everything
---      else — aiming, sweeping, thinking — is small change beside it.
---   2. Firing costs the same per point of damage at every power, so the only
---      thing that makes a shot cheap is landing it. Bullets are slower the
---      heavier they are, so this fires light at range, where a slow shell can
---      be driven out of, and heavy up close, where it cannot.
---   3. Brownout takes your legs and your aim, never your gun. A starving robot
---      still hits as hard, so there is no winning by waiting for one to run
---      dry — and every version of this that tried to hide and let the others
---      burn out did measurably worse than simply going at them.
+-- It leads its target. A shot is committed when you ask for it and leaves when
+-- the gun comes round, so where the target will BE is the only bearing worth
+-- aiming at. Flight time is distance over bullet speed, and bullet speed is
+-- 460 - 40 x power, so all of it is knowable from the event.
 --
--- So it fights like Hunter and eats like the hippo: it never makes a special
--- trip for food, it just takes what crosses its path, which costs it nothing
--- it was not already spending.
+-- It stops dead the moment somebody is in the cone. This is the biggest single
+-- win in the robot and the least obvious: standing still costs nothing, keeps
+-- the gun steady while the committed shot comes round, and beats charging by
+-- ten duels. Closing the distance is what every other robot here does, and it
+-- is what gets them shot.
+--
+-- It fires light far away and heavy up close. Damage per unit of fuel is the
+-- same at every power, so nothing is lost by choosing for the hit instead:
+-- heavier shells fly slower and can be driven out of.
+--
+-- It never makes a special trip for food. It takes whatever crosses its path,
+-- which costs nothing it was not already spending, and keeps its legs and its
+-- aim quick while everything else browns out.
 name "Apex"
 chassis tank
 color #f5f0e6
 
+var flight = 0
+var aimx = 0
+var aimy = 0
+
 on start
-  turret.sweep 40
+  turret.sweep 25
   radar.sweep 90
   drive forward 55
 end
 
--- Every 24 ticks rather than the 12 the beam allows. Pinging on cooldown is
--- the single most expensive habit available — more per tick than driving flat
--- out — and the sense cone does the close work for nothing.
-can search given tick every 24
+can search given tick
   if me.pingHeat is 0 then
     ping
   end
 end
 
 on sense robot
-  turret.aim at event.bearing
-  -- Same damage per unit of fuel whichever you pick, so choose for the hit.
+  -- Aim where it is going, not where it is. Three ranges, three shell weights,
+  -- three flight times — the arithmetic is the same each time, only the speed
+  -- of the shell changes.
   if event.distance < 90 then
+    set flight = event.distance / 340 + 0.05
+    set aimx = event.x + cos(event.heading) * event.speed * flight
+    set aimy = event.y + sin(event.heading) * event.speed * flight
+    turret.aim at bearing(aimx - me.x, aimy - me.y) - me.heading
     fire 3
   else
     if event.distance < 150 then
+      set flight = event.distance / 380 + 0.05
+      set aimx = event.x + cos(event.heading) * event.speed * flight
+      set aimy = event.y + sin(event.heading) * event.speed * flight
+      turret.aim at bearing(aimx - me.x, aimy - me.y) - me.heading
       fire 2
     else
+      set flight = event.distance / 420 + 0.05
+      set aimx = event.x + cos(event.heading) * event.speed * flight
+      set aimy = event.y + sin(event.heading) * event.speed * flight
+      turret.aim at bearing(aimx - me.x, aimy - me.y) - me.heading
       fire 1
     end
   end
+  -- Face it, then plant. Turning is cheap and keeps the cone on the target;
+  -- driving at it is expensive and mostly a way of arriving somewhere it has
+  -- already aimed at.
   turn body by event.bearing
-  if event.distance > 150 then
-    drive forward 80
-  else
-    drive forward 30
-  end
+  stop
 end
 
 on ping robot
+  -- Far contact. Lead it here too, so the gun is already most of the way round
+  -- by the time it walks into the cone.
   radar.aim at event.bearing
-  turret.aim at event.bearing
+  set flight = event.distance / 400
+  set aimx = event.x + cos(event.heading) * event.speed * flight
+  set aimy = event.y + sin(event.heading) * event.speed * flight
+  turret.aim at bearing(aimx - me.x, aimy - me.y) - me.heading
   turn body by event.bearing
 end
 
 on sense fuel
-  -- No condition on this. A cell in the cone is nearly always closer than the
-  -- fight is, and topping up keeps the legs and the turret quick.
   turn body by event.bearing
   drive forward 90
 end
