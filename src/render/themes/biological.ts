@@ -1,5 +1,5 @@
 /**
- * Biological art pack: a round glass dish of liquid, under a lens.
+ * Biological art pack: pond water on a slide, seen down a microscope.
  *
  * Every shape here occupies the same hitbox circle as its mechanical
  * counterpart. A ciliate is a tank; it just looks like something you'd find
@@ -22,8 +22,8 @@ export const BIOLOGICAL: ArenaTheme = {
 
   background: 0x0b1a1c,
   gridColor: 0x16333a,
-  // Low: a square grid across a round dish is the one thing that says
-  // "rectangle" here, so it stays as a faint sense of scale and no more.
+  // Low: a hard square grid is the one thing back here that says "diagram", so
+  // it stays as a faint sense of scale and no more.
   gridAlpha: 0.16,
   gridSize: 60,
   wallColor: 0x2f6b6b,
@@ -127,47 +127,62 @@ export const BIOLOGICAL: ArenaTheme = {
   fuelColor: 0xc3e83a,
 
   /**
-   * The dish itself: round glass with liquid in it, sitting on a dark stage.
+   * Pond water on a slide, seen down a microscope.
    *
-   * The arena stays rectangular \u2014 walls are walls and the simulation has not
-   * changed \u2014 but the glass rim inset inside them, and the darkness banked up
-   * outside it, do the work of saying you are looking into a dish rather than
-   * across a field.
+   * Not a drawing of a petri dish \u2014 no rim, no glassware, nothing with an edge.
+   * You are looking THROUGH the instrument, so the frame is the field of view
+   * and the field of view fills the screen. An earlier version drew the dish as
+   * an actual oval and it read as a big ellipse sitting in a rectangle, which
+   * is a picture of a dish rather than a look through a lens.
+   *
+   * What sells it instead is what is in the water and what the optics do to it:
+   * murk that is thicker in some places than others, suspended detritus, and a
+   * scatter of things drifting well outside the focal plane, which are the
+   * softest and dimmest marks on the screen because that is exactly what being
+   * out of focus looks like.
    */
   drawBackdrop(g: Graphics, width: number, height: number): void {
-    const cx = width / 2;
-    const cy = height / 2;
-    // Inside the walls, not across them. An ellipse wider than the arena reads
-    // as a stray curve rather than as the edge of anything.
-    const rx = width * 0.47;
-    const ry = height * 0.47;
-
-    // Outside the glass, banked up as widening rings rather than as one shape,
-    // because the corners of a rectangle cannot be subtracted from an ellipse
-    // with a Graphics path and this reads as the same thing.
-    for (let i = 1; i <= 14; i++) {
-      g.ellipse(cx, cy, rx + i * 7, ry + i * 7).stroke({
-        width: 9,
-        color: 0x000000,
-        alpha: 0.1,
-      });
+    // Murk. Broad, soft, irregular \u2014 pond water is never evenly lit.
+    // Kept deliberately faint. Everything in this method is scenery, and the
+    // goop drawn on top of it is not \u2014 thick goop is what slows you down and
+    // empties your tank, so it has to be the most legible thing back here. A
+    // livelier backdrop looked better on its own and made the ground harder to
+    // read, which is the wrong trade.
+    for (let i = 0; i < 10; i++) {
+      const x = Math.random() * width;
+      const y = Math.random() * height;
+      const r = 90 + Math.random() * 190;
+      for (let k = 4; k >= 1; k--) {
+        g.circle(x, y, (r * k) / 4).fill({
+          color: lighten(0x0b1a1c, 0.2),
+          alpha: 0.014,
+        });
+      }
     }
 
-    // Liquid, pooling toward the middle.
-    for (let i = 8; i >= 1; i--) {
-      const k = i / 8;
-      g.ellipse(cx, cy, rx * k, ry * k).fill({
-        color: lighten(0x0b1a1c, 0.16),
-        alpha: 0.05,
-      });
+    // Out of the focal plane: bigger, dimmer and blurrier than anything sharp.
+    // Drawn as rings ramping inward so they have no findable edge, which is the
+    // whole cue that they are at a different depth from the fight.
+    for (let i = 0; i < 22; i++) {
+      const x = Math.random() * width;
+      const y = Math.random() * height;
+      const r = 10 + Math.random() * 26;
+      for (let k = 5; k >= 1; k--) {
+        g.circle(x, y, (r * k) / 5).fill({ color: 0x2f7a5e, alpha: 0.022 });
+      }
     }
 
-    // The glass rim, and a meniscus inside it. Full ellipses, not arcs: an arc
-    // has to be swept on the ellipse itself to follow the rim, and one swept on
-    // a circle just cuts a chord across the dish.
-    g.ellipse(cx, cy, rx, ry).stroke({ width: 4, color: 0x2f6b6b, alpha: 0.5 });
-    g.ellipse(cx, cy, rx - 5, ry - 5).stroke({ width: 1.5, color: 0x8fd8cf, alpha: 0.22 });
-    g.ellipse(cx, cy, rx - 12, ry - 12).stroke({ width: 8, color: 0x8fd8cf, alpha: 0.045 });
+    // Suspended detritus, in focus and tiny: the specks that tell you the water
+    // is full of things too small to be anybody in this fight.
+    for (let i = 0; i < 190; i++) {
+      const x = Math.random() * width;
+      const y = Math.random() * height;
+      const r = 0.6 + Math.random() * 1.8;
+      g.circle(x, y, r).fill({
+        color: Math.random() < 0.25 ? 0x9be7c4 : 0x2f6b6b,
+        alpha: 0.12 + Math.random() * 0.3,
+      });
+    }
   },
 
   /**
@@ -195,8 +210,8 @@ export const BIOLOGICAL: ArenaTheme = {
     const goop = 0x2f7a5e;
     const RINGS = 5;
     const PASSES = [
-      { cell: 34, radius: 46, alpha: 0.2 },
-      { cell: 21, radius: 26, alpha: 0.14 },
+      { cell: 34, radius: 46, alpha: 0.26 },
+      { cell: 21, radius: 26, alpha: 0.18 },
     ];
 
     for (const pass of PASSES) {
@@ -207,8 +222,8 @@ export const BIOLOGICAL: ArenaTheme = {
           const px = x + stagger + (sample(x + 91, y) - 0.5) * pass.cell * 1.2;
           const py = y + (sample(x, y + 57) - 0.5) * pass.cell * 1.2;
           const h = sample(px, py);
-          // Only the thick half pools. Thin goop is the dish showing through,
-          // which is what makes the thick patches worth avoiding.
+          // Only the thick half pools. Thin goop is clear water, which is what
+          // makes the thick patches worth avoiding.
           if (h <= 0.45) continue;
           const t = (h - 0.45) / 0.55;
           const r = pass.radius * (0.5 + t * 0.5);
