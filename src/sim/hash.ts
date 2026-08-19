@@ -87,6 +87,7 @@ export function hashWorld(world: World): string {
     h.float(r.radar);
     h.float(r.pingHeat);
     h.float(r.health);
+    h.float(r.fuel);
     h.bool(r.alive);
     h.float(r.throttle);
     h.float(r.headingGoal);
@@ -102,6 +103,17 @@ export function hashWorld(world: World): string {
     h.int(r.diedAtTick);
     // The label is script-controlled state, so it belongs in the hash.
     h.text(r.name);
+  }
+
+  // Cells are part of the physical state: two peers disagreeing about where
+  // fuel is would diverge the moment somebody drove over it.
+  h.int(world.fuel.length);
+  h.int(world.nextFuelId);
+  for (const f of world.fuel) {
+    h.int(f.id);
+    h.float(f.x);
+    h.float(f.y);
+    h.float(f.amount);
   }
 
   h.int(world.bullets.length);

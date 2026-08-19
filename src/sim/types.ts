@@ -9,6 +9,7 @@
 import type { Locomotion } from "../lang/ast.js";
 import type { Chunk } from "../lang/bytecode.js";
 import type { RuntimeError, Vm } from "../lang/vm.js";
+import { clamp } from "./math.js";
 import type { Rng } from "./rng.js";
 
 /** Simulation rate. Rendering interpolates between these at 60fps. */
@@ -91,6 +92,91 @@ export const BULLET = {
   radius: 3,
 } as const;
 
+/**
+ * Fuel: the one thing in the arena that is consumed and can be replaced.
+ *
+ * Deliberately unrelated to `OPS_PER_TICK`. Thinking is free and equal for
+ * everybody; only *actuated* work costs — driving, turning, slewing, firing,
+ * pinging. The passive sense cone is not actuated and stays free: every robot
+ * has it always on, so pricing it would only be a constant added to `basal`.
+ *
+ * Running dry is a brownout, never a death. Capability scales toward
+ * `floorFactor` and stops there, which also makes the economy self-limiting:
+ * as fuel drops, top speed drops, so the cost of driving drops, so an empty
+ * robot approaches the floor asymptotically instead of falling off a cliff.
+ * That matters because every robot written before fuel existed still has to be
+ * able to finish a match.
+ */
+export const MAX_FUEL = 100;
+
+export const FUEL = {
+  /** Fraction of full capability left at an empty tank. Never 0. */
+  floorFactor: 0.25,
+
+  // ---- per tick ----
+  /** Paid every tick simply for being alive, so idling in a corner still costs. */
+  basal: 0.02,
+  /** Scaled by how much of the available top speed is actually being used. */
+  drive: 0.05,
+  /** Per degree the chassis actually rotated. */
+  bodyTurn: 0.01,
+  /** Per degree the turret and radar actually slewed. */
+  slew: 0.005,
+
+  // ---- per use ----
+  /** Multiplied by firing power, so a heavy shot costs what it is worth. */
+  fire: 0.8,
+  /** A ping reaches three times as far as the cone; it is the expensive sense. */
+  ping: 1.5,
+} as const;
+
+/**
+ * How generous a match is. Travels in the manifest, so a replay and every peer
+ * spawn the identical sequence of cells.
+ */
+export interface FuelConfig {
+  /** Ticks between spawn attempts. */
+  spawnEveryTicks: number;
+  /** Nothing spawns while this many cells are already out. */
+  maxOnField: number;
+  /** Fuel restored by one cell. */
+  amount: number;
+  /** Pickup radius, added to the robot's own. */
+  radius: number;
+}
+
+/**
+ * The tournament runs leaner than the arena on purpose. Scarcer fuel means
+ * brownouts bite, which separates robots that budget their movement from ones
+ * that drive flat out — and a knockout wants to be decided by something.
+ */
+export const FUEL_PRESETS = {
+  arena: { spawnEveryTicks: 90, maxOnField: 6, amount: 25, radius: 10 },
+  tournament: { spawnEveryTicks: 120, maxOnField: 4, amount: 20, radius: 10 },
+} as const satisfies Record<string, FuelConfig>;
+
+/**
+ * A manifest can arrive from a remote host, so its numbers are input, not
+ * fact. `spawnEveryTicks: 0` would spawn without bound on every peer.
+ */
+export function clampFuelConfig(cfg: FuelConfig): FuelConfig {
+  return {
+    spawnEveryTicks: Math.max(1, Math.min(36000, Math.round(cfg.spawnEveryTicks))),
+    maxOnField: Math.max(0, Math.min(64, Math.round(cfg.maxOnField))),
+    amount: clamp(cfg.amount, 0, MAX_FUEL),
+    radius: clamp(cfg.radius, 0, 200),
+  };
+}
+
+/** A pickup sitting in the arena, waiting to be driven over. */
+export interface FuelCell {
+  id: number;
+  x: number;
+  y: number;
+  /** How much fuel absorbing it restores. */
+  amount: number;
+}
+
 /** Per-locomotion movement characteristics. */
 export interface ChassisSpec {
   locomotion: Locomotion;
@@ -149,6 +235,8 @@ export interface Robot {
   pingHeat: number;
 
   health: number;
+  /** 0..MAX_FUEL. Drains from actuated work; refilled by driving over a cell. */
+  fuel: number;
   alive: boolean;
 
   // ---- actuator goals, set by the script, slewed toward by the sim ----
@@ -191,7 +279,7 @@ export interface Robot {
 
 /** Transient visual events produced by a tick, consumed by the renderer. */
 export interface Effect {
-  type: "muzzle" | "impact" | "explosion" | "wallHit" | "ping";
+  type: "muzzle" | "impact" | "explosion" | "wallHit" | "ping" | "pickup";
   x: number;
   y: number;
   /** Degrees, where meaningful. */
@@ -222,9 +310,13 @@ export interface World {
   rng: Rng;
   robots: Robot[];
   bullets: Bullet[];
+  fuel: FuelCell[];
   effects: Effect[];
   terrain: TerrainField;
   nextBulletId: number;
+  nextFuelId: number;
+  /** Spawn rules for this match, carried in the manifest so replays agree. */
+  fuelConfig: FuelConfig;
   /** Set once fewer than two robots remain, or the tick limit is reached. */
   over: boolean;
   winnerId: number | null;

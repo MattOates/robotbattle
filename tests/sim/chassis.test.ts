@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { createWorld, makeManifest } from "../../src/sim/world.js";
 import { step } from "../../src/sim/step.js";
-import { DT, ROBOT_RADIUS, SENSE } from "../../src/sim/types.js";
+import { DT, MAX_FUEL, ROBOT_RADIUS, SENSE } from "../../src/sim/types.js";
 import { SKID, STEERED, specFor, turningRadius } from "../../src/sim/chassis.js";
 import { DEG_TO_RAD, angleDelta, hypot } from "../../src/sim/math.js";
 
@@ -16,6 +16,22 @@ function world(sources: string[], seed = 7) {
 
 function run(w: ReturnType<typeof world>, ticks: number) {
   for (let i = 0; i < ticks; i++) step(w);
+}
+
+/**
+ * Run with every tank held full.
+ *
+ * The rated figures below — top speed, turn rate, turning circle — are what a
+ * chassis does at full capability. Fuel scales all three down as it drains, by
+ * design, so a test that did not pin the tank would be measuring the brownout
+ * curve rather than the locomotion model. `tests/sim/fuel.test.ts` is where
+ * that coupling is tested on purpose.
+ */
+function runFuelled(w: ReturnType<typeof world>, ticks: number) {
+  for (let i = 0; i < ticks; i++) {
+    for (const r of w.robots) r.fuel = MAX_FUEL;
+    step(w);
+  }
 }
 
 describe("skid steer (tracks / cilia)", () => {
@@ -35,7 +51,7 @@ describe("skid steer (tracks / cilia)", () => {
     const w = world([`chassis tank\non start\n  turn body by 170\nend\n`]);
     const r = w.robots[0]!;
     const h0 = r.heading;
-    run(w, 2);
+    runFuelled(w, 2);
     const perTick = Math.abs(angleDelta(h0, r.heading)) / 2;
     expect(perTick).toBeCloseTo(SKID.turnRate * DT, 4);
   });
@@ -57,11 +73,11 @@ describe("steered (wheels / flagellum)", () => {
     // Holding a large heading error keeps the steering at full lock.
     const w = world([`chassis car\non tick\n  drive forward 100\n  turn body by 90\nend\n`]);
     const r = w.robots[0]!;
-    run(w, 90); // let speed settle at maximum
+    runFuelled(w, 90); // let speed settle at maximum
 
     const h0 = r.heading;
     const v = r.speed;
-    run(w, 1);
+    runFuelled(w, 1);
     const omegaDegPerSec = angleDelta(h0, r.heading) / DT;
     const measuredRadius = Math.abs(v / (omegaDegPerSec * DEG_TO_RAD));
 
@@ -75,8 +91,8 @@ describe("steered (wheels / flagellum)", () => {
     // into each other long before either reached top speed.
     const car = world([`chassis car\non start\n  drive forward 100\nend\n`]);
     const tank = world([`chassis tank\non start\n  drive forward 100\nend\n`]);
-    run(car, 60);
-    run(tank, 60);
+    runFuelled(car, 60);
+    runFuelled(tank, 60);
     expect(car.robots[0]!.speed).toBeGreaterThan(tank.robots[0]!.speed);
     expect(car.robots[0]!.speed).toBeCloseTo(STEERED.maxSpeed, 1);
     expect(tank.robots[0]!.speed).toBeCloseTo(SKID.maxSpeed, 1);

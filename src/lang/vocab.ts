@@ -54,6 +54,8 @@ export const SYNONYMS: readonly Synonym[] = [
     also: ["ocellus"],
   },
   { canonical: "ping", mechanical: "ping", biological: "peek", also: ["glance"] },
+  // The one consumable in the arena. A robot refuels; an organism feeds.
+  { canonical: "fuel", mechanical: "fuel", biological: "food", also: ["nutrient"] },
   {
     canonical: "bullet",
     mechanical: "bullet",
@@ -137,6 +139,8 @@ export interface ThemeVocab {
   readonly scanner: string;
   readonly pingVerb: string;
   readonly driveVerb: string;
+  /** The consumable scattered about: fuel cells or morsels of food. */
+  readonly fuel: string;
   readonly arena: string;
 }
 
@@ -154,6 +158,7 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     scanner: "radar",
     pingVerb: "ping",
     driveVerb: "drive",
+    fuel: "fuel",
     arena: "arena",
   },
   biological: {
@@ -169,6 +174,7 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     scanner: "eyespot",
     pingVerb: "peek",
     driveVerb: "swim",
+    fuel: "food",
     arena: "microcosm",
   },
 };

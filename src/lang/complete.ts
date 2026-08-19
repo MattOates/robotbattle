@@ -216,6 +216,11 @@ const ME_PROPS: readonly PropDoc[] = [
   { name: "gunHeat", detail: "Above 0 means the gun is still cooling and cannot fire." },
   { name: "radar", detail: "Where the {radar} points, compared to straight ahead." },
   { name: "pingHeat", detail: "Ticks left before you can {ping} again. 0 means ready." },
+  {
+    name: "fuel",
+    detail:
+      "How much {fuel} is in your tank, out of 100. Moving, turning, {fire} and {ping} spend it; driving over {fuel} refills it. At empty you are slow, not dead.",
+  },
   { name: "ammo", detail: "1 when you are ready to fire, 0 when you are not." },
   { name: "score", detail: "How many robots you have destroyed." },
 ];

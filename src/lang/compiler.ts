@@ -58,6 +58,7 @@ const ME_PROPS = new Set([
   "score",
   "radar",
   "pingheat",
+  "fuel",
 ]);
 const ARENA_PROPS = new Set(["width", "height", "time", "robots"]);
 // `event` has no fixed shape: what it carries depends on which handler you are

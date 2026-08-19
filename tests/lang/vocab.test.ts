@@ -38,6 +38,13 @@ describe("themed vocabulary", () => {
       ["on tick\n  radar.sweep 60\nend\n", "on tick\n  eyespot.sweep 60\nend\n"],
       ["on tick\n  ping\nend\n", "on tick\n  peek\nend\n"],
       ["on tick\n  radar.aim at 30\nend\n", "on tick\n  eyespot.aim at 30\nend\n"],
+      // The one consumable: a robot refuels, an organism feeds, same program.
+      [
+        "on sense fuel\n  drive forward 80\nend\n",
+        "on sense food\n  swim forward 80\nend\n",
+      ],
+      ["on ping fuel\n  stop\nend\n", "on ping food\n  stop\nend\n"],
+      ["on tick\n  fire me.fuel\nend\n", "on tick\n  sting me.food\nend\n"],
       ["on ping robot\n  fire\nend\n", "on peek organism\n  sting\nend\n"],
       ["on ping wall\n  stop\nend\n", "on peek wall\n  stop\nend\n"],
       ["on tick\n  fire me.radar\nend\n", "on tick\n  sting me.eyespot\nend\n"],

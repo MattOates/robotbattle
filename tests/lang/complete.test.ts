@@ -28,7 +28,7 @@ describe("events", () => {
   });
 
   it("narrows to the sensing events after `on sense`", () => {
-    expect(at("on sense |")).toEqual(["robot", "bullet", "wall"]);
+    expect(at("on sense |")).toEqual(["robot", "bullet", "wall", "fuel"]);
   });
 
   it("narrows after `on hit`", () => {
@@ -112,7 +112,7 @@ describe("blocks you teach yourself", () => {
 
   it("offers the event list after `given`, narrowing as you type", () => {
     expect(at("can dodge given |")).toEqual([...EVENT_NAMES]);
-    expect(at("can dodge given sense |")).toEqual(["robot", "bullet", "wall"]);
+    expect(at("can dodge given sense |")).toEqual(["robot", "bullet", "wall", "fuel"]);
   });
 
   it("knows which event a block is for, inside it", () => {

@@ -18,10 +18,12 @@ import {
   TURRET,
   BULLET,
   DT,
+  FUEL,
+  MAX_FUEL,
   MAX_HEALTH,
 } from "./types.js";
-import { distanceToWall } from "./world.js";
-import type { Bullet, Robot, World } from "./types.js";
+import { distanceToWall, fuelFactor, spendFuel } from "./world.js";
+import type { Bullet, FuelCell, Robot, World } from "./types.js";
 import {
   angleDelta,
   atan2Deg,
@@ -51,6 +53,8 @@ export function step(world: World): void {
   moveRobots(world);
   resolveRobotCollisions(world);
   moveBullets(world);
+  collectFuel(world);
+  spawnFuel(world);
   coolGuns(world);
   checkEnd(world);
 
@@ -126,6 +130,31 @@ function senseAll(world: World): void {
       }
     }
 
+    // --- nearest fuel cell in cone ---
+    if (r.vm.handles("sense fuel") && !r.vm.hasQueued("sense fuel")) {
+      let best: FuelCell | null = null;
+      let bestDist = Infinity;
+      for (const f of world.fuel) {
+        const dx = f.x - r.x;
+        const dy = f.y - r.y;
+        const dist = hypot(dx, dy);
+        if (dist > SENSE.range || dist >= bestDist) continue;
+        const bearing = angleDelta(r.heading, atan2Deg(dy, dx));
+        if (bearing < -SENSE.halfAngle || bearing > SENSE.halfAngle) continue;
+        best = f;
+        bestDist = dist;
+      }
+      if (best) {
+        r.vm.enqueue("sense fuel", {
+          bearing: angleDelta(r.heading, atan2Deg(best.y - r.y, best.x - r.x)),
+          distance: bestDist,
+          amount: best.amount,
+          x: best.x,
+          y: best.y,
+        });
+      }
+    }
+
     // --- wall straight ahead ---
     if (r.vm.handles("sense wall") && !r.vm.hasQueued("sense wall")) {
       const dist = distanceToWall(world, r.x, r.y, r.heading);
@@ -163,17 +192,22 @@ function moveRobots(world: World): void {
   for (const r of world.robots) {
     if (!r.alive) continue;
     const spec = specFor(r.locomotion);
+    const headingBefore = r.heading;
 
     // Terrain currently returns 1 everywhere; milestone 4 makes this hills or
     // viscosity depending on the theme.
     const terrainFactor = world.terrain.speedAt(r.x, r.y);
-    const maxSpeed = spec.maxSpeed * terrainFactor;
+    // Brownout: an empty tank leaves a robot slow and vague, never stopped.
+    // Sampled once, before anything is spent, so a robot's capability within a
+    // tick is one consistent number rather than drifting as it pays for itself.
+    const fuelled = fuelFactor(r);
+    const maxSpeed = spec.maxSpeed * terrainFactor * fuelled;
 
     // --- longitudinal: accelerate toward the throttle target ---
     const targetSpeed = r.throttle * maxSpeed;
     // Slowing down (or reversing direction) uses the stronger braking rate.
     const closingToZero = Math.abs(targetSpeed) < Math.abs(r.speed) || targetSpeed * r.speed < 0;
-    const rate = (closingToZero ? spec.braking : spec.acceleration) * DT;
+    const rate = (closingToZero ? spec.braking : spec.acceleration) * fuelled * DT;
     r.speed = moveToward(r.speed, targetSpeed, rate);
 
     // --- rotation ---
@@ -181,7 +215,7 @@ function moveRobots(world: World): void {
       // Skid steer turns at a fixed rate regardless of speed, and can pivot on
       // the spot. This is the slow-but-agile half of the trade.
       if (r.headingMode === "goal") {
-        r.heading = turnToward(r.heading, r.headingGoal, spec.turnRate * DT);
+        r.heading = turnToward(r.heading, r.headingGoal, spec.turnRate * fuelled * DT);
       }
       r.steer = 0;
     } else {
@@ -192,12 +226,19 @@ function moveRobots(world: World): void {
       } else {
         r.steer = moveToward(r.steer, 0, spec.maxSteer * 2 * DT);
       }
-      const omega = steeredAngularVelocity(spec, r.speed, r.steer);
+      const omega = steeredAngularVelocity(spec, r.speed, r.steer) * fuelled;
       r.heading = normalizeAngle(r.heading + omega * DT);
     }
 
     // --- turret, independent of the chassis ---
-    updateTurret(r);
+    updateTurret(r, fuelled);
+
+    // --- pay for the work actually done, not for asking ---
+    // Charged on outcomes: a robot pinned against a wall at full throttle is
+    // not moving and is not billed for movement.
+    spendFuel(r, FUEL.basal);
+    if (maxSpeed > 0) spendFuel(r, FUEL.drive * (Math.abs(r.speed) / maxSpeed));
+    spendFuel(r, FUEL.bodyTurn * Math.abs(angleDelta(headingBefore, r.heading)));
 
     // --- translate ---
     r.x += cosDeg(r.heading) * r.speed * DT;
@@ -231,7 +272,9 @@ function moveRobots(world: World): void {
  * the world while the chassis turns underneath it — which is exactly what makes
  * `turret.aim at event.bearing` behave the way a beginner expects.
  */
-function updateTurret(r: Robot): void {
+function updateTurret(r: Robot, fuelled: number): void {
+  const turretBefore = r.turret;
+  const radarBefore = r.radar;
   if (r.sweepAmplitude > 0) {
     // Sweeping oscillates around the CURRENT chassis heading, so the search
     // pattern follows the robot as it drives.
@@ -243,7 +286,7 @@ function updateTurret(r: Robot): void {
       r.turretGoal = goal;
     }
   }
-  r.turret = turnToward(r.turret, r.turretGoal, TURRET.slewRate * DT);
+  r.turret = turnToward(r.turret, r.turretGoal, TURRET.slewRate * fuelled * DT);
 
   // The radar slews on exactly the same rules as the turret, on its own goal:
   // one more thing pointing where it was told, independent of both the body
@@ -257,7 +300,11 @@ function updateTurret(r: Robot): void {
       r.radarGoal = goal;
     }
   }
-  r.radar = turnToward(r.radar, r.radarGoal, RADAR.slewRate * DT);
+  r.radar = turnToward(r.radar, r.radarGoal, RADAR.slewRate * fuelled * DT);
+
+  const slewed =
+    Math.abs(angleDelta(turretBefore, r.turret)) + Math.abs(angleDelta(radarBefore, r.radar));
+  spendFuel(r, FUEL.slew * slewed);
 }
 
 interface WallHit {
@@ -462,6 +509,60 @@ function segmentCircleHit(
   const t2 = (-b + sq) / (2 * a);
   if (t2 >= 0 && t2 <= 1) return t2;
   return null;
+}
+
+// ---- phase: fuel ---------------------------------------------------------
+
+/**
+ * Absorb any cell a robot is sitting on.
+ *
+ * Robots are visited in id order and a cell is removed the moment it is taken,
+ * so two robots meeting over one cell is settled by id rather than by whichever
+ * happened to be checked first — arbitrary, but identically arbitrary on every
+ * peer, which is the only property that matters here.
+ */
+function collectFuel(world: World): void {
+  if (world.fuel.length === 0) return;
+  const reach = ROBOT_RADIUS + world.fuelConfig.radius;
+  let taken = false;
+
+  for (const r of world.robots) {
+    if (!r.alive) continue;
+    for (const f of world.fuel) {
+      if (f.amount <= 0) continue; // already claimed this tick
+      if (hypot(f.x - r.x, f.y - r.y) > reach) continue;
+      r.fuel = Math.min(MAX_FUEL, r.fuel + f.amount);
+      f.amount = 0;
+      taken = true;
+      world.effects.push({ type: "pickup", x: f.x, y: f.y, heading: 0, tick: world.tick });
+    }
+  }
+
+  // Compacted the same way bullets are, preserving order.
+  if (taken) world.fuel = world.fuel.filter((f) => f.amount > 0);
+}
+
+/**
+ * Put a new cell out on a fixed cadence.
+ *
+ * The RNG is only touched when a cell is actually spawned, so a match whose
+ * field is full draws nothing and the stream stays a function of what happened
+ * rather than of how often we looked.
+ */
+function spawnFuel(world: World): void {
+  const cfg = world.fuelConfig;
+  if (world.tick % cfg.spawnEveryTicks !== 0) return;
+  if (world.fuel.length >= cfg.maxOnField) return;
+
+  // Kept off the walls so a cell is never half-buried in one, and so it cannot
+  // sit where a robot would have to scrape itself to reach it.
+  const margin = ROBOT_RADIUS + cfg.radius;
+  world.fuel.push({
+    id: world.nextFuelId++,
+    x: world.rng.range(margin, Math.max(margin, world.width - margin)),
+    y: world.rng.range(margin, Math.max(margin, world.height - margin)),
+    amount: cfg.amount,
+  });
 }
 
 // ---- phase: housekeeping -------------------------------------------------

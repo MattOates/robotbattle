@@ -30,23 +30,26 @@ const GOLDEN = {
   // 4 — the cone shortened again, to three quarters of what it had been. The
   //     sample bots all hunt by sense cone, so they now spend far longer
   //     looking for each other: the same fight takes 525 ticks instead of 302.
-  simVersion: 4,
-  ticks: 525,
+  // 5 — fuel. The sample bots are barely affected by the resource itself over a
+  //     match this short — nobody drops below about two thirds of a tank, and a
+  //     full tank is exactly the capability they always had. What moved the
+  //     match is the RNG: a cell is spawned on tick 0, so every later draw
+  //     shifts, and these four all use `random`. Same fight, different dice:
+  //     379 ticks instead of 525, and Hunter still wins it.
+  simVersion: 5,
+  ticks: 379,
   winner: "Hunter",
-  finalHash: "e70e79f1386ce89a",
+  finalHash: "e65e0383837cf87e",
   /** Hash at ticks 0, 50, 100, ... */
   every50: [
-    "dcb714bffd6ea1e9",
-    "273ce9d18d8a343d",
-    "1594d11e710148e2",
-    "44ff2beda7e04f98",
-    "9d87f4417131aa1e",
-    "db4dba9d5eb05efc",
-    "bdbd654cefd15e58",
-    "8e5acda451168f2b",
-    "ccdf195d51ca8c46",
-    "f9a4db622baeeee2",
-    "022d820cb1095a54",
+    "e6ae9f5548451dd8",
+    "81eda9f0b151114d",
+    "1e0007853add2844",
+    "f9bae0dd4fc3a8b3",
+    "e4da6be28b100ef1",
+    "b94cfd3d25e2fd75",
+    "72521d0b8cc9b2de",
+    "e577bd0722a07bfa",
   ],
 };
 
