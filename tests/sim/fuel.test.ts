@@ -12,12 +12,17 @@ import { createWorld, fuelFactor, makeManifest, spendFuel } from "../../src/sim/
 import { step } from "../../src/sim/step.js";
 import { hashWorld } from "../../src/sim/hash.js";
 import {
+  DT,
   FUEL,
   FUEL_PRESETS,
   MAX_FUEL,
+  RADAR,
   ROBOT_RADIUS,
+  TURRET,
   type FuelConfig,
 } from "../../src/sim/types.js";
+import { SKID } from "../../src/sim/chassis.js";
+import { HUNGRY_HIPPO, SITTING_DUCK, SPINNER } from "../../src/bots/index.js";
 
 const IDLE = `name "Idle"\nchassis tank\n`;
 const DRIVER = `name "Driver"\nchassis tank\non start\n  drive forward 100\nend\n`;
@@ -250,5 +255,60 @@ describe("the brownout curve", () => {
       expect(here).toBeLessThanOrEqual(previous);
       previous = here;
     }
+  });
+});
+
+describe("what things cost relative to each other", () => {
+  // Per-degree prices are deceptive: a turret slews 200 degrees a second, so a
+  // figure that looks small is billed six or seven times a tick. Priced by eye
+  // rather than by measurement, aiming cost more than driving and every sample
+  // robot that swept sat pinned at an empty tank for whole matches. These
+  // compare what each habit actually costs per tick.
+  const perTick = {
+    basal: FUEL.basal,
+    drive: FUEL.drive,
+    bodyTurn: FUEL.bodyTurn * SKID.turnRate * DT,
+    turretSweep: FUEL.slew * TURRET.slewRate * DT,
+    radarSweep: FUEL.slew * RADAR.slewRate * DT,
+    pingOnCooldown: FUEL.ping / RADAR.cooldown,
+  };
+
+  it("makes going somewhere the most expensive habit", () => {
+    expect(perTick.drive).toBeGreaterThan(perTick.bodyTurn);
+    expect(perTick.drive).toBeGreaterThan(perTick.turretSweep);
+    expect(perTick.drive).toBeGreaterThan(perTick.radarSweep);
+  });
+
+  it("keeps aiming cheap, because it gets you nowhere", () => {
+    // Sweeping either instrument all match should be a fraction of travelling.
+    expect(perTick.turretSweep).toBeLessThan(perTick.drive / 4);
+    expect(perTick.radarSweep).toBeLessThan(perTick.drive / 4);
+  });
+
+  it("prices turning below travelling", () => {
+    expect(perTick.bodyTurn).toBeLessThan(perTick.drive * 0.75);
+  });
+
+  it("keeps the radar affordable enough to be worth having", () => {
+    // A robot pinging every time the beam recovers should spend about what it
+    // spends driving — a real commitment, not a reason never to ping.
+    expect(perTick.pingOnCooldown).toBeLessThanOrEqual(perTick.drive * 1.5);
+  });
+
+  it("leaves a robot that forages better off than one that does not", () => {
+    // The whole mechanic in one assertion. Hungry Hippo does nothing but eat;
+    // Spinner never leaves its spawn, so it can never reach a cell.
+    const forager = createWorld(
+      makeManifest([{ source: HUNGRY_HIPPO }, { source: SITTING_DUCK }], { seed: 3, maxTicks: 3600 }),
+    );
+    const stayer = createWorld(
+      makeManifest([{ source: SPINNER }, { source: SITTING_DUCK }], { seed: 3, maxTicks: 3600 }),
+    );
+    for (let i = 0; i < 3600; i++) {
+      step(forager);
+      step(stayer);
+    }
+    expect(forager.robots[0]!.fuel).toBeGreaterThan(50);
+    expect(stayer.robots[0]!.fuel).toBeLessThan(forager.robots[0]!.fuel);
   });
 });

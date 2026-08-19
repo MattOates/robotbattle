@@ -317,6 +317,71 @@ can bounce given hit wall
 end
 `;
 
+const HUNGRY_HIPPO = `-- Ignores the battle completely and eats.
+--
+-- Everything that moves costs fuel and nothing here ever shoots, so this is
+-- the fuel economy on its own, with the fighting taken out: the gauge under
+-- the hippo fills every time it reaches a cell and drains the whole time it
+-- is looking for the next one.
+--
+-- Note what it does NOT do. It never fires, and it never sweeps the turret,
+-- because both cost fuel and neither finds food. The radar is the exception
+-- worth paying for: a ping is the most expensive thing here, and it still
+-- pays, because food you cannot see is food you cannot eat.
+name "Hungry Hippo"
+chassis tank
+color #ff6b6b
+
+on start
+  radar.sweep 90
+  drive forward 60
+end
+
+on tick
+  -- Ping whenever the beam has recovered, and only then: me.pingHeat counts
+  -- down to zero, and pinging early is simply ignored.
+  if me.pingHeat is 0 then
+    ping
+  end
+end
+
+on sense fuel
+  -- Close enough for the cone. Line up and go and get it.
+  set name = "nom"
+  turn body by event.bearing
+  drive forward 100
+end
+
+on ping fuel
+  -- Right across the arena, and found only because the beam was pointed there.
+  -- Hold the beam on it so the next ping says whether it is still going, and
+  -- set off.
+  set name = "on my way"
+  radar.aim at event.bearing
+  turn body by event.bearing
+  drive forward 100
+end
+
+on ping wall
+  -- Nothing down that line but the edge. Go back to searching.
+  set name = "hungry"
+  radar.sweep 90
+end
+
+on hit wall
+  turn body by 150
+  drive forward 40
+end
+
+on hit by bullet
+  -- Somebody is shooting at it. The hippo does not shoot back, but a target
+  -- that keeps moving is a harder one.
+  set name = "rude"
+  turn body by event.bearing + 90
+  drive forward 100
+end
+`;
+
 export const SAMPLE_BOTS: SampleBot[] = [
   {
     id: "sitting-duck",
@@ -361,6 +426,12 @@ export const SAMPLE_BOTS: SampleBot[] = [
     source: DODGER,
   },
   {
+    id: "hungry-hippo",
+    title: "Hungry Hippo",
+    teaches: "fuel: sensing it near and far, and spending nothing you don't have to",
+    source: HUNGRY_HIPPO,
+  },
+  {
     id: "hunter-bio",
     title: "Hunter (biology words)",
     teaches: "the same robot written in the biological vocabulary",
@@ -372,4 +443,14 @@ export function sampleById(id: string): SampleBot | undefined {
   return SAMPLE_BOTS.find((b) => b.id === id);
 }
 
-export { SITTING_DUCK, SPINNER, RACER, HUNTER, DODGER, HUNTER_BIO, SCOUT, TOOLKIT };
+export {
+  SITTING_DUCK,
+  SPINNER,
+  RACER,
+  HUNTER,
+  DODGER,
+  HUNTER_BIO,
+  SCOUT,
+  TOOLKIT,
+  HUNGRY_HIPPO,
+};

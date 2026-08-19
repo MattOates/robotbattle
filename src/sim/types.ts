@@ -130,16 +130,39 @@ export const FUEL = {
   basal: 0.02,
   /** Scaled by how much of the available top speed is actually being used. */
   drive: 0.05,
-  /** Per degree the chassis actually rotated. */
-  bodyTurn: 0.01,
-  /** Per degree the turret and radar actually slewed. */
-  slew: 0.005,
+  /**
+   * Per degree the chassis actually rotated.
+   *
+   * Same trap as `slew`, one step milder: skid steer turns 130 degrees a
+   * second, so this is billed four-odd times a tick. Priced so that pivoting on
+   * the spot costs roughly two fifths of driving at top speed — turning should
+   * be cheaper than travelling, since it gets you nowhere.
+   */
+  bodyTurn: 0.005,
+  /**
+   * Per degree the turret and radar actually slewed.
+   *
+   * Small because turrets are quick: 200 and 260 degrees a second means a
+   * continuous sweep bills this figure some seven or eight times a tick. At the
+   * obvious-looking 0.005 that made pointing your gun cost more than driving
+   * the whole robot at top speed, and every sample robot that sweeps sat pinned
+   * at an empty tank for entire matches. Aiming should be cheap; going places
+   * should be what costs.
+   */
+  slew: 0.001,
 
   // ---- per use ----
   /** Multiplied by firing power, so a heavy shot costs what it is worth. */
   fire: 0.8,
-  /** A ping reaches three times as far as the cone; it is the expensive sense. */
-  ping: 1.5,
+  /**
+   * A ping reaches three times as far as the cone; it is the expensive sense.
+   *
+   * Priced against the cooldown rather than against the shot: a robot pinging
+   * every time the beam recovers spends about what it spends driving flat out,
+   * which is meant to be a real and noticeable commitment without making the
+   * radar unaffordable in a match that has fuel in it.
+   */
+  ping: 0.6,
 } as const;
 
 /**

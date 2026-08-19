@@ -42,24 +42,27 @@ const GOLDEN = {
   //     — the penalty now grows with the square of how empty the tank is. These
   //     four never drop below about two thirds of a tank, which under the new
   //     curve costs them almost nothing, so they fight much closer to the way
-  //     they did before fuel existed: 535 ticks against the pre-fuel 525.
+  //     they did before fuel existed. Retuned again when measurement showed
+  //     slewing and pinging were priced per degree without regard for how fast
+  //     turrets actually move, which had every sweeping robot pinned at an
+  //     empty tank: 533 ticks against the pre-fuel 525.
   simVersion: 5,
-  ticks: 535,
+  ticks: 533,
   winner: "Hunter",
-  finalHash: "552468949c460f30",
+  finalHash: "3cd291228123bc9f",
   /** Hash at ticks 0, 50, 100, ... */
   every50: [
     "e6ae9f5548451dd8",
-    "0a8b0558e3dbef25",
-    "819e4ef85ce7064f",
-    "8169cb4d8ae095b8",
-    "3bd95800510159bc",
-    "d0ca5298d1ab148f",
-    "bed01aa5b3d44386",
-    "565cb61c68469226",
-    "5d4c3115d1b0ac84",
-    "a626a6414c9018ee",
-    "e34363ddc568baad",
+    "8070c2696f5ba6da",
+    "fd6ea7dcccf3f611",
+    "c2ca7aed9841ddc8",
+    "63cbfeac8448a856",
+    "b29a4d470f61bdaa",
+    "a5750565b29af58d",
+    "790d6d55e81963b2",
+    "cdb6730ad2cb6686",
+    "53b8e1b4d476b0ec",
+    "da4ce1a6255b2730",
   ],
 };
 

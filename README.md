@@ -260,6 +260,12 @@ pre-fuel golden numbers, so any drain or spawn leaking into the disabled path
 fails the build. A robot written to forage still runs there; it simply never
 hears `on sense fuel`.
 
+`src/bots/index.ts` ships **Hungry Hippo**, which ignores the battle entirely
+and forages: it never fires and never sweeps its turret, because both cost fuel
+and neither finds food, but it does ping, because food you cannot see is food
+you cannot eat. It is the economy with the fighting taken out, and the only
+sample robot that reliably ends a match with a fuller tank than it started one.
+
 Lesson playgrounds have it off unless the lesson asks for it with `fuel=true`,
 the same way they opt into sense cones. A lesson teaches one idea, and cells
 appearing during the lesson on sense cones are an unexplained second one.
