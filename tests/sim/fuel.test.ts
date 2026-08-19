@@ -8,10 +8,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createWorld, makeManifest, spendFuel } from "../../src/sim/world.js";
+import { createWorld, fuelFactor, makeManifest, spendFuel } from "../../src/sim/world.js";
 import { step } from "../../src/sim/step.js";
 import { hashWorld } from "../../src/sim/hash.js";
 import {
+  FUEL,
   FUEL_PRESETS,
   MAX_FUEL,
   ROBOT_RADIUS,
@@ -207,5 +208,47 @@ describe("switched off", () => {
     for (let i = 0; i < 300; i++) step(w);
     expect(w.robots[0]!.alive).toBe(true);
     expect(w.robots[0]!.scriptError).toBeNull();
+  });
+});
+
+describe("the brownout curve", () => {
+  const factor = (fuel: number) => {
+    const w = world([IDLE], NO_SPAWN);
+    w.robots[0]!.fuel = fuel;
+    return fuelFactor(w, w.robots[0]!);
+  };
+
+  it("runs from whole at a full tank to the floor at an empty one", () => {
+    expect(factor(MAX_FUEL)).toBe(1);
+    expect(factor(0)).toBeCloseTo(FUEL.floorFactor, 6);
+  });
+
+  it("is barely felt while the tank is still healthy", () => {
+    // The point of the shape: not having topped up recently is not a handicap.
+    expect(factor(90)).toBeGreaterThan(0.97);
+    expect(factor(75)).toBeGreaterThan(0.9);
+  });
+
+  it("bites hard once the tank is genuinely low", () => {
+    expect(factor(25)).toBeLessThan(0.55);
+    expect(factor(10)).toBeLessThan(0.35);
+  });
+
+  it("is not a straight line, and bends the right way", () => {
+    // Every point above the line joining its ends — which is what makes the
+    // loss concentrate at the bottom rather than spreading evenly.
+    for (const fuel of [10, 25, 40, 50, 60, 75, 90]) {
+      const straight = FUEL.floorFactor + (1 - FUEL.floorFactor) * (fuel / MAX_FUEL);
+      expect(factor(fuel), `at ${fuel}`).toBeGreaterThan(straight);
+    }
+  });
+
+  it("never increases as the tank empties", () => {
+    let previous = Infinity;
+    for (let fuel = MAX_FUEL; fuel >= 0; fuel -= 5) {
+      const here = factor(fuel);
+      expect(here).toBeLessThanOrEqual(previous);
+      previous = here;
+    }
   });
 });

@@ -346,12 +346,26 @@ export function spendFuel(world: World, robot: Robot, amount: number): void {
 /**
  * How much of its capability a robot currently has, from its tank.
  *
+ * The penalty grows with the *square* of how empty the tank is, so it is barely
+ * there until the tank actually gets low and then bites hard: a robot at three
+ * quarters keeps 94% of itself, at half 78%, at a quarter 49%, and at empty the
+ * floor. Under a straight line, half a tank cost 45% of a robot's capability,
+ * which punished a robot for the ordinary state of not having topped up
+ * recently. Running low should be an emergency; running down should not.
+ *
+ * Written as a plain multiplication rather than a logarithm on purpose.
+ * `Math.log` is not required to be correctly rounded, so it varies between
+ * engines and would desync peers — `tests/determinism/determinism.test.ts` bans
+ * it outright. `+ - *` are exact under IEEE 754, and a squared term traces the
+ * same "flat, then falling away" shape a decay curve would.
+ *
  * Exactly 1 when the mechanic is off, so a match without fuel is the match the
  * game had before fuel existed rather than one quietly scaled by a full tank.
  */
 export function fuelFactor(world: World, robot: Robot): number {
   if (!world.fuelConfig.enabled) return 1;
-  return FUEL.floorFactor + (1 - FUEL.floorFactor) * (robot.fuel / MAX_FUEL);
+  const empty = 1 - clamp(robot.fuel / MAX_FUEL, 0, 1);
+  return 1 - (1 - FUEL.floorFactor) * empty * empty;
 }
 
 /** Fire the turret, if it has cooled. */

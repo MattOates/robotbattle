@@ -37,20 +37,29 @@ const GOLDEN = {
   //     match is the RNG: a cell is spawned on tick 0, so every later draw
   //     shifts, and these four all use `random`. Same fight, different dice:
   //     379 ticks instead of 525, and Hunter still wins it.
+  //     Retuned twice since. The floor dropped from a quarter of normal
+  //     capability to a tenth, and the fall to it stopped being a straight line
+  //     — the penalty now grows with the square of how empty the tank is. These
+  //     four never drop below about two thirds of a tank, which under the new
+  //     curve costs them almost nothing, so they fight much closer to the way
+  //     they did before fuel existed: 535 ticks against the pre-fuel 525.
   simVersion: 5,
-  ticks: 379,
+  ticks: 535,
   winner: "Hunter",
-  finalHash: "e65e0383837cf87e",
+  finalHash: "552468949c460f30",
   /** Hash at ticks 0, 50, 100, ... */
   every50: [
     "e6ae9f5548451dd8",
-    "81eda9f0b151114d",
-    "1e0007853add2844",
-    "f9bae0dd4fc3a8b3",
-    "e4da6be28b100ef1",
-    "b94cfd3d25e2fd75",
-    "72521d0b8cc9b2de",
-    "e577bd0722a07bfa",
+    "0a8b0558e3dbef25",
+    "819e4ef85ce7064f",
+    "8169cb4d8ae095b8",
+    "3bd95800510159bc",
+    "d0ca5298d1ab148f",
+    "bed01aa5b3d44386",
+    "565cb61c68469226",
+    "5d4c3115d1b0ac84",
+    "a626a6414c9018ee",
+    "e34363ddc568baad",
   ],
 };
 

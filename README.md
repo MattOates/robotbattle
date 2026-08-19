@@ -225,9 +225,22 @@ tax everybody pays equally. Charges land on what actually happened rather than
 on the instruction that asked, so a robot pinned against a wall at full throttle
 is not billed for movement it did not achieve.
 
-Running dry is a **brownout, never a death**. Capability falls toward a quarter
+Running dry is a **brownout, never a death**. Capability falls toward a tenth
 of normal and stops there: an empty robot is slow and vague, still driving,
-still shooting, still able to reach the next cell. That also makes the economy
+still shooting, still able to crawl to the next cell — but it has effectively
+lost the fight until it finds one.
+
+The fall is not a straight line. The penalty grows with the square of how empty
+the tank is, so it is barely there until the tank is genuinely low and then
+bites hard:
+
+| tank    | 100% | 75% | 50% | 25% | 10% | empty |
+| ------- | ---- | --- | --- | --- | --- | ----- |
+| you get | 100% | 94% | 78% | 49% | 27% | 10%   |
+
+Running *low* is meant to be an emergency; running *down* is not. Under a
+straight line, half a tank cost nearly half the robot, which punished the
+ordinary state of not having topped up recently. That also makes the economy
 self-limiting, since a slower robot spends less to move — an empty tank
 approaches the floor asymptotically instead of falling off a cliff. It is why a
 robot written before fuel existed still finishes its matches.

@@ -105,13 +105,25 @@ export const BULLET = {
  * as fuel drops, top speed drops, so the cost of driving drops, so an empty
  * robot approaches the floor asymptotically instead of falling off a cliff.
  * That matters because every robot written before fuel existed still has to be
- * able to finish a match.
+ * able to finish a match. See `fuelFactor` for the shape of the fall.
  */
 export const MAX_FUEL = 100;
 
 export const FUEL = {
-  /** Fraction of full capability left at an empty tank. Never 0. */
-  floorFactor: 0.25,
+  /**
+   * Fraction of full capability left at an empty tank. Never 0.
+   *
+   * Low on purpose: running dry should be something a player works to avoid,
+   * not a mild handicap. At a tenth of normal a robot is still alive, still
+   * shooting and still able to crawl to the next cell, but it has effectively
+   * lost the fight until it finds one.
+   *
+   * This is the endpoint of the curve in `fuelFactor`, which is deliberately
+   * not a straight line: the penalty grows with the square of how empty the
+   * tank is, so lowering this floor sharpens the last stretch far more than it
+   * touches the first.
+   */
+  floorFactor: 0.1,
 
   // ---- per tick ----
   /** Paid every tick simply for being alive, so idling in a corner still costs. */
