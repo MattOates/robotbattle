@@ -22,6 +22,10 @@ export const EVENT_NAMES = [
   "ping robot",
   "ping fuel",
   "ping wall",
+  // The ground itself. Reported alongside whatever else the beam found rather
+  // than instead of it, because terrain is everywhere and so could never win or
+  // lose a precedence contest sensibly.
+  "ping slope",
   "hit wall",
   "hit robot",
   "hit by bullet",

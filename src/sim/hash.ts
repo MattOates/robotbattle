@@ -71,6 +71,16 @@ export function hashWorld(world: World): string {
   h.bool(world.over);
   h.int(world.winnerId ?? -1);
 
+  // The terrain field itself is immutable and derived, so there is nothing in it
+  // to hash each tick \u2014 but the recipe that made it is worth four bytes. Two
+  // peers that disagree about the map would otherwise diverge slowly, as their
+  // robots drifted apart over ground that was never the same; hashing the config
+  // turns that into a mismatch at tick 0, which is what a tripwire is for.
+  h.bool(world.terrainConfig.enabled);
+  h.int(world.terrainConfig.seed);
+  h.int(world.terrainConfig.featureSize);
+  h.float(world.terrainConfig.amplitude);
+
   const [rngHi, rngLo] = world.rng.getState();
   h.int(rngHi);
   h.int(rngLo);

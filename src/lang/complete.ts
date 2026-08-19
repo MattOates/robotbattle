@@ -204,6 +204,12 @@ function actionSuggestions(theme: Theme): Suggestion[] {
 interface PropDoc {
   name: string;
   detail: string;
+  /**
+   * Canonical word to render this label through, when the two vocabularies
+   * spell it differently. Without it a biological player is offered `me.slope`
+   * and has to guess that `me.thickness` is the same thing.
+   */
+  themed?: string;
 }
 
 const ME_PROPS: readonly PropDoc[] = [
@@ -225,6 +231,24 @@ const ME_PROPS: readonly PropDoc[] = [
     name: "aiming",
     detail:
       "1 while a shot is waiting for the {turret} to come round to where you aimed it. Aiming again now only moves the goal and makes it wait longer.",
+  },
+  {
+    name: "slope",
+    themed: "slope",
+    detail:
+      "How hard the {ground} is right where you are, 0 flat to 100 as bad as it gets. Costs nothing to check \u2014 you can always feel what you are standing on.",
+  },
+  {
+    name: "uphill",
+    themed: "uphill",
+    detail:
+      "Which way the {ground} gets harder, compared to straight ahead. Going that way is slow and expensive.",
+  },
+  {
+    name: "downhill",
+    themed: "downhill",
+    detail:
+      "Which way the {ground} gets easier, compared to straight ahead. Going that way is quick and nearly free.",
   },
   { name: "ammo", detail: "1 when you are ready to fire, 0 when you are not." },
   { name: "score", detail: "How many robots you have destroyed." },
@@ -779,9 +803,11 @@ function propSuggestions(props: readonly PropDoc[], theme: Theme): Suggestion[] 
     label:
       p.name === "health"
         ? healthPropertyFor(theme)
-        : p.name === "turret"
-          ? wordFor("turret", theme)
-          : p.name,
+        : p.themed
+          ? wordFor(p.themed, theme)
+          : p.name === "turret"
+            ? wordFor("turret", theme)
+            : p.name,
     kind: "property" as const,
     detail: renderDoc(p.detail, theme),
   }));

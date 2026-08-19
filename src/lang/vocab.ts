@@ -56,6 +56,13 @@ export const SYNONYMS: readonly Synonym[] = [
   { canonical: "ping", mechanical: "ping", biological: "peek", also: ["glance"] },
   // The one consumable in the arena. A robot refuels; an organism feeds.
   { canonical: "fuel", mechanical: "fuel", biological: "food", also: ["nutrient"] },
+  // The shape of the ground. One field, two readings: a machine climbs a hill,
+  // an organism shoves through goop, and both are fighting the same gradient.
+  { canonical: "slope", mechanical: "slope", biological: "thickness", also: ["gradient"] },
+  // The two ways along that gradient. A machine climbs or descends; an organism
+  // pushes into thicker goop or slips out into thinner. Same two directions.
+  { canonical: "uphill", mechanical: "uphill", biological: "thickest" },
+  { canonical: "downhill", mechanical: "downhill", biological: "thinnest" },
   {
     canonical: "bullet",
     mechanical: "bullet",
@@ -141,6 +148,12 @@ export interface ThemeVocab {
   readonly driveVerb: string;
   /** The consumable scattered about: fuel cells or morsels of food. */
   readonly fuel: string;
+  /** The gradient of the ground: a slope to climb, or goop to shove through. */
+  readonly slope: string;
+  /** The stuff underneath you: ground, or the fluid you are suspended in. */
+  readonly ground: string;
+  /** Which way the going gets harder. Its opposite is where you want to be. */
+  readonly uphill: string;
   readonly arena: string;
 }
 
@@ -159,6 +172,9 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     pingVerb: "ping",
     driveVerb: "drive",
     fuel: "fuel",
+    slope: "slope",
+    ground: "ground",
+    uphill: "uphill",
     arena: "arena",
   },
   biological: {
@@ -175,6 +191,9 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     pingVerb: "peek",
     driveVerb: "swim",
     fuel: "food",
+    slope: "thickness",
+    ground: "goop",
+    uphill: "thickest",
     arena: "microcosm",
   },
 };

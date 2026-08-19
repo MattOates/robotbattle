@@ -34,7 +34,10 @@ export function renderDoc(text: string, theme: Theme = "mechanical"): string {
     .replace(/\{ping\}/g, words.pingVerb)
     .replace(/\{fire\}/g, words.fireVerb)
     .replace(/\{drive\}/g, words.driveVerb)
-    .replace(/\{fuel\}/g, words.fuel);
+    .replace(/\{fuel\}/g, words.fuel)
+    .replace(/\{slope\}/g, words.slope)
+    .replace(/\{ground\}/g, words.ground)
+    .replace(/\{uphill\}/g, words.uphill);
 }
 
 export interface FieldDoc {
@@ -57,6 +60,15 @@ const NAME: FieldDoc = { name: "name", detail: "The label it is showing." };
 const AMOUNT: FieldDoc = {
   name: "amount",
   detail: "How much {fuel} you get for driving over it.",
+};
+const RISE: FieldDoc = {
+  name: "rise",
+  detail:
+    "How much harder the {ground} is out there than right here, from -100 to 100. Positive means it gets worse that way.",
+};
+const HEIGHT: FieldDoc = {
+  name: "height",
+  detail: "How bad the {ground} is out there on its own, 0 for the easiest and 100 for the worst.",
 };
 const X: FieldDoc = { name: "x", detail: "Its position across the arena." };
 const Y: FieldDoc = { name: "y", detail: "Its position down the arena." };
@@ -107,6 +119,11 @@ export const EVENT_DOCS: Readonly<Record<EventName, EventDoc>> = {
     summary:
       "Your {radar} beam reached a wall instead of a {robot}. The distance is how far the wall is in the direction the {radar} points.",
     fields: [BEARING, DISTANCE],
+  },
+  "ping slope": {
+    summary:
+      "Your {radar} beam read the {ground} between you and wherever it is pointing. This one arrives as well as anything else the beam found, not instead of it \u2014 the {ground} is everywhere, so it never has to take its turn.",
+    fields: [BEARING, DISTANCE, RISE, HEIGHT],
   },
   "hit wall": {
     summary: "You drove into a wall. It costs you a little health.",

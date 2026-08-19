@@ -21,6 +21,7 @@ import {
   FUEL,
   MAX_FUEL,
   MAX_HEALTH,
+  TERRAIN,
 } from "./types.js";
 import { distanceToWall, fuelFactor, gunBears, releaseShot, spendFuel } from "./world.js";
 import type { Bullet, FuelCell, Robot, World } from "./types.js";
@@ -36,6 +37,7 @@ import {
   turnToward,
 } from "./math.js";
 import { specFor, steerForHeadingError, steeredAngularVelocity } from "./chassis.js";
+import { climbAlong } from "./terrain.js";
 
 export function step(world: World): void {
   if (world.over) return;
@@ -194,20 +196,35 @@ function moveRobots(world: World): void {
     const spec = specFor(r.locomotion);
     const headingBefore = r.heading;
 
-    // Terrain currently returns 1 everywhere; milestone 4 makes this hills or
-    // viscosity depending on the theme.
-    const terrainFactor = world.terrain.speedAt(r.x, r.y);
+    // How hard the ground is fighting this robot, -1 (straight down the
+    // steepest slope) to +1 (straight up it). Sampled where the robot is now,
+    // along the heading it is about to travel on, so the slowdown below and the
+    // charge further down describe the same step. Exactly 0 on flat ground, on
+    // a disabled map, and — the case that matters — when driving along a
+    // contour rather than against it.
+    r.climb = climbAlong(world.terrain, r.x, r.y, r.heading);
+
+    // Uphill is slow, downhill is quick. This half depends only on terrain: a
+    // match with terrain on and fuel off still has real hills, they just cost
+    // nothing to climb because there is nothing to spend.
+    const terrainSpeed = clamp(
+      1 - TERRAIN.speedSwing * r.climb,
+      TERRAIN.speedFloor,
+      TERRAIN.speedCeil,
+    );
     // Brownout: an empty tank leaves a robot slow and vague, never stopped.
     // Sampled once, before anything is spent, so a robot's capability within a
     // tick is one consistent number rather than drifting as it pays for itself.
     const fuelled = fuelFactor(world, r);
-    const maxSpeed = spec.maxSpeed * terrainFactor * fuelled;
+    const maxSpeed = spec.maxSpeed * terrainSpeed * fuelled;
 
     // --- longitudinal: accelerate toward the throttle target ---
     const targetSpeed = r.throttle * maxSpeed;
     // Slowing down (or reversing direction) uses the stronger braking rate.
     const closingToZero = Math.abs(targetSpeed) < Math.abs(r.speed) || targetSpeed * r.speed < 0;
-    const rate = (closingToZero ? spec.braking : spec.acceleration) * fuelled * DT;
+    // Terrain scales the rate as well as the ceiling. A hill that caps your top
+    // speed but lets you reach it instantly is not a hill.
+    const rate = (closingToZero ? spec.braking : spec.acceleration) * terrainSpeed * fuelled * DT;
     r.speed = moveToward(r.speed, targetSpeed, rate);
 
     // --- rotation ---
@@ -245,7 +262,15 @@ function moveRobots(world: World): void {
     // Charged on outcomes: a robot pinned against a wall at full throttle is
     // not moving and is not billed for movement.
     spendFuel(world, r, FUEL.basal);
-    if (maxSpeed > 0) spendFuel(world, r, FUEL.drive * (Math.abs(r.speed) / maxSpeed));
+    if (maxSpeed > 0) {
+      // The cost half of terrain, and the only place it applies. It multiplies
+      // the drive charge alone: standing on a hill is not expensive, dragging
+      // yourself up one is. Computed here rather than beside `terrainSpeed`
+      // because it is meaningless without a charge to scale — and leaving it
+      // next to the charge is what stops a later refactor from separating them.
+      const terrainCost = clamp(1 + TERRAIN.costSwing * r.climb, 0, TERRAIN.costCeil);
+      spendFuel(world, r, FUEL.drive * terrainCost * (Math.abs(r.speed) / maxSpeed));
+    }
     spendFuel(world, r, FUEL.bodyTurn * Math.abs(angleDelta(headingBefore, r.heading)));
 
     // --- translate ---

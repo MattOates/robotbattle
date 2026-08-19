@@ -10,6 +10,8 @@ import type { Locomotion } from "../lang/ast.js";
 import type { Chunk } from "../lang/bytecode.js";
 import type { RuntimeError, Vm } from "../lang/vm.js";
 import { clamp } from "./math.js";
+// Type-only, so the cycle with terrain.ts is erased at compile time.
+import type { TerrainField } from "./terrain.js";
 import type { Rng } from "./rng.js";
 
 /** Simulation rate. Rendering interpolates between these at 60fps. */
@@ -230,6 +232,95 @@ export function clampFuelConfig(cfg: FuelConfig): FuelConfig {
   };
 }
 
+/**
+ * Terrain: the shape of the ground, and the one thing that makes *where* you
+ * are matter as much as how much you move.
+ *
+ * The field itself lives in `terrain.ts`. These are the numbers that turn a
+ * gradient into a handicap. Everything is expressed against `refSlope`, so
+ * retuning how dramatic hills feel is one number rather than four.
+ *
+ * The two effects gate separately, and deliberately:
+ *   - the SPEED effect needs only terrain to be enabled. With fuel switched
+ *     off, hills are still hills: slow up, quick down, neutral across.
+ *   - the COST effect needs fuel as well, because it is a multiplier on a
+ *     charge that otherwise is never made.
+ * See `moveRobots` in `step.ts`, where both are applied.
+ */
+export const TERRAIN = {
+  /**
+   * The climb, in height-percent per 100px travelled, that counts as "as steep
+   * as it gets". Anything steeper is clamped, so a freak ridge in the noise
+   * cannot produce a handicap the tuning below never anticipated.
+   */
+  refSlope: 60,
+
+  /** Speed multiplier swing either side of 1, before the floor and ceiling. */
+  speedSwing: 0.4,
+  /** Slowest a full climb can make you. Never 0: a hill is not a wall. */
+  speedFloor: 0.6,
+  /** Fastest a full descent can make you. Modest, so downhill is a bonus not a launch. */
+  speedCeil: 1.2,
+
+  /** Drive-cost multiplier swing either side of 1. */
+  costSwing: 2,
+  /** Dearest a full climb can be. Downhill bottoms out at free. */
+  costCeil: 3,
+
+  /**
+   * Pixels over which the field fades to flat at the walls. Robots spawn near
+   * the edge, so the ground there must be nobody's fault.
+   */
+  edgeMargin: 90,
+  /** Half-width of the central difference used to measure the gradient, in pixels. */
+  gradientEpsilon: 4,
+} as const;
+
+/**
+ * The map for a match. Travels in the manifest, so every peer and every replay
+ * generates the identical ground from the identical four numbers.
+ */
+export interface TerrainConfig {
+  /** Whether the ground has any shape at all. Off is perfectly flat. */
+  enabled: boolean;
+  /**
+   * Which map. Kept separate from the match seed so the same ground can be
+   * fought over across many matches, or a new map drawn without moving the
+   * spawn positions.
+   */
+  seed: number;
+  /** Roughly the size of one hill, in pixels. Smaller is choppier. */
+  featureSize: number;
+  /** 0..1. How much of the full height range this map actually uses. */
+  amplitude: number;
+}
+
+/**
+ * The tournament map is broader and gentler than the arena's: bigger features
+ * give a script room to commit to a route, and the lower amplitude keeps a
+ * knockout from turning on which half of the map you spawned in.
+ */
+export const TERRAIN_PRESETS = {
+  arena: { enabled: true, seed: 1, featureSize: 260, amplitude: 1 },
+  tournament: { enabled: true, seed: 1, featureSize: 320, amplitude: 0.8 },
+  /** Flat ground. The shipped default, so nothing existing changes until a host asks. */
+  off: { enabled: false, seed: 1, featureSize: 260, amplitude: 1 },
+} as const satisfies Record<string, TerrainConfig>;
+
+/**
+ * Same reasoning as `clampFuelConfig`: a manifest arrives from a remote host,
+ * so its numbers are input rather than fact. `featureSize: 0` would divide by
+ * zero on every peer at once.
+ */
+export function clampTerrainConfig(cfg: TerrainConfig): TerrainConfig {
+  return {
+    enabled: cfg.enabled,
+    seed: Math.round(cfg.seed) | 0,
+    featureSize: clamp(Math.round(cfg.featureSize), 20, 4000),
+    amplitude: clamp(cfg.amplitude, 0, 1),
+  };
+}
+
 /** A pickup sitting in the arena, waiting to be driven over. */
 export interface FuelCell {
   id: number;
@@ -330,6 +421,13 @@ export interface Robot {
   // These are observational: nothing in the tick loop reads them, and they are
   // deliberately left out of `hashWorld` because they are fully derived from
   // state that is already hashed.
+  /**
+   * How hard this robot is working against the ground right now, -1..1.
+   * +1 is straight up the steepest slope the map is meant to have, -1 straight
+   * down it, 0 flat or across a contour. Written by `moveRobots`; the renderer
+   * turns it into dust or a bow wave.
+   */
+  climb: number;
   kills: number;
   damageDealt: number;
   damageTaken: number;
@@ -356,20 +454,6 @@ export interface Effect {
   range?: number;
 }
 
-/**
- * Terrain hook. Milestone 1 ships a flat field; milestone 4 replaces it with
- * seeded noise (hills for the mechanical theme, viscosity for the biological
- * one). Keeping the seam here means that change never touches the step loop.
- */
-export interface TerrainField {
-  /** Multiplier applied to a robot's max speed at a point. 1 is unobstructed. */
-  speedAt(x: number, y: number): number;
-}
-
-export const FLAT_TERRAIN: TerrainField = {
-  speedAt: () => 1,
-};
-
 export interface World {
   tick: number;
   width: number;
@@ -384,6 +468,12 @@ export interface World {
   nextFuelId: number;
   /** Spawn rules for this match, carried in the manifest so replays agree. */
   fuelConfig: FuelConfig;
+  /**
+   * The four numbers `terrain` was generated from. Kept beside the field itself
+   * because the field is opaque — hashing and the UI both need the recipe, not
+   * the ground.
+   */
+  terrainConfig: TerrainConfig;
   /** Set once fewer than two robots remain, or the tick limit is reached. */
   over: boolean;
   winnerId: number | null;

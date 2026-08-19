@@ -14,20 +14,23 @@ import type { PropRef, Value } from "../lang/bytecode.js";
 import { Vm, toNum, toText, type VmHost } from "../lang/vm.js";
 import { angleDelta, atan2Deg, clamp, cosDeg, hypot, normalizeAngle, sinDeg } from "./math.js";
 import { Rng } from "./rng.js";
+import { FLAT_TERRAIN, makeTerrain, slopeAt, uphillAt } from "./terrain.js";
 import {
   BULLET,
   clampFuelConfig,
-  FLAT_TERRAIN,
+  clampTerrainConfig,
   FUEL,
   FUEL_PRESETS,
   MAX_FUEL,
   MAX_HEALTH,
   RADAR,
   ROBOT_RADIUS,
+  TERRAIN_PRESETS,
   TURRET,
   type FuelCell,
   type FuelConfig,
   type Robot,
+  type TerrainConfig,
   type World,
 } from "./types.js";
 
@@ -48,6 +51,8 @@ export interface MatchManifest {
   maxTicks: number;
   /** How much fuel the arena hands out. Part of the manifest so replays agree. */
   fuel: FuelConfig;
+  /** The shape of the ground. Four numbers, from which every peer draws the same map. */
+  terrain: TerrainConfig;
   /** Bumped whenever simulation behaviour changes, so peers can refuse a mismatch. */
   simVersion: number;
 }
@@ -60,8 +65,11 @@ export interface MatchManifest {
  * 5 — fuel: a consumable resource, spawned pickups, and two new sense events.
  * 6 — committed shots: `fire` waits for the gun to come round, so a handler can
  *     aim and shoot at the same place and leading a target becomes possible.
+ * 7 — terrain: the ground has a gradient, which changes what movement costs and
+ *     how fast it happens. Ships switched off, but the manifest shape changed,
+ *     so an older peer must refuse the match rather than guess at a flat map.
  */
-export const SIM_VERSION = 6;
+export const SIM_VERSION = 7;
 
 /**
  * How far a spawn may vary from its slot on the ring.
@@ -92,6 +100,9 @@ export function makeManifest(
     height: opts.height ?? 620,
     maxTicks: opts.maxTicks ?? 30 * 120, // two minutes
     fuel: opts.fuel ?? FUEL_PRESETS.arena,
+    // Off by default. Terrain changes every balance number in the game, so it
+    // is something a host turns on, never something that arrives unannounced.
+    terrain: opts.terrain ?? TERRAIN_PRESETS.off,
     simVersion: SIM_VERSION,
   };
 }
@@ -113,6 +124,9 @@ export function checkScript(source: string): CompileResult {
 
 export function createWorld(manifest: MatchManifest): World {
   const rng = new Rng(manifest.seed);
+  // Note what this does NOT do: draw from `rng`. The map is hashed out of its
+  // own seed, so adding terrain left every existing spawn position untouched.
+  const terrainConfig = clampTerrainConfig(manifest.terrain ?? TERRAIN_PRESETS.off);
   const world: World = {
     tick: 0,
     width: manifest.width,
@@ -122,11 +136,14 @@ export function createWorld(manifest: MatchManifest): World {
     bullets: [],
     fuel: [],
     effects: [],
-    terrain: FLAT_TERRAIN,
+    terrain: terrainConfig.enabled
+      ? makeTerrain(terrainConfig, manifest.width, manifest.height)
+      : FLAT_TERRAIN,
     nextBulletId: 1,
     nextFuelId: 1,
     // Clamped on the way in: a manifest is input from a remote host, not fact.
     fuelConfig: clampFuelConfig(manifest.fuel ?? FUEL_PRESETS.arena),
+    terrainConfig,
     over: false,
     winnerId: null,
     maxTicks: manifest.maxTicks,
@@ -181,6 +198,7 @@ export function createWorld(manifest: MatchManifest): World {
       radarGoal: facing,
       radarSweepAmplitude: 0,
       radarSweepDir: 1,
+      climb: 0,
       kills: 0,
       damageDealt: 0,
       damageTaken: 0,
@@ -237,6 +255,20 @@ function makeHost(world: World, robot: Robot): VmHost {
             // Re-aiming now would move the goal and delay it further, so this
             // is how a script says "leave the gun alone, it is busy".
             return robot.pendingPower > 0 ? 1 : 0;
+          // Terrain reads are free: you can feel the ground you are standing on
+          // without spending anything to find out. Flat when terrain is off, so
+          // a script written for hills is harmless on a flat map.
+          case "slope":
+            return slopeAt(world.terrain, robot.x, robot.y);
+          case "uphill":
+            return normalizeAngle(uphillAt(world.terrain, robot.x, robot.y) - robot.heading);
+          // The easy way, which is simply the hard way reversed. Given a name of
+          // its own because a script that wants out of trouble should not have
+          // to know that adding 180 is how you turn around.
+          case "downhill":
+            return normalizeAngle(
+              uphillAt(world.terrain, robot.x, robot.y) + 180 - robot.heading,
+            );
           case "ammo":
             return robot.gunHeat <= 0 ? 1 : 0;
           case "score":
@@ -503,6 +535,24 @@ export function ping(world: World, robot: Robot): void {
     tick: world.tick,
     range: Math.min(RADAR.range, best ? bestDist : cell ? cellDist : wallDist),
   });
+
+  // Terrain is reported alongside whatever else the beam found, rather than
+  // taking a place in the precedence chain below. It has to be: the ground is
+  // everywhere, so it would either always win or never be reached. One ping,
+  // one cost, two facts — a sweep that returns both the contact and the shape
+  // of the ground between here and there is the honest reading of a radar.
+  if (world.terrainConfig.enabled && robot.vm.handles("ping slope")) {
+    const reach = Math.min(RADAR.range, wallDist);
+    const tx = robot.x + cosDeg(robot.radar) * reach;
+    const ty = robot.y + sinDeg(robot.radar) * reach;
+    const there = world.terrain.heightAt(tx, ty);
+    robot.vm.enqueue("ping slope", {
+      bearing: angleDelta(robot.heading, robot.radar),
+      distance: reach,
+      rise: (there - world.terrain.heightAt(robot.x, robot.y)) * 100,
+      height: there * 100,
+    });
+  }
 
   if (best) {
     robot.vm.enqueue("ping robot", {

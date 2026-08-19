@@ -51,23 +51,35 @@ const GOLDEN = {
   //     robot here that writes `turret.aim at ...` and then `fire` — which is
   //     most of them — became markedly more accurate without a line changing.
   //     Spinner went from hitting 34% of the time to 71%.
-  simVersion: 6,
+  // 7 — terrain. The ground gained a gradient that changes what driving costs
+  //     and how fast it happens \u2014 but it ships switched off, and generating a
+  //     map takes no draws from the world RNG. So every number below is
+  //     untouched, and that is the point: this entry exists only because the
+  //     manifest grew a field, and an unchanged golden match is the proof that
+  //     "off" means off.
+  //
+  //     The hashes below DID have to be regenerated, and it is worth being
+  //     precise about why: `hashWorld` now folds in the four numbers the map is
+  //     generated from, so the digest changed while the world it describes did
+  //     not. The behavioural facts are the ones that prove it \u2014 532 ticks and
+  //     Hunter, both identical to version 6, and BEFORE_FUEL untouched below.
+  simVersion: 7,
   ticks: 532,
   winner: "Hunter",
-  finalHash: "e445107e9af49a96",
+  finalHash: "ee38dcac90e1ded5",
   /** Hash at ticks 0, 50, 100, ... */
   every50: [
-    "89cdc9278850b288",
-    "33fffc4bd894b6ae",
-    "8d56091f9cc1456d",
-    "f54a58f58a4317b5",
-    "a6bdb3a174739c57",
-    "03fbd0ad447486e4",
-    "c9baf5ad9920e775",
-    "2d7047aa5c6ffa22",
-    "5fd1bfc3cf538ba1",
-    "f5e14bc284620feb",
-    "0a1afe215e96442f",
+    "39a9bf70a87e1511",
+    "18db2eab6b88176b",
+    "766204a5b9bdad94",
+    "966a7ab1a6d204b8",
+    "8e9307f0b0de6a06",
+    "9e59e8dbb67c07fd",
+    "7305fd28978151b2",
+    "0ea37c3844697205",
+    "b91a02cae3ca1f5a",
+    "d1e6bf95831b63f4",
+    "469af15116233c04",
   ],
 };
 
