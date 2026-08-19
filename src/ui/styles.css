@@ -588,6 +588,52 @@ button {
   min-height: 0;
 }
 
+/*
+ * Filling the screen with the arena.
+ *
+ * Fixed rather than the Fullscreen API on purpose. The canvas lives inside a
+ * React tree, and the browser's own fullscreen moves an element out of the
+ * page's layout context — which drops the bezel styling, fights the letterbox
+ * rule below, and leaves the escape route to the browser's own chrome. Taking
+ * the viewport ourselves keeps the panel intact and keeps its controls, so the
+ * transport bar and the tick readout come with it.
+ */
+.arena-panel.expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  margin: 0;
+  border-radius: 0;
+  max-height: none;
+}
+
+/*
+ * A line of controls with a label in front of it.
+ *
+ * `.row` was in use on three screens before it existed in here at all, so the
+ * settings buttons sat jammed against their label with whatever spacing the
+ * inline flow happened to give them. Defining it fixes the Arena lobby and the
+ * Tournament controls at the same time as the bench.
+ */
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.row > .roster-meta {
+  min-width: 52px;
+}
+
+/* Square, so the glyph sits in the middle rather than on a wide slab. */
+.icon-btn {
+  padding: 2px 8px;
+  line-height: 1.1;
+  font-size: 13px;
+}
+
 /* Recessed bezel, the way a screen is set into an instrument's face. */
 .arena-stage {
   flex: 1;

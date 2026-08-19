@@ -22,11 +22,15 @@ import {
 } from "../../net/matchsetup.js";
 import type { MatchManifest } from "../../sim/world.js";
 import {
-  FUEL_PRESETS,
-  TERRAIN_PRESETS,
-  type FuelConfig,
-  type TerrainConfig,
-} from "../../sim/types.js";
+  FUEL_BLURB,
+  FUEL_LEVELS,
+  FUEL_SETTINGS,
+  TERRAIN_BLURB,
+  TERRAIN_LEVELS,
+  TERRAIN_SETTINGS,
+  type FuelLevel,
+  type TerrainLevel,
+} from "../matchSettings.js";
 import { accuracy, executionWarning } from "../../sim/telemetry.js";
 import type { RobotTelemetry } from "../../store/types.js";
 import type { Theme } from "../../lang/vocab.js";
@@ -39,51 +43,6 @@ interface Props {
   onPlayerName: (name: string) => void;
   initialRoom: string | null;
 }
-
-/**
- * How plentiful the host wants fuel to be.
- *
- * Offered as three words rather than four numbers because the numbers only
- * mean anything together — halving the spawn interval and halving the amount
- * is not a change at all — and a lobby is not the place to learn that.
- */
-const FUEL_SETTINGS = {
-  off: FUEL_PRESETS.off,
-  scarce: { enabled: true, spawnEveryTicks: 150, maxOnField: 3, amount: 20, radius: 10 },
-  normal: FUEL_PRESETS.arena,
-  plentiful: { enabled: true, spawnEveryTicks: 45, maxOnField: 10, amount: 30, radius: 12 },
-} satisfies Record<string, FuelConfig>;
-
-type FuelLevel = keyof typeof FUEL_SETTINGS;
-
-const FUEL_BLURB: Record<FuelLevel, string> = {
-  off: "No fuel in this match. Nothing to collect, and nothing spends it either.",
-  scarce: "Thin pickings. Robots that drive everywhere will be crawling by the end.",
-  normal: "Enough to keep a robot that looks for it running.",
-  plentiful: "Plenty about. Almost nobody will run low.",
-};
-
-/**
- * How dramatic the host wants the ground to be.
- *
- * Same reasoning as the fuel settings above: three words, because feature size
- * and amplitude only mean anything together. The seed is left alone \u2014 a
- * different map every match would make the setting impossible to judge, and
- * anyone who wants one can start another match.
- */
-const TERRAIN_SETTINGS = {
-  flat: TERRAIN_PRESETS.off,
-  rolling: { enabled: true, seed: 1, featureSize: 340, amplitude: 0.6 },
-  hilly: TERRAIN_PRESETS.arena,
-} satisfies Record<string, TerrainConfig>;
-
-type TerrainLevel = keyof typeof TERRAIN_SETTINGS;
-
-const TERRAIN_BLURB: Record<TerrainLevel, string> = {
-  flat: "Level ground everywhere. Every direction costs the same.",
-  rolling: "Gentle ground. Worth noticing, not worth planning around.",
-  hilly: "Real hills. Going up is slow and expensive, going down is quick and nearly free, and going across is neither.",
-};
 
 interface LiveMatch {
   matchId: string;
@@ -329,7 +288,7 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
               robot is slow, not dead.
             </p>
             <div className="row">
-              {(Object.keys(FUEL_SETTINGS) as FuelLevel[]).map((level) => (
+              {FUEL_LEVELS.map((level) => (
                 <button
                   key={level}
                   type="button"
@@ -352,7 +311,7 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
               exactly what flat ground does.
             </p>
             <div className="row">
-              {(Object.keys(TERRAIN_SETTINGS) as TerrainLevel[]).map((level) => (
+              {TERRAIN_LEVELS.map((level) => (
                 <button
                   key={level}
                   type="button"

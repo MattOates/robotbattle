@@ -18,6 +18,7 @@
 import { runMatch } from "../sim/match.js";
 import { makeManifest } from "../sim/world.js";
 import { checkScript } from "../sim/world.js";
+import { FUEL_PRESETS, TERRAIN_PRESETS, type FuelConfig, type TerrainConfig } from "../sim/types.js";
 
 export type ContenderKind = "arena" | "library" | "snapshot" | "working";
 
@@ -34,6 +35,22 @@ export interface TrialRequest {
   /** Matches per opponent. */
   trials: number;
   seedBase: number;
+  /**
+   * The conditions to fight under.
+   *
+   * Both optional and both defaulted, so an old caller still runs \u2014 but a
+   * bench that cannot vary them is a bench that can only answer questions
+   * about one arena. Tuning a robot for hills means being able to run it
+   * against hills fifty times.
+   */
+  fuel?: FuelConfig;
+  terrain?: TerrainConfig;
+}
+
+/** What a report was produced under. Carried so a shared table is not ambiguous. */
+export interface TrialConditions {
+  fuel: FuelConfig;
+  terrain: TerrainConfig;
 }
 
 export interface MatchupRow {
@@ -55,6 +72,14 @@ export interface TrialReport {
   rows: MatchupRow[];
   totalMatches: number;
   overallWinRate: number;
+  /**
+   * The conditions these numbers came from.
+   *
+   * A report travels to other people in a shared session, and a win rate means
+   * nothing without knowing what it was fought over \u2014 74% on flat ground and
+   * 74% in the hills are different claims about a robot.
+   */
+  conditions: TrialConditions;
   /** Set when the run could not happen at all. */
   error: string | null;
 }
@@ -71,17 +96,28 @@ export function runTrials(
   request: TrialRequest,
   onProgress?: (progress: TrialProgress) => void,
 ): TrialReport {
+  const conditions: TrialConditions = {
+    fuel: request.fuel ?? FUEL_PRESETS.arena,
+    terrain: request.terrain ?? TERRAIN_PRESETS.off,
+  };
   const subjectCheck = checkScript(request.subject.source);
   if (!subjectCheck.ok) {
     return {
       rows: [],
       totalMatches: 0,
       overallWinRate: 0,
+      conditions,
       error: `Your robot doesn't compile: ${subjectCheck.error?.message ?? "unknown error"}`,
     };
   }
   if (request.opponents.length === 0) {
-    return { rows: [], totalMatches: 0, overallWinRate: 0, error: "Pick someone to fight." };
+    return {
+      rows: [],
+      totalMatches: 0,
+      overallWinRate: 0,
+      conditions,
+      error: "Pick someone to fight.",
+    };
   }
 
   const trials = Math.max(1, Math.floor(request.trials));
@@ -112,7 +148,11 @@ export function runTrials(
       const subjectIndex = subjectFirst ? 0 : 1;
 
       const result = runMatch(
-        makeManifest(entries, { seed: request.seedBase + matchupIndex * SEED_STRIDE + i }),
+        makeManifest(entries, {
+          seed: request.seedBase + matchupIndex * SEED_STRIDE + i,
+          fuel: conditions.fuel,
+          terrain: conditions.terrain,
+        }),
       );
 
       if (result.winnerId === null) draws++;
@@ -148,6 +188,7 @@ export function runTrials(
     rows,
     totalMatches,
     overallWinRate: totalMatches === 0 ? 0 : (totalWins / totalMatches) * 100,
+    conditions,
     error: null,
   };
 }

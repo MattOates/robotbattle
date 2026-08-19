@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runTrials, type Contender, type TrialRequest } from "../../src/workshop/trials.js";
 import { DODGER, HUNTER, RACER, SITTING_DUCK, SPINNER } from "../../src/bots/index.js";
+import { FUEL_PRESETS, TERRAIN_PRESETS } from "../../src/sim/types.js";
 
 const opponent = (id: string, label: string, source: string): Contender => ({
   id,
@@ -18,6 +19,43 @@ const request = (overrides: Partial<TrialRequest> = {}): TrialRequest => ({
   trials: 20,
   seedBase: 1000,
   ...overrides,
+});
+
+describe("the conditions a run was fought under", () => {
+  it("defaults to the same arena a match gets by default", () => {
+    // The bench answering a different question from the one the player will
+    // actually face is the failure worth guarding against.
+    const report = runTrials(request());
+    expect(report.conditions.fuel).toEqual(FUEL_PRESETS.arena);
+    expect(report.conditions.terrain).toEqual(TERRAIN_PRESETS.off);
+  });
+
+  it("reports them back even when the run could not happen", () => {
+    const report = runTrials(request({ opponents: [] }));
+    expect(report.error).not.toBeNull();
+    expect(report.conditions.terrain).toEqual(TERRAIN_PRESETS.off);
+  });
+
+  it("carries them into the matches, so the ground really is under the robots", () => {
+    const flat = runTrials(request({ terrain: TERRAIN_PRESETS.off }));
+    const hills = runTrials(request({ terrain: TERRAIN_PRESETS.arena }));
+    expect(hills.conditions.terrain).toEqual(TERRAIN_PRESETS.arena);
+    // A setting that changed nothing about the fight would be a setting that
+    // was accepted and then dropped on the way to `makeManifest`.
+    expect(hills.rows).not.toEqual(flat.rows);
+  });
+
+  it("does the same for fuel", () => {
+    const normal = runTrials(request({ fuel: FUEL_PRESETS.arena }));
+    const none = runTrials(request({ fuel: FUEL_PRESETS.off }));
+    expect(none.conditions.fuel).toEqual(FUEL_PRESETS.off);
+    expect(none.rows).not.toEqual(normal.rows);
+  });
+
+  it("stays reproducible under non-default conditions", () => {
+    const opts = { terrain: TERRAIN_PRESETS.arena, fuel: FUEL_PRESETS.tournament };
+    expect(runTrials(request(opts))).toEqual(runTrials(request(opts)));
+  });
 });
 
 describe("the test bench", () => {

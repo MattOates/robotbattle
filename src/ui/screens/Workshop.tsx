@@ -40,7 +40,16 @@ import { MAX_CHAT_LENGTH, sanitiseChat, sanitiseText } from "../../net/protocol.
 import type { Message } from "../../net/protocol.js";
 import { RoomYProvider, CURSOR_COLORS } from "../../net/yprovider.js";
 import { newId } from "../../store/storage.js";
-import type { Contender, TrialReport } from "../../workshop/trials.js";
+import type { Contender, TrialConditions, TrialReport } from "../../workshop/trials.js";
+import type { FuelConfig, TerrainConfig } from "../../sim/types.js";
+import {
+  FUEL_LEVELS,
+  FUEL_SETTINGS,
+  TERRAIN_LEVELS,
+  TERRAIN_SETTINGS,
+  type FuelLevel,
+  type TerrainLevel,
+} from "../matchSettings.js";
 import type { TrialWorkerIn, TrialWorkerOut } from "../../workshop/trials.worker.js";
 import type { BattleRecord, ChatMessage, StoredRobot } from "../../store/types.js";
 
@@ -1322,6 +1331,20 @@ function TrialPane({
   inSession: boolean;
 }) {
   const [opponents, setOpponents] = useState<string[]>(["spinner", "racer"]);
+  const [fuelLevel, setFuelLevel] = useState<FuelLevel>("normal");
+  const [terrainLevel, setTerrainLevel] = useState<TerrainLevel>("flat");
+  const [expanded, setExpanded] = useState(false);
+
+  // Escape leaves the expanded view. A view that fills the screen and can only
+  // be dismissed by finding one small button again is a trap.
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
 
   const contenders = useMemo(
     () => buildContenders(lib.robots, robot?.id ?? null),
@@ -1359,7 +1382,11 @@ function TrialPane({
     const chosen = contenders.filter((c) => opponents.includes(c.id));
     const next = makeManifest(
       [{ source: robot.source }, ...chosen.map((c) => ({ source: c.source }))],
-      { seed: (Date.now() % 2147483647) | 0 },
+      {
+        seed: (Date.now() % 2147483647) | 0,
+        fuel: FUEL_SETTINGS[fuelLevel],
+        terrain: TERRAIN_SETTINGS[terrainLevel],
+      },
     );
     setManifest(next);
     setLineup(["This version", ...chosen.map((c) => c.label)]);
@@ -1384,7 +1411,7 @@ function TrialPane({
 
   return (
     <>
-      <section className="panel arena-panel">
+      <section className={`panel arena-panel${expanded ? " expanded" : ""}`}>
         <div className="panel-head">
           <span className="silkscreen">{words.arena}</span>
           <span className="spacer" />
@@ -1396,6 +1423,16 @@ function TrialPane({
             />
             Show sense cones
           </label>
+          <button
+            type="button"
+            className="btn small icon-btn"
+            onClick={() => setExpanded((v) => !v)}
+            aria-pressed={expanded}
+            title={expanded ? "Back to the workshop (Esc)" : "Fill the screen"}
+            aria-label={expanded ? "Shrink the arena" : "Expand the arena"}
+          >
+            {expanded ? "\u2715" : "\u2921"}
+          </button>
         </div>
 
         <MatchCanvas
@@ -1467,6 +1504,33 @@ function TrialPane({
             </span>
           </div>
           <div className="panel-body">
+            <div className="row" aria-label="fuel">
+              <span className="roster-meta">Fuel</span>
+              {FUEL_LEVELS.map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`btn small${fuelLevel === level ? " primary" : ""}`}
+                  onClick={() => setFuelLevel(level)}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+            <div className="row" aria-label="ground">
+              <span className="roster-meta">Ground</span>
+              {TERRAIN_LEVELS.map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`btn small${terrainLevel === level ? " primary" : ""}`}
+                  onClick={() => setTerrainLevel(level)}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+            <p className="empty small">Takes effect on the next start.</p>
             {groups.map((group) => (
               <div key={group.title} className="chip-group">
                 <span className="chip-group-title">{group.title}</span>
@@ -1506,6 +1570,34 @@ function TrialPane({
 // Test bench
 // ---------------------------------------------------------------------------
 
+/** Name a report's conditions using the same words the buttons offer. */
+function describeConditions(c: TrialConditions): string {
+  const fuel = FUEL_LEVELS.find((l) => sameFuel(FUEL_SETTINGS[l], c.fuel));
+  const ground = TERRAIN_LEVELS.find((l) => sameTerrain(TERRAIN_SETTINGS[l], c.terrain));
+  const fuelWord = c.fuel.enabled ? `${fuel ?? "custom"} fuel` : "no fuel";
+  const groundWord = c.terrain.enabled ? `${ground ?? "custom"} ground` : "flat ground";
+  return `${fuelWord} and ${groundWord}`;
+}
+
+function sameFuel(a: FuelConfig, b: FuelConfig): boolean {
+  return (
+    a.enabled === b.enabled &&
+    a.spawnEveryTicks === b.spawnEveryTicks &&
+    a.maxOnField === b.maxOnField &&
+    a.amount === b.amount &&
+    a.radius === b.radius
+  );
+}
+
+function sameTerrain(a: TerrainConfig, b: TerrainConfig): boolean {
+  return (
+    a.enabled === b.enabled &&
+    a.seed === b.seed &&
+    a.featureSize === b.featureSize &&
+    a.amplitude === b.amplitude
+  );
+}
+
 function BenchPane({
   robot,
   robots,
@@ -1523,6 +1615,10 @@ function BenchPane({
 }) {
   const [trials, setTrials] = useState(50);
   const [picked, setPicked] = useState<string[]>(["spinner", "racer"]);
+  // The same words the Arena lobby offers, from the same table, so a robot
+  // tuned against "hilly" here meets that ground when it gets there.
+  const [fuelLevel, setFuelLevel] = useState<FuelLevel>("normal");
+  const [terrainLevel, setTerrainLevel] = useState<TerrainLevel>("flat");
   const [report, setReport] = useState<TrialReport | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -1551,7 +1647,13 @@ function BenchPane({
         if (inSession) onShare(message.report);
       }
       if (message.type === "failed") {
-        setReport({ rows: [], totalMatches: 0, overallWinRate: 0, error: message.message });
+        setReport({
+          rows: [],
+          totalMatches: 0,
+          overallWinRate: 0,
+          conditions: { fuel: FUEL_SETTINGS[fuelLevel], terrain: TERRAIN_SETTINGS[terrainLevel] },
+          error: message.message,
+        });
         setProgress(null);
       }
     };
@@ -1563,6 +1665,8 @@ function BenchPane({
         opponents: contenders.filter((c) => picked.includes(c.id)),
         trials,
         seedBase: 1234,
+        fuel: FUEL_SETTINGS[fuelLevel],
+        terrain: TERRAIN_SETTINGS[terrainLevel],
       },
     };
     worker.postMessage(request);
@@ -1607,8 +1711,37 @@ function BenchPane({
           <>
             <p className="empty small">
               Every trial is a different battle, and your robot swaps sides each time, so the result
-              measures the robot rather than where it happened to start.
+              measures the robot rather than where it happened to start. The ground is the same one
+              every time, though — you cannot tell whether a change helped if the map moves under it.
             </p>
+            <div className="row" aria-label="fuel">
+              <span className="roster-meta">Fuel</span>
+              {FUEL_LEVELS.map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`btn small${fuelLevel === level ? " primary" : ""}`}
+                  onClick={() => setFuelLevel(level)}
+                  disabled={progress !== null}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+            <div className="row" aria-label="ground">
+              <span className="roster-meta">Ground</span>
+              {TERRAIN_LEVELS.map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`btn small${terrainLevel === level ? " primary" : ""}`}
+                  onClick={() => setTerrainLevel(level)}
+                  disabled={progress !== null}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
             <div className="chip-row">
               {contenders.map((c) => (
                 <label key={c.id} className={`opponent-chip kind-${c.kind}`}>
@@ -1665,6 +1798,12 @@ function BenchPane({
               <span className="tally">{Math.round(shown.overallWinRate)}%</span>
               <span className="tally dim">{shown.totalMatches} battles</span>
             </div>
+            {/* What the numbers were fought over. A table travels to everyone
+                in a shared session, and 74% on flat ground and 74% in the hills
+                are different claims about a robot. */}
+            <p className="empty small">
+              Fought with {describeConditions(shown.conditions)}.
+            </p>
           </div>
         ) : null}
 
