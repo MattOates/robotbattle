@@ -61,7 +61,7 @@ end
   });
 
   it("costs a robot exactly what writing it out would cost", () => {
-    // Same instructions means the same fuel, so nobody is charged for tidying
+    // Same instruction count means the same quantum spent, so nobody is charged for tidying
     // their script up.
     const withBlock = `${HEAD}can spin\n  turn body by 10\nend\n\non tick\n  do spin\nend\n`;
     const longhand = `${HEAD}on tick\n  turn body by 10\nend\n`;

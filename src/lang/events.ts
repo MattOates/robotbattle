@@ -33,7 +33,8 @@ export function renderDoc(text: string, theme: Theme = "mechanical"): string {
     .replace(/\{radar\}/g, words.scanner)
     .replace(/\{ping\}/g, words.pingVerb)
     .replace(/\{fire\}/g, words.fireVerb)
-    .replace(/\{drive\}/g, words.driveVerb);
+    .replace(/\{drive\}/g, words.driveVerb)
+    .replace(/\{fuel\}/g, words.fuel);
 }
 
 export interface FieldDoc {
@@ -53,6 +54,10 @@ const SPEED: FieldDoc = { name: "speed", detail: "How fast it is going." };
 const HEALTH: FieldDoc = { name: "health", detail: "How much {health} it has left, out of 100." };
 const POWER: FieldDoc = { name: "power", detail: "How strong the shot was, from 1 to 3." };
 const NAME: FieldDoc = { name: "name", detail: "The label it is showing." };
+const AMOUNT: FieldDoc = {
+  name: "amount",
+  detail: "How much {fuel} you get for driving over it.",
+};
 const X: FieldDoc = { name: "x", detail: "Its position across the arena." };
 const Y: FieldDoc = { name: "y", detail: "Its position down the arena." };
 
@@ -83,10 +88,20 @@ export const EVENT_DOCS: Readonly<Record<EventName, EventDoc>> = {
     summary: "There is a wall ahead of you.",
     fields: [BEARING, DISTANCE],
   },
+  "sense fuel": {
+    summary:
+      "There is {fuel} in your sense cone. Driving over it fills your tank; moving, turning, {fire} and {ping} are what empty it.",
+    fields: [BEARING, DISTANCE, AMOUNT, X, Y],
+  },
   "ping robot": {
     summary:
       "Your {radar} beam found a {robot}. The beam is narrow and reaches much further than the cone, so this is a {robot} you could not otherwise see.",
     fields: [BEARING, DISTANCE, HEADING, SPEED, HEALTH, NAME, X, Y],
+  },
+  "ping fuel": {
+    summary:
+      "Your {radar} beam found {fuel} far away. The beam only reports this when it found no {robot}, since a {robot} is always the more urgent news.",
+    fields: [BEARING, DISTANCE, AMOUNT, X, Y],
   },
   "ping wall": {
     summary:

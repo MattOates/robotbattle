@@ -124,8 +124,8 @@ describe("friendly errors", () => {
   });
 
   it("rejects an unknown property and lists the real ones", () => {
-    const err = expectError(`on tick\n  fire me.fuel\nend\n`);
-    expect(err.message).toContain("fuel");
+    const err = expectError(`on tick\n  fire me.torque\nend\n`);
+    expect(err.message).toContain("torque");
     expect(err.hint).toContain("health");
   });
 

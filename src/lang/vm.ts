@@ -5,11 +5,12 @@
  * running event handler, and it can only reach the outside world through the
  * `VmHost` interface — there is no path from a script to the page.
  *
- * Fuel: each robot gets a fixed instruction budget per simulation tick. When it
- * runs out mid-handler we simply stop; the program counter and stack are
- * ordinary data, so the handler picks up exactly where it left off next tick.
- * A runaway `loop` therefore makes a robot slow to react, never freezes the
- * match. That property is what makes it safe to run a stranger's script.
+ * Scheduling: each robot is given a fixed quantum of instructions per
+ * simulation tick and is preempted when it runs out. Suspension is free because
+ * the program counter and stack are ordinary data, so a handler picks up
+ * exactly where it left off next tick. A runaway `loop` therefore makes a robot
+ * slow to react, never freezes the match. That property is what makes it safe
+ * to run a stranger's script.
  */
 
 import { Op, type Chunk, type PropRef, type Value } from "./bytecode.js";
@@ -76,7 +77,7 @@ export class Vm {
 
   /** Total instructions executed, a rough measure of how hard this robot thinks. */
   instructionsExecuted = 0;
-  /** Handlers that ran out of fuel mid-tick. High means slow reactions. */
+  /** Handlers preempted mid-tick, having used their whole quantum. High means slow reactions. */
   suspensions = 0;
   /** Events discarded because the queue was already full. */
   eventsDropped = 0;
@@ -115,10 +116,10 @@ export class Vm {
   }
 
   /**
-   * Run for up to `fuel` instructions. Called once per simulation tick.
+   * Run for up to `ops` instructions. Called once per simulation tick.
    */
-  run(fuel: number): void {
-    let budget = fuel;
+  run(ops: number): void {
+    let budget = ops;
 
     if (!this.initialised) {
       this.initialised = true;
@@ -156,14 +157,14 @@ export class Vm {
       budget = this.step(this.fiber, budget);
     }
 
-    // Falling out of the loop means the fuel ran out. If a handler is still
+    // Falling out of the loop means the quantum ran out. If a handler is still
     // mid-flight it has been suspended and will resume next tick — which is
     // exactly the thing a player wants to know about when their robot feels
     // sluggish.
     if (this.fiber !== null && this.fiber.waiting === 0) this.suspensions++;
   }
 
-  /** Execute instructions until the fiber ends, waits, or runs out of fuel. */
+  /** Execute instructions until the fiber ends, waits, or exhausts the quantum. */
   private step(fiber: Fiber, budgetIn: number): number {
     let budget = budgetIn;
     const { ops, args, consts, lines } = this.chunk;

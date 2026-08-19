@@ -8,6 +8,7 @@
  */
 
 import { runDuel, type Duellist, type DuelResult, DUEL_MATCHES } from "./duel.js";
+import type { FuelConfig } from "../sim/types.js";
 
 /** One tie waiting to be played: a bracket slot and the two robots in it. */
 export interface DuelJob {
@@ -19,6 +20,8 @@ export interface DuelJob {
   b: Duellist;
   /** First seed of the eleven; each match uses `seedBase + i`. */
   seedBase: number;
+  /** Fuel settings for this tie. Travels with the job so the worker agrees. */
+  fuel?: FuelConfig;
 }
 
 export interface DuelRecord {
@@ -65,14 +68,21 @@ export function runRound(
   let done = 0;
 
   return jobs.map((job) => {
-    const result = runDuel(job.a, job.b, job.seedBase, matches, () => {
-      done++;
-      // Every match would be a message per ~50ms of work; every fourth keeps
-      // the bar moving without flooding the channel.
-      if (done % 4 === 0 || done === total) {
-        onProgress?.({ done, total, matchId: job.matchId });
-      }
-    });
+    const result = runDuel(
+      job.a,
+      job.b,
+      job.seedBase,
+      matches,
+      () => {
+        done++;
+        // Every match would be a message per ~50ms of work; every fourth keeps
+        // the bar moving without flooding the channel.
+        if (done % 4 === 0 || done === total) {
+          onProgress?.({ done, total, matchId: job.matchId });
+        }
+      },
+      job.fuel,
+    );
     return {
       matchId: job.matchId,
       aId: job.aId,

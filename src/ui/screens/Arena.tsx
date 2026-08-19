@@ -21,6 +21,7 @@ import {
   type Participant,
 } from "../../net/matchsetup.js";
 import type { MatchManifest } from "../../sim/world.js";
+import { FUEL_PRESETS, type FuelConfig } from "../../sim/types.js";
 import { accuracy, executionWarning } from "../../sim/telemetry.js";
 import type { RobotTelemetry } from "../../store/types.js";
 import type { Theme } from "../../lang/vocab.js";
@@ -33,6 +34,29 @@ interface Props {
   onPlayerName: (name: string) => void;
   initialRoom: string | null;
 }
+
+/**
+ * How plentiful the host wants fuel to be.
+ *
+ * Offered as three words rather than four numbers because the numbers only
+ * mean anything together — halving the spawn interval and halving the amount
+ * is not a change at all — and a lobby is not the place to learn that.
+ */
+const FUEL_SETTINGS = {
+  off: FUEL_PRESETS.off,
+  scarce: { enabled: true, spawnEveryTicks: 150, maxOnField: 3, amount: 20, radius: 10 },
+  normal: FUEL_PRESETS.arena,
+  plentiful: { enabled: true, spawnEveryTicks: 45, maxOnField: 10, amount: 30, radius: 12 },
+} satisfies Record<string, FuelConfig>;
+
+type FuelLevel = keyof typeof FUEL_SETTINGS;
+
+const FUEL_BLURB: Record<FuelLevel, string> = {
+  off: "No fuel in this match. Nothing to collect, and nothing spends it either.",
+  scarce: "Thin pickings. Robots that drive everywhere will be crawling by the end.",
+  normal: "Enough to keep a robot that looks for it running.",
+  plentiful: "Plenty about. Almost nobody will run low.",
+};
 
 interface LiveMatch {
   matchId: string;
@@ -57,6 +81,9 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
   /** Held still for the 3-2-1 before anything moves. */
   const [counting, setCounting] = useState(false);
   const [nudge, setNudge] = useState<{ at: number; text: string } | null>(null);
+  // Host-only, and only read when the host presses start: it rides to everyone
+  // else inside the manifest, so there is nothing here to keep in sync.
+  const [fuelLevel, setFuelLevel] = useState<FuelLevel>("normal");
   const hashesRef = useRef(new Map<number, string>());
 
   useAutoJoin(room, initialRoom);
@@ -162,7 +189,9 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
     }
 
     session.setNotice(null);
-    const manifest = manifestFromParticipants(participants, newMatchSeed());
+    const manifest = manifestFromParticipants(participants, newMatchSeed(), {
+      fuel: FUEL_SETTINGS[fuelLevel],
+    });
     session.broadcast({ t: "start", matchId: newMatchId(), manifest, label: "Arena" });
   };
 
@@ -260,6 +289,32 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           : undefined
       }
     >
+      {room.isHost ? (
+        <>
+          <div className="panel-head">
+            <span className="silkscreen">Fuel</span>
+          </div>
+          <div className="panel-body">
+            <p className="empty small">
+              Moving, turning, shooting and pinging all spend fuel; thinking never does. An empty
+              robot is slow, not dead.
+            </p>
+            <div className="row">
+              {(Object.keys(FUEL_SETTINGS) as FuelLevel[]).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`btn small${fuelLevel === level ? " primary" : ""}`}
+                  onClick={() => setFuelLevel(level)}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+            <p className="empty small">{FUEL_BLURB[fuelLevel]}</p>
+          </div>
+        </>
+      ) : null}
       <div className="panel-head">
         <span className="silkscreen">How it works</span>
       </div>

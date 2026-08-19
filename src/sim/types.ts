@@ -9,6 +9,7 @@
 import type { Locomotion } from "../lang/ast.js";
 import type { Chunk } from "../lang/bytecode.js";
 import type { RuntimeError, Vm } from "../lang/vm.js";
+import { clamp } from "./math.js";
 import type { Rng } from "./rng.js";
 
 /** Simulation rate. Rendering interpolates between these at 60fps. */
@@ -24,8 +25,18 @@ export const ROBOT_RADIUS = 18;
 
 export const MAX_HEALTH = 100;
 
-/** Instructions each robot may execute per tick before being suspended. */
-export const FUEL_PER_TICK = 2000;
+/**
+ * The scheduling quantum: instructions a robot may execute before the VM
+ * preempts it and moves on to the next robot.
+ *
+ * This is an implementation constraint, not a game resource. It is the same for
+ * every robot, refilled in full every tick, and nothing in the world can raise
+ * or lower it. It exists to bound the work one tick can cost — so a runaway
+ * `loop` cannot hang the sim — and to bound it *identically on every peer*, so
+ * that where a handler gets suspended is part of the deterministic state rather
+ * than a function of how fast the machine is.
+ */
+export const OPS_PER_TICK = 2000;
 
 /** Shared turret specification — identical on both chassis. */
 export const TURRET = {
@@ -37,6 +48,19 @@ export const TURRET = {
   coolRate: 0.06,
   minPower: 1,
   maxPower: 3,
+  /**
+   * How close to its goal the gun must be before a committed shot leaves, in
+   * degrees.
+   *
+   * `fire` does not discharge along wherever the barrel happens to be pointing
+   * at that instant. It commits a shot, which leaves on the first tick the gun
+   * has actually come round to what it was aimed at. Without this a handler
+   * could never aim and shoot at the same place — `turret.aim at` only sets a
+   * goal the turret slews toward over the following ticks, so the shot in the
+   * next line always left along the old heading, and leading a moving target
+   * was not expressible at all.
+   */
+  fireTolerance: 5,
 } as const;
 
 /**
@@ -80,6 +104,140 @@ export const BULLET = {
   damagePerPower: 5,
   radius: 3,
 } as const;
+
+/**
+ * Fuel: the one thing in the arena that is consumed and can be replaced.
+ *
+ * Deliberately unrelated to `OPS_PER_TICK`. Thinking is free and equal for
+ * everybody; only *actuated* work costs — driving, turning, slewing, firing,
+ * pinging. The passive sense cone is not actuated and stays free: every robot
+ * has it always on, so pricing it would only be a constant added to `basal`.
+ *
+ * Running dry is a brownout, never a death. Capability scales toward
+ * `floorFactor` and stops there, which also makes the economy self-limiting:
+ * as fuel drops, top speed drops, so the cost of driving drops, so an empty
+ * robot approaches the floor asymptotically instead of falling off a cliff.
+ * That matters because every robot written before fuel existed still has to be
+ * able to finish a match. See `fuelFactor` for the shape of the fall.
+ */
+export const MAX_FUEL = 100;
+
+export const FUEL = {
+  /**
+   * Fraction of full capability left at an empty tank. Never 0.
+   *
+   * Low on purpose: running dry should be something a player works to avoid,
+   * not a mild handicap. At a tenth of normal a robot is still alive, still
+   * shooting and still able to crawl to the next cell, but it has effectively
+   * lost the fight until it finds one.
+   *
+   * This is the endpoint of the curve in `fuelFactor`, which is deliberately
+   * not a straight line: the penalty grows with the square of how empty the
+   * tank is, so lowering this floor sharpens the last stretch far more than it
+   * touches the first.
+   */
+  floorFactor: 0.1,
+
+  // ---- per tick ----
+  /** Paid every tick simply for being alive, so idling in a corner still costs. */
+  basal: 0.02,
+  /** Scaled by how much of the available top speed is actually being used. */
+  drive: 0.05,
+  /**
+   * Per degree the chassis actually rotated.
+   *
+   * Same trap as `slew`, one step milder: skid steer turns 130 degrees a
+   * second, so this is billed four-odd times a tick. Priced so that pivoting on
+   * the spot costs roughly two fifths of driving at top speed — turning should
+   * be cheaper than travelling, since it gets you nowhere.
+   */
+  bodyTurn: 0.005,
+  /**
+   * Per degree the turret and radar actually slewed.
+   *
+   * Small because turrets are quick: 200 and 260 degrees a second means a
+   * continuous sweep bills this figure some seven or eight times a tick. At the
+   * obvious-looking 0.005 that made pointing your gun cost more than driving
+   * the whole robot at top speed, and every sample robot that sweeps sat pinned
+   * at an empty tank for entire matches. Aiming should be cheap; going places
+   * should be what costs.
+   */
+  slew: 0.001,
+
+  // ---- per use ----
+  /** Multiplied by firing power, so a heavy shot costs what it is worth. */
+  fire: 0.8,
+  /**
+   * A ping reaches three times as far as the cone; it is the expensive sense.
+   *
+   * Priced against the cooldown rather than against the shot: a robot pinging
+   * every time the beam recovers spends about what it spends driving flat out,
+   * which is meant to be a real and noticeable commitment without making the
+   * radar unaffordable in a match that has fuel in it.
+   */
+  ping: 0.6,
+} as const;
+
+/**
+ * How generous a match is. Travels in the manifest, so a replay and every peer
+ * spawn the identical sequence of cells.
+ */
+export interface FuelConfig {
+  /**
+   * Whether the mechanic exists in this match at all.
+   *
+   * Off means off in both directions: nothing spawns, and nothing is spent
+   * either. Stopping the spawns alone would be the cruellest possible setting,
+   * since robots would still drain and brown out with nothing to refuel from.
+   */
+  enabled: boolean;
+  /** Ticks between spawn attempts. */
+  spawnEveryTicks: number;
+  /** Nothing spawns while this many cells are already out. */
+  maxOnField: number;
+  /** Fuel restored by one cell. */
+  amount: number;
+  /** Pickup radius, added to the robot's own. */
+  radius: number;
+}
+
+/**
+ * The tournament runs leaner than the arena on purpose. Scarcer fuel means
+ * brownouts bite, which separates robots that budget their movement from ones
+ * that drive flat out — and a knockout wants to be decided by something.
+ */
+export const FUEL_PRESETS = {
+  arena: { enabled: true, spawnEveryTicks: 90, maxOnField: 6, amount: 25, radius: 10 },
+  tournament: { enabled: true, spawnEveryTicks: 120, maxOnField: 4, amount: 20, radius: 10 },
+  /**
+   * The mechanic switched off. The rest of the numbers are kept rather than
+   * zeroed so that a screen which lets you toggle it can put back what you had.
+   */
+  off: { enabled: false, spawnEveryTicks: 90, maxOnField: 6, amount: 25, radius: 10 },
+} as const satisfies Record<string, FuelConfig>;
+
+/**
+ * A manifest can arrive from a remote host, so its numbers are input, not
+ * fact. `spawnEveryTicks: 0` would spawn without bound on every peer.
+ */
+export function clampFuelConfig(cfg: FuelConfig): FuelConfig {
+  return {
+    enabled: cfg.enabled,
+    spawnEveryTicks: Math.max(1, Math.min(36000, Math.round(cfg.spawnEveryTicks))),
+    maxOnField: Math.max(0, Math.min(64, Math.round(cfg.maxOnField))),
+    amount: clamp(cfg.amount, 0, MAX_FUEL),
+    radius: clamp(cfg.radius, 0, 200),
+  };
+}
+
+/** A pickup sitting in the arena, waiting to be driven over. */
+export interface FuelCell {
+  id: number;
+  x: number;
+  y: number;
+  /** How much fuel absorbing it restores. */
+  amount: number;
+}
 
 /** Per-locomotion movement characteristics. */
 export interface ChassisSpec {
@@ -137,8 +295,15 @@ export interface Robot {
   radar: number;
   /** Ticks remaining before another ping may be sent. */
   pingHeat: number;
+  /**
+   * Power of a shot that has been committed but has not left yet, or 0 for
+   * none. It discharges as soon as the gun bears on what it was aimed at.
+   */
+  pendingPower: number;
 
   health: number;
+  /** 0..MAX_FUEL. Drains from actuated work; refilled by driving over a cell. */
+  fuel: number;
   alive: boolean;
 
   // ---- actuator goals, set by the script, slewed toward by the sim ----
@@ -181,7 +346,7 @@ export interface Robot {
 
 /** Transient visual events produced by a tick, consumed by the renderer. */
 export interface Effect {
-  type: "muzzle" | "impact" | "explosion" | "wallHit" | "ping";
+  type: "muzzle" | "impact" | "explosion" | "wallHit" | "ping" | "pickup";
   x: number;
   y: number;
   /** Degrees, where meaningful. */
@@ -212,9 +377,13 @@ export interface World {
   rng: Rng;
   robots: Robot[];
   bullets: Bullet[];
+  fuel: FuelCell[];
   effects: Effect[];
   terrain: TerrainField;
   nextBulletId: number;
+  nextFuelId: number;
+  /** Spawn rules for this match, carried in the manifest so replays agree. */
+  fuelConfig: FuelConfig;
   /** Set once fewer than two robots remain, or the tick limit is reached. */
   over: boolean;
   winnerId: number | null;

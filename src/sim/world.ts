@@ -16,11 +16,17 @@ import { angleDelta, atan2Deg, clamp, cosDeg, hypot, normalizeAngle, sinDeg } fr
 import { Rng } from "./rng.js";
 import {
   BULLET,
+  clampFuelConfig,
   FLAT_TERRAIN,
+  FUEL,
+  FUEL_PRESETS,
+  MAX_FUEL,
   MAX_HEALTH,
   RADAR,
   ROBOT_RADIUS,
   TURRET,
+  type FuelCell,
+  type FuelConfig,
   type Robot,
   type World,
 } from "./types.js";
@@ -40,6 +46,8 @@ export interface MatchManifest {
   width: number;
   height: number;
   maxTicks: number;
+  /** How much fuel the arena hands out. Part of the manifest so replays agree. */
+  fuel: FuelConfig;
   /** Bumped whenever simulation behaviour changes, so peers can refuse a mismatch. */
   simVersion: number;
 }
@@ -49,8 +57,11 @@ export interface MatchManifest {
  * refuse to share a match rather than silently desyncing.
  *
  * 2 — seeded spawn jitter, so different seeds give genuinely different matches.
+ * 5 — fuel: a consumable resource, spawned pickups, and two new sense events.
+ * 6 — committed shots: `fire` waits for the gun to come round, so a handler can
+ *     aim and shoot at the same place and leading a target becomes possible.
  */
-export const SIM_VERSION = 4;
+export const SIM_VERSION = 6;
 
 /**
  * How far a spawn may vary from its slot on the ring.
@@ -80,6 +91,7 @@ export function makeManifest(
     width: opts.width ?? 900,
     height: opts.height ?? 620,
     maxTicks: opts.maxTicks ?? 30 * 120, // two minutes
+    fuel: opts.fuel ?? FUEL_PRESETS.arena,
     simVersion: SIM_VERSION,
   };
 }
@@ -108,9 +120,13 @@ export function createWorld(manifest: MatchManifest): World {
     rng,
     robots: [],
     bullets: [],
+    fuel: [],
     effects: [],
     terrain: FLAT_TERRAIN,
     nextBulletId: 1,
+    nextFuelId: 1,
+    // Clamped on the way in: a manifest is input from a remote host, not fact.
+    fuelConfig: clampFuelConfig(manifest.fuel ?? FUEL_PRESETS.arena),
     over: false,
     winnerId: null,
     maxTicks: manifest.maxTicks,
@@ -151,7 +167,9 @@ export function createWorld(manifest: MatchManifest): World {
       gunHeat: 0,
       radar: facing,
       pingHeat: 0,
+      pendingPower: 0,
       health: MAX_HEALTH,
+      fuel: MAX_FUEL,
       alive: true,
       throttle: 0,
       headingMode: "free",
@@ -212,6 +230,13 @@ function makeHost(world: World, robot: Robot): VmHost {
             return normalizeAngle(robot.radar - robot.heading);
           case "pingheat":
             return robot.pingHeat;
+          case "fuel":
+            return robot.fuel;
+          case "aiming":
+            // 1 while a committed shot is waiting for the gun to come round.
+            // Re-aiming now would move the goal and delay it further, so this
+            // is how a script says "leave the gun alone, it is busy".
+            return robot.pendingPower > 0 ? 1 : 0;
           case "ammo":
             return robot.gunHeat <= 0 ? 1 : 0;
           case "score":
@@ -317,9 +342,77 @@ function makeHost(world: World, robot: Robot): VmHost {
   };
 }
 
-/** Fire the turret, if it has cooled. */
+/**
+ * Charge a robot for actuated work. Clamped at zero, because the floor is a
+ * brownout rather than a debt — there is nothing below empty.
+ */
+export function spendFuel(world: World, robot: Robot, amount: number): void {
+  if (!world.fuelConfig.enabled || amount <= 0) return;
+  robot.fuel = Math.max(0, robot.fuel - amount);
+}
+
+/**
+ * How much of its capability a robot currently has, from its tank.
+ *
+ * The penalty grows with the *square* of how empty the tank is, so it is barely
+ * there until the tank actually gets low and then bites hard: a robot at three
+ * quarters keeps 94% of itself, at half 78%, at a quarter 49%, and at empty the
+ * floor. Under a straight line, half a tank cost 45% of a robot's capability,
+ * which punished a robot for the ordinary state of not having topped up
+ * recently. Running low should be an emergency; running down should not.
+ *
+ * Written as a plain multiplication rather than a logarithm on purpose.
+ * `Math.log` is not required to be correctly rounded, so it varies between
+ * engines and would desync peers — `tests/determinism/determinism.test.ts` bans
+ * it outright. `+ - *` are exact under IEEE 754, and a squared term traces the
+ * same "flat, then falling away" shape a decay curve would.
+ *
+ * Exactly 1 when the mechanic is off, so a match without fuel is the match the
+ * game had before fuel existed rather than one quietly scaled by a full tank.
+ */
+export function fuelFactor(world: World, robot: Robot): number {
+  if (!world.fuelConfig.enabled) return 1;
+  const empty = 1 - clamp(robot.fuel / MAX_FUEL, 0, 1);
+  return 1 - (1 - FUEL.floorFactor) * empty * empty;
+}
+
+/**
+ * Ask for a shot.
+ *
+ * The shot is *committed*, not discharged: if the gun already bears on what it
+ * was last aimed at, it leaves immediately, and otherwise it waits for the
+ * turret to come round and leaves the moment it does. That is what makes
+ * `turret.aim at <somewhere> ... fire` mean one thing rather than two, and it
+ * is what makes leading a moving target possible — a script has to predict
+ * where the target will be after the slew *and* after the flight.
+ *
+ * A gun that is still cooling ignores the request outright, exactly as before,
+ * so spamming `fire` costs nothing.
+ */
 export function fire(world: World, robot: Robot, powerRaw: number): void {
   if (robot.gunHeat > 0 || !robot.alive) return;
+  const power = clamp(Math.round(powerRaw) || TURRET.minPower, TURRET.minPower, TURRET.maxPower);
+  if (gunBears(robot)) {
+    releaseShot(world, robot, power);
+    return;
+  }
+  robot.pendingPower = power;
+}
+
+/**
+ * Whether the gun is pointing where it was told to.
+ *
+ * A sweeping turret has no aim to wait for — its goal is a moving target of its
+ * own making — so a sweep-and-shoot robot fires the instant it asks to, the way
+ * it always did.
+ */
+export function gunBears(robot: Robot): boolean {
+  if (robot.sweepAmplitude > 0) return true;
+  return Math.abs(angleDelta(robot.turret, robot.turretGoal)) <= TURRET.fireTolerance;
+}
+
+/** Discharge a committed shot along the barrel. */
+export function releaseShot(world: World, robot: Robot, powerRaw: number): void {
   const power = clamp(Math.round(powerRaw) || TURRET.minPower, TURRET.minPower, TURRET.maxPower);
   const speed = BULLET.baseSpeed - BULLET.speedPerPower * power;
   const muzzle = ROBOT_RADIUS + BULLET.radius + 1;
@@ -336,6 +429,7 @@ export function fire(world: World, robot: Robot, powerRaw: number): void {
   });
 
   robot.gunHeat = TURRET.heatPerPower * power;
+  spendFuel(world, robot, FUEL.fire * power);
   robot.shotsFired++;
   world.effects.push({
     type: "muzzle",
@@ -357,7 +451,8 @@ export function fire(world: World, robot: Robot, powerRaw: number): void {
  * — a beam a fifth as wide as the cone will miss a robot that a cone would
  * catch, so a script has to point it somewhere for a reason.
  *
- * The beam reports the nearest robot in it, and otherwise the wall it reaches
+ * What it reports is ranked by what a script most needs to know: a robot
+ * first, then a fuel cell, and otherwise the wall it reaches
  * — so in an arena this size a ping is almost never silent: pointing it at
  * empty space still tells you how much room is in that direction. It says
  * nothing at all only when even the wall is out of reach.
@@ -365,6 +460,7 @@ export function fire(world: World, robot: Robot, powerRaw: number): void {
 export function ping(world: World, robot: Robot): void {
   if (!robot.alive || robot.pingHeat > 0) return;
   robot.pingHeat = RADAR.cooldown;
+  spendFuel(world, robot, FUEL.ping);
 
   let best: Robot | null = null;
   let bestDist = Infinity;
@@ -380,6 +476,23 @@ export function ping(world: World, robot: Robot): void {
     bestDist = dist;
   }
 
+  // Only looked for when the beam found no robot: a robot is always the more
+  // urgent fact, and reporting both would need a second event anyway.
+  let cell: FuelCell | null = null;
+  let cellDist = Infinity;
+  if (!best && world.fuelConfig.enabled) {
+    for (const f of world.fuel) {
+      const dx = f.x - robot.x;
+      const dy = f.y - robot.y;
+      const dist = hypot(dx, dy);
+      if (dist > RADAR.range || dist >= cellDist) continue;
+      const offBeam = angleDelta(robot.radar, atan2Deg(dy, dx));
+      if (offBeam < -RADAR.halfAngle || offBeam > RADAR.halfAngle) continue;
+      cell = f;
+      cellDist = dist;
+    }
+  }
+
   const wallDist = distanceToWall(world, robot.x, robot.y, robot.radar);
 
   world.effects.push({
@@ -388,7 +501,7 @@ export function ping(world: World, robot: Robot): void {
     y: robot.y,
     heading: robot.radar,
     tick: world.tick,
-    range: Math.min(RADAR.range, best ? bestDist : wallDist),
+    range: Math.min(RADAR.range, best ? bestDist : cell ? cellDist : wallDist),
   });
 
   if (best) {
@@ -403,6 +516,17 @@ export function ping(world: World, robot: Robot): void {
       name: best.name,
       x: best.x,
       y: best.y,
+    });
+    return;
+  }
+
+  if (cell) {
+    robot.vm.enqueue("ping fuel", {
+      bearing: angleDelta(robot.heading, atan2Deg(cell.y - robot.y, cell.x - robot.x)),
+      distance: cellDist,
+      amount: cell.amount,
+      x: cell.x,
+      y: cell.y,
     });
     return;
   }

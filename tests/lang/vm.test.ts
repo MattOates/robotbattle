@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { createWorld, makeManifest } from "../../src/sim/world.js";
 import { step } from "../../src/sim/step.js";
-import { FUEL_PER_TICK } from "../../src/sim/types.js";
+import { OPS_PER_TICK } from "../../src/sim/types.js";
 
 function world(sources: string[]) {
   return createWorld(makeManifest(sources.map((source) => ({ source })), { seed: 11 }));
@@ -24,9 +24,9 @@ describe("time slicing", () => {
   });
 
   it("resumes a long handler across ticks instead of failing it", () => {
-    // Far more iterations than one tick's fuel allows, so it must survive
+    // Far more iterations than one tick's quantum allows, so it must survive
     // being suspended and resumed to reach the end.
-    const iterations = FUEL_PER_TICK * 3;
+    const iterations = OPS_PER_TICK * 3;
     const w = world([
       `chassis tank\nvar total = 0\non start\n  for i = 1 to ${iterations}\n    set total = total + 1\n  end\n  set name = "done " + total\nend\n`,
     ]);

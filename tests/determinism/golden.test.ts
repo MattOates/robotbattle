@@ -15,8 +15,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { runMatchWithHashes } from "../../src/sim/match.js";
+import { runMatch, runMatchWithHashes } from "../../src/sim/match.js";
 import { makeManifest, SIM_VERSION } from "../../src/sim/world.js";
+import { FUEL_PRESETS } from "../../src/sim/types.js";
 import { DODGER, HUNTER, RACER, SPINNER } from "../../src/bots/index.js";
 
 const GOLDEN_SEED = 20260815;
@@ -30,25 +31,79 @@ const GOLDEN = {
   // 4 — the cone shortened again, to three quarters of what it had been. The
   //     sample bots all hunt by sense cone, so they now spend far longer
   //     looking for each other: the same fight takes 525 ticks instead of 302.
-  simVersion: 4,
-  ticks: 525,
+  // 5 — fuel. The sample bots are barely affected by the resource itself over a
+  //     match this short — nobody drops below about two thirds of a tank, and a
+  //     full tank is exactly the capability they always had. What moved the
+  //     match is the RNG: a cell is spawned on tick 0, so every later draw
+  //     shifts, and these four all use `random`. Same fight, different dice:
+  //     379 ticks instead of 525, and Hunter still wins it.
+  //     Retuned twice since. The floor dropped from a quarter of normal
+  //     capability to a tenth, and the fall to it stopped being a straight line
+  //     — the penalty now grows with the square of how empty the tank is. These
+  //     four never drop below about two thirds of a tank, which under the new
+  //     curve costs them almost nothing, so they fight much closer to the way
+  //     they did before fuel existed. Retuned again when measurement showed
+  //     slewing and pinging were priced per degree without regard for how fast
+  //     turrets actually move, which had every sweeping robot pinned at an
+  //     empty tank: 533 ticks against the pre-fuel 525.
+  // 6 — committed shots. `fire` now waits for the gun to come round instead of
+  //     discharging along whatever heading the barrel happened to hold, so every
+  //     robot here that writes `turret.aim at ...` and then `fire` — which is
+  //     most of them — became markedly more accurate without a line changing.
+  //     Spinner went from hitting 34% of the time to 71%.
+  simVersion: 6,
+  ticks: 532,
   winner: "Hunter",
-  finalHash: "e70e79f1386ce89a",
+  finalHash: "e445107e9af49a96",
   /** Hash at ticks 0, 50, 100, ... */
   every50: [
-    "dcb714bffd6ea1e9",
-    "273ce9d18d8a343d",
-    "1594d11e710148e2",
-    "44ff2beda7e04f98",
-    "9d87f4417131aa1e",
-    "db4dba9d5eb05efc",
-    "bdbd654cefd15e58",
-    "8e5acda451168f2b",
-    "ccdf195d51ca8c46",
-    "f9a4db622baeeee2",
-    "022d820cb1095a54",
+    "89cdc9278850b288",
+    "33fffc4bd894b6ae",
+    "8d56091f9cc1456d",
+    "f54a58f58a4317b5",
+    "a6bdb3a174739c57",
+    "03fbd0ad447486e4",
+    "c9baf5ad9920e775",
+    "2d7047aa5c6ffa22",
+    "5fd1bfc3cf538ba1",
+    "f5e14bc284620feb",
+    "0a1afe215e96442f",
   ],
 };
+
+/**
+ * What the same match was before fuel existed.
+ *
+ * Switching fuel off must not mean "fuel with a full tank" — it must mean the
+ * mechanic is not there. These two numbers are the SIM_VERSION 4 golden match,
+ * from before any of this was written, and a disabled match still has to
+ * reproduce them. Any drain, brownout, spawn or RNG draw leaking into the
+ * disabled path moves one of them.
+ *
+ * The hash is deliberately not pinned here: `hashWorld` now covers the tank and
+ * the cell list, so the digest legitimately differs even though the physics do
+ * not.
+ */
+const BEFORE_FUEL = { ticks: 525, winner: "Hunter" };
+
+describe("with fuel switched off", () => {
+  const result = runMatch(
+    makeManifest(
+      [{ source: HUNTER }, { source: RACER }, { source: SPINNER }, { source: DODGER }],
+      { seed: GOLDEN_SEED, fuel: FUEL_PRESETS.off },
+    ),
+  );
+
+  it("plays the match the game had before fuel existed", () => {
+    expect(result.ticks).toBe(BEFORE_FUEL.ticks);
+    expect(result.winnerName).toBe(BEFORE_FUEL.winner);
+  });
+
+  it("is a different match from the one with fuel on", () => {
+    // Otherwise the test above would pass just as well with a broken switch.
+    expect(GOLDEN.ticks).not.toBe(BEFORE_FUEL.ticks);
+  });
+});
 
 describe("golden match", () => {
   const { result, hashes } = runMatchWithHashes(

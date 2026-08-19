@@ -14,11 +14,13 @@ export const EVENT_NAMES = [
   "sense robot",
   "sense bullet",
   "sense wall",
+  "sense fuel",
   // Returns from the narrow beam. Kept as their own events rather than as a
   // field on `sense`, because which instrument found something is the whole
   // point: the cone sees anything nearby, the beam sees only where it is
   // pointed, and a script almost always wants to react differently.
   "ping robot",
+  "ping fuel",
   "ping wall",
   "hit wall",
   "hit robot",

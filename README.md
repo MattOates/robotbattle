@@ -109,8 +109,8 @@ end
 ```
 
 **Events** — `start`, `tick`, `sense robot`, `sense bullet`, `sense wall`,
-`ping robot`, `ping wall`, `hit wall`, `hit robot`, `hit by bullet`,
-`bullet hit`, `bullet missed`, `robot destroyed`. Every event carries
+`sense fuel`, `ping robot`, `ping fuel`, `ping wall`, `hit wall`, `hit robot`,
+`hit by bullet`, `bullet hit`, `bullet missed`, `robot destroyed`. Every event carries
 `event.bearing` (relative to your chassis, so it drops straight into
 `turret.aim at` or `turn body by`) and `event.distance`, plus extras like
 `event.power` and `event.name`.
@@ -147,8 +147,25 @@ the same thing you would have written by hand, minus the chance of getting the
 `turret.turn to|by …`, `turret.aim at …`, `turret.sweep …`, `fire 1-3`,
 `radar.turn to|by …`, `radar.aim at …`, `radar.sweep …`, `ping`.
 
-**Readable state** — `me.x/y/heading/speed/health/turret/gunHeat/radar/pingHeat`,
+**Readable state** — `me.x/y/heading/speed/health/fuel/turret/gunHeat/radar/pingHeat/aiming`,
 `arena.width/height/time/robots`.
+
+**Firing is committed, not instant.** `fire` does not discharge along wherever
+the barrel happens to be pointing — it commits a shot, which leaves on the first
+tick the gun has actually come round to what it was aimed at. Without that,
+`turret.aim at event.bearing` followed by `fire` shot along the *old* heading,
+because aiming only sets a goal the turret slews toward over the following
+ticks. Nearly every robot is written that way, so nearly every robot was
+missing: Spinner used to hit 34% of the time and now hits 71%, Dodger 47% and
+now 100%. The two that were already accurate, Scout and Toolkit, barely moved —
+both pre-aim with the radar on `ping robot`, which was the only way to beat the
+latency, and is why Toolkit was the robot to beat for so long.
+
+It also makes leading a moving target possible, which is the interesting part:
+flight time is distance over bullet speed, bullet speed is `460 - 40 × power`,
+and `event` carries the target's heading and speed, so a shot at where something
+*will be* is arithmetic rather than guesswork. `me.aiming` reads 1 while a shot
+is still waiting for the gun.
 
 ## Behaviour you can name, and pass around
 
@@ -206,6 +223,102 @@ In the biological vocabulary the radar is an **eyespot** and a ping is a
 pigment behind a shading cup, and the cup is exactly what trades a wide vague
 view for a narrow precise one.
 
+## Fuel, and what it is not
+
+Two budgets, deliberately unrelated.
+
+The first is the **ops budget**: 2000 instructions per robot per tick, refilled
+in full, identical for everybody. It is a scheduling quantum, not a resource —
+it exists so a runaway `loop` cannot hang the sim, and so the point at which a
+handler gets suspended is the same on every peer. Nothing in the game can raise
+or lower it. Thinking is free, and it is free in equal measure for the beginner
+and for the robot with a thousand lines of tactics.
+
+The second is **fuel** — `food` in the biological vocabulary — and it is a real
+resource. Only *actuated* work spends it: driving, turning, slewing the turret
+and radar, firing, pinging. The passive sense cone is free, because it is not
+actuated and every robot has it always on, so charging for it would only be a
+tax everybody pays equally. Charges land on what actually happened rather than
+on the instruction that asked, so a robot pinned against a wall at full throttle
+is not billed for movement it did not achieve.
+
+Running dry is a **brownout, never a death**. Capability falls toward a tenth
+of normal and stops there: an empty robot is slow and vague, still driving,
+still shooting, still able to crawl to the next cell — but it has effectively
+lost the fight until it finds one.
+
+The fall is not a straight line. The penalty grows with the square of how empty
+the tank is, so it is barely there until the tank is genuinely low and then
+bites hard:
+
+| tank    | 100% | 75% | 50% | 25% | 10% | empty |
+| ------- | ---- | --- | --- | --- | --- | ----- |
+| you get | 100% | 94% | 78% | 49% | 27% | 10%   |
+
+Running *low* is meant to be an emergency; running *down* is not. Under a
+straight line, half a tank cost nearly half the robot, which punished the
+ordinary state of not having topped up recently. That also makes the economy
+self-limiting, since a slower robot spends less to move — an empty tank
+approaches the floor asymptotically instead of falling off a cliff. It is why a
+robot written before fuel existed still finishes its matches.
+
+Cells spawn on a fixed cadence from the seeded RNG, so they are part of the
+manifest like everything else and a replay puts them in the same places. How
+plentiful they are is the host's call in the Arena lobby and in the tournament
+setup, and it travels inside the manifest — a guest is never told separately,
+and so can never simulate the same match under different terms.
+
+**The whole mechanic switches off**, and off means off in both directions:
+nothing spawns, and nothing is spent either. Stopping only the spawns would be
+the cruellest setting in the game, since robots would still drain and brown out
+with nothing to refuel from. A match with fuel off is the match the game had
+before fuel existed — `tests/determinism/golden.test.ts` pins that against the
+pre-fuel golden numbers, so any drain or spawn leaking into the disabled path
+fails the build. A robot written to forage still runs there; it simply never
+hears `on sense fuel`.
+
+`src/bots/index.ts` ships **Apex**, the robot to beat. It leads its target,
+stops dead the moment somebody enters its cone rather than charging them, fires
+light at range and heavy up close, and eats whatever crosses its path without
+ever making a special trip. It takes 88% of a three-seed round robin against
+everything else here, ten clear of the next best.
+
+It also has four moods and says which one it is in — the label under it reads
+`prowling`, `stalking`, `strike` or `feeding`, and `mode` is a plain number you
+can watch while it runs. The mood that matters is the way *out* of the others:
+a `cold` counter tracks ticks since the last contact of any kind, and twenty
+ticks of silence sends it back to prowling. Without it the robot had no way to
+leave a mood at all — it would stop for a target, lose it, and stand there
+aiming a parked beam down one dead line for up to fifty-nine seconds of a
+two-minute fight. Fixing that was worth more than the aiming arithmetic.
+
+`src/bots/index.ts` also ships **Hungry Hippo**, which ignores the battle entirely
+and forages: it never fires and never sweeps its turret, because both cost fuel
+and neither finds food, but it does ping, because food you cannot see is food
+you cannot eat. It is the economy with the fighting taken out, and the only
+sample robot that reliably ends a match with a fuller tank than it started one.
+
+Lesson playgrounds have it off unless the lesson asks for it with `fuel=true`,
+the same way they opt into sense cones. A lesson teaches one idea, and cells
+appearing during the lesson on sense cones are an unexplained second one.
+
+```
+on sense fuel
+  turn body by event.bearing        -- it is close; go and get it
+  drive forward 80
+end
+
+on ping fuel
+  turn body by event.bearing        -- it is far away, and I went looking
+end
+
+on tick every 30
+  if me.fuel < 30 then
+    radar.sweep 90                  -- start hunting for a refill
+  end
+end
+```
+
 ## The editor teaches the language
 
 You cannot guess `event.bearing`, so the editor tells you. It is CodeMirror 6
@@ -262,6 +375,7 @@ asserts exactly that. Both vocabularies parse in either arena, and can be mixed.
 | `on sense robot`       | `on sense organism`           |
 | `on hit by bullet`     | `on stung`                    |
 | `me.health`            | `me.vitality`                 |
+| `on sense fuel`        | `on sense food`               |
 
 ## Multiplayer
 

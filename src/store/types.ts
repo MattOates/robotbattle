@@ -79,7 +79,7 @@ export interface RobotTelemetry {
   // --- script execution ---
   /** Total VM instructions run. A rough measure of how hard the robot thinks. */
   instructions: number;
-  /** Handlers that ran out of fuel mid-tick. High means slow reactions. */
+  /** Handlers preempted mid-tick, having used their whole quantum. High means slow reactions. */
   suspensions: number;
   /** Events discarded because the robot's queue was full. */
   eventsDropped: number;

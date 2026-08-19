@@ -216,6 +216,16 @@ const ME_PROPS: readonly PropDoc[] = [
   { name: "gunHeat", detail: "Above 0 means the gun is still cooling and cannot fire." },
   { name: "radar", detail: "Where the {radar} points, compared to straight ahead." },
   { name: "pingHeat", detail: "Ticks left before you can {ping} again. 0 means ready." },
+  {
+    name: "fuel",
+    detail:
+      "How much {fuel} is in your tank, out of 100. Moving, turning, {fire} and {ping} spend it; driving over {fuel} refills it. At empty you are slow, not dead.",
+  },
+  {
+    name: "aiming",
+    detail:
+      "1 while a shot is waiting for the {turret} to come round to where you aimed it. Aiming again now only moves the goal and makes it wait longer.",
+  },
   { name: "ammo", detail: "1 when you are ready to fire, 0 when you are not." },
   { name: "score", detail: "How many robots you have destroyed." },
 ];
@@ -254,8 +264,14 @@ const LITERALS: readonly Suggestion[] = [
   },
 ];
 
-/** A small palette, because picking a hex code from nothing is no fun. */
-const PALETTE: readonly { hex: string; name: string }[] = [
+/**
+ * A small palette, because picking a hex code from nothing is no fun.
+ *
+ * Exported because the art packs have to stay out of it: a fuel cell painted a
+ * colour a robot can wear reads as a distant robot. `tests/render/palette.test.ts`
+ * holds that line.
+ */
+export const PALETTE: readonly { hex: string; name: string }[] = [
   { hex: "#ff8800", name: "orange" },
   { hex: "#ffd166", name: "yellow" },
   { hex: "#7fd1e0", name: "sky blue" },

@@ -317,6 +317,228 @@ can bounce given hit wall
 end
 `;
 
+const HUNGRY_HIPPO = `-- Never fights. Just eats.
+--
+-- Moving, turning, shooting and pinging all use up fuel. Thinking is free, and
+-- so is the sense cone, which notices things all on its own.
+--
+-- So this robot does as little as it can. It never shoots, because shooting
+-- does not find food. It never sweeps its turret, for the same reason. The one
+-- thing it pays for is the ping, because the cone only sees a little way ahead
+-- and the beam sees three times as far.
+--
+-- Finding food near or far leads to the same move: turn to face it, then drive.
+name "Hungry Hippo"
+chassis tank
+color #ff6b6b
+
+on start
+  radar.sweep 90
+  drive forward 60
+end
+
+on tick
+  -- Ping as often as you are allowed. me.pingHeat counts down to zero after
+  -- each one, and asking early does nothing at all.
+  if me.pingHeat is 0 then
+    ping
+  end
+end
+
+on sense fuel
+  -- The cone found food, so it is close. Turn to it and drive over it.
+  set name = "nom"
+  turn body by event.bearing
+  drive forward 100
+end
+
+on ping fuel
+  -- The beam found food a long way off. Keep the beam on it so the next ping
+  -- checks it is still there, then set off.
+  set name = "on my way"
+  radar.aim at event.bearing
+  turn body by event.bearing
+  drive forward 100
+end
+
+on ping wall
+  -- The beam hit the wall, so there is nothing that way. Aiming the beam
+  -- stopped it sweeping, so start it sweeping again.
+  set name = "hungry"
+  radar.sweep 90
+end
+
+on hit wall
+  turn body by 150
+  drive forward 40
+end
+
+on hit by bullet
+  -- Someone is shooting at it. It does not shoot back, but driving sideways
+  -- makes it harder to hit.
+  set name = "rude"
+  turn body by event.bearing + 90
+  drive forward 100
+end
+`;
+
+const APEX = `-- Apex: the robot to beat. It hunts, it eats, and it is careful.
+--
+-- It is always doing one of four things. The variable called mode remembers
+-- which one, and the label under the robot says it out loud while you watch:
+--
+--   0  prowling  nothing found yet, so drive about and look
+--   1  stalking  the beam can see someone the cone cannot
+--   2  strike    they are in the cone, so stand still and shoot
+--   3  feeding   going to get some fuel
+--
+-- Something has to bring it back to prowling, or it would wait forever for a
+-- robot that has already gone. So cold counts the ticks since it last saw
+-- anything at all. Twenty quiet ticks and it starts sweeping and driving again.
+--
+-- When it shoots it aims where you are GOING, not where you are. A shot waits
+-- until the gun has turned to face where it was aimed, and you keep moving
+-- while it turns. Bullets fly at 460 - 40 x power, and the event says which way
+-- you are heading and how fast, which is enough to work out where to point.
+--
+-- Light bullets far away, heavy ones close up. Every bullet does the same
+-- damage for the fuel it costs, but heavy ones fly slower and are easier to
+-- drive out of the way of.
+--
+-- In strike it stops. Standing still is free, and it keeps the gun pointing
+-- where it was put while the shot gets ready.
+--
+-- It picks up fuel it happens to see, but never goes looking for it.
+name "Apex"
+chassis tank
+color #f5f0e6
+
+var mode = 0
+var cold = 0
+
+-- Somewhere to keep the working out while it aims.
+var flight = 0
+var aimx = 0
+var aimy = 0
+
+on start
+  turret.sweep 25
+  radar.sweep 90
+  drive forward 70
+end
+
+can clock given tick
+  -- One tick older since the last time anything was seen.
+  set cold = cold + 1
+end
+
+can prowl given tick every 6
+  -- Quiet for a while now, so go back to searching: sweep the turret and the
+  -- beam again, and get moving.
+  if cold > 20 then
+    if mode isnt 0 then
+      set mode = 0
+      set name = "prowling"
+    end
+    drive forward 70
+    turret.sweep 25
+    radar.sweep 90
+  end
+end
+
+can search given tick
+  if me.pingHeat is 0 then
+    ping
+  end
+end
+
+on sense robot
+  set cold = 0
+  if mode isnt 2 then
+    set mode = 2
+    set name = "strike"
+  end
+  -- Near, middle and far. Each part does the same sum, and only the speed of
+  -- the bullet changes, because that is what decides how long it flies for.
+  if event.distance < 90 then
+    set flight = event.distance / 340 + 0.05
+    set aimx = event.x + cos(event.heading) * event.speed * flight
+    set aimy = event.y + sin(event.heading) * event.speed * flight
+    turret.aim at bearing(aimx - me.x, aimy - me.y) - me.heading
+    fire 3
+  else
+    if event.distance < 150 then
+      set flight = event.distance / 380 + 0.05
+      set aimx = event.x + cos(event.heading) * event.speed * flight
+      set aimy = event.y + sin(event.heading) * event.speed * flight
+      turret.aim at bearing(aimx - me.x, aimy - me.y) - me.heading
+      fire 2
+    else
+      set flight = event.distance / 420 + 0.05
+      set aimx = event.x + cos(event.heading) * event.speed * flight
+      set aimy = event.y + sin(event.heading) * event.speed * flight
+      turret.aim at bearing(aimx - me.x, aimy - me.y) - me.heading
+      fire 1
+    end
+  end
+  -- Face them, then plant your feet while the shot gets ready.
+  turn body by event.bearing
+  stop
+end
+
+on ping robot
+  -- Too far away for the cone. Aim ahead of them anyway, so the gun is already
+  -- most of the way round when they come close enough to shoot at.
+  set cold = 0
+  if mode is 0 then
+    set mode = 1
+    set name = "stalking"
+  end
+  radar.aim at event.bearing
+  set flight = event.distance / 400
+  set aimx = event.x + cos(event.heading) * event.speed * flight
+  set aimy = event.y + sin(event.heading) * event.speed * flight
+  turret.aim at bearing(aimx - me.x, aimy - me.y) - me.heading
+  turn body by event.bearing
+end
+
+on ping wall
+  -- The beam hit the wall, so nobody is that way. Aiming the beam stopped it
+  -- sweeping, so start it sweeping again.
+  radar.sweep 90
+end
+
+on sense fuel
+  if mode isnt 2 then
+    set mode = 3
+    set name = "feeding"
+  end
+  turn body by event.bearing
+  drive forward 90
+end
+
+on ping fuel
+  if mode isnt 2 then
+    turn body by event.bearing
+    drive forward 90
+  end
+  radar.aim at event.bearing
+end
+
+on hit by bullet
+  -- Being shot still means somebody is out there, so this counts as seeing
+  -- them, even though neither the cone nor the beam found anything.
+  set cold = 0
+  turn body by event.bearing + 90
+  drive forward 90
+end
+
+on hit wall
+  turn body by 150
+  drive forward 60
+end
+`;
+
 export const SAMPLE_BOTS: SampleBot[] = [
   {
     id: "sitting-duck",
@@ -361,6 +583,18 @@ export const SAMPLE_BOTS: SampleBot[] = [
     source: DODGER,
   },
   {
+    id: "hungry-hippo",
+    title: "Hungry Hippo",
+    teaches: "fuel: sensing it near and far, and spending nothing you don't have to",
+    source: HUNGRY_HIPPO,
+  },
+  {
+    id: "apex",
+    title: "Apex",
+    teaches: "the one to beat: fighting and foraging, budgeted against the cost table",
+    source: APEX,
+  },
+  {
     id: "hunter-bio",
     title: "Hunter (biology words)",
     teaches: "the same robot written in the biological vocabulary",
@@ -372,4 +606,15 @@ export function sampleById(id: string): SampleBot | undefined {
   return SAMPLE_BOTS.find((b) => b.id === id);
 }
 
-export { SITTING_DUCK, SPINNER, RACER, HUNTER, DODGER, HUNTER_BIO, SCOUT, TOOLKIT };
+export {
+  SITTING_DUCK,
+  SPINNER,
+  RACER,
+  HUNTER,
+  DODGER,
+  HUNTER_BIO,
+  SCOUT,
+  TOOLKIT,
+  HUNGRY_HIPPO,
+  APEX,
+};
