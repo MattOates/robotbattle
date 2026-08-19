@@ -259,8 +259,14 @@ const LITERALS: readonly Suggestion[] = [
   },
 ];
 
-/** A small palette, because picking a hex code from nothing is no fun. */
-const PALETTE: readonly { hex: string; name: string }[] = [
+/**
+ * A small palette, because picking a hex code from nothing is no fun.
+ *
+ * Exported because the art packs have to stay out of it: a fuel cell painted a
+ * colour a robot can wear reads as a distant robot. `tests/render/palette.test.ts`
+ * holds that line.
+ */
+export const PALETTE: readonly { hex: string; name: string }[] = [
   { hex: "#ff8800", name: "orange" },
   { hex: "#ffd166", name: "yellow" },
   { hex: "#7fd1e0", name: "sky blue" },

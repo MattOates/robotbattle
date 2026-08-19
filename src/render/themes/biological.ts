@@ -116,12 +116,12 @@ export const BIOLOGICAL: ArenaTheme = {
 
   pingColor: 0xd9ff8a,
 
-  fuelColor: 0x9ae66e,
+  fuelColor: 0xc3e83a,
 
   drawFuel(g: Graphics, radius: number): void {
     // A morsel: a soft blob with a lighter nucleus, deliberately rounder and
     // less regular than the mechanical canister.
-    const flesh = 0x9ae66e;
+    const flesh = 0xc3e83a;
     g.circle(0, 0, radius).fill({ color: darken(flesh, 0.4), alpha: 0.9 });
     g.circle(0, 0, radius * 0.7).fill({ color: flesh, alpha: 0.95 });
     g.circle(-radius * 0.22, -radius * 0.22, radius * 0.24).fill({

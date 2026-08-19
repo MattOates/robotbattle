@@ -49,6 +49,19 @@ export interface ArenaOptions {
   showSenseCones: boolean;
 }
 
+/**
+ * The tank gauge, shared by both themes rather than taken from the art pack.
+ *
+ * The gauge's neighbour is the health bar, which runs green -> yellow -> red as
+ * a robot is worn down, so the one thing this colour must never be is anywhere
+ * in that range. The biological pack's own fuel colour is a lime that sits
+ * squarely between its green and its yellow, and a half-dead organism would
+ * have shown two near-identical stripes. Cells and the pickup ring still use
+ * the themed colour: they sit on the arena floor, where the constraint is not
+ * to look like a robot instead.
+ */
+export const FUEL_BAR_COLOR = 0x2fe0c8;
+
 export class ArenaRenderer {
   private app: Application | null = null;
   private theme: ArenaTheme;
@@ -392,7 +405,7 @@ export class ArenaRenderer {
         const w = ROBOT_RADIUS * 2;
         const frac = Math.max(0, Math.min(1, now.fuel));
         fb.rect(-w / 2, 0, w, 2).fill({ color: 0x000000, alpha: 0.45 });
-        fb.rect(-w / 2, 0, w * frac, 2).fill({ color: this.theme.fuelColor, alpha: 0.95 });
+        fb.rect(-w / 2, 0, w * frac, 2).fill({ color: FUEL_BAR_COLOR, alpha: 0.95 });
       }
     }
   }
