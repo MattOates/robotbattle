@@ -388,27 +388,41 @@ const APEX = `-- Apex: the one to beat.
 -- whole corpus rather than out of taste, and several came out backwards from
 -- what you would guess.
 --
+-- It has four moods, and it says which one it is in. \`mode\` is a plain number
+-- you can watch in the test bench, and the label under the robot is the same
+-- thing in words:
+--
+--   0  prowling  nothing found; cover ground and sweep both instruments
+--   1  stalking  the beam has something the cone cannot see yet
+--   2  strike    it is in the cone; stand and shoot
+--   3  feeding   going to a cell
+--
+-- \`cold\` counts ticks since the last contact of any kind. Without it the robot
+-- had no way back out of a mood: it would stop for a target, lose it, and stand
+-- there aiming a parked beam down one dead line for the rest of the match — up
+-- to fifty-nine seconds of a two-minute fight. Going back to prowling after
+-- twenty ticks of silence is worth seventeen duels on its own, which is more
+-- than the aiming maths is worth.
+--
 -- It leads its target. A shot is committed when you ask for it and leaves when
 -- the gun comes round, so where the target will BE is the only bearing worth
 -- aiming at. Flight time is distance over bullet speed, and bullet speed is
 -- 460 - 40 x power, so all of it is knowable from the event.
 --
--- It stops dead the moment somebody is in the cone. This is the biggest single
--- win in the robot and the least obvious: standing still costs nothing, keeps
--- the gun steady while the committed shot comes round, and beats charging by
--- ten duels. Closing the distance is what every other robot here does, and it
--- is what gets them shot.
+-- It stops dead in strike. Standing still costs nothing, keeps the gun steady
+-- while the committed shot comes round, and beats charging by ten duels.
+-- Closing the distance is what every other robot here does, and it is what
+-- gets them shot.
 --
 -- It fires light far away and heavy up close. Damage per unit of fuel is the
 -- same at every power, so nothing is lost by choosing for the hit instead:
 -- heavier shells fly slower and can be driven out of.
---
--- It never makes a special trip for food. It takes whatever crosses its path,
--- which costs nothing it was not already spending, and keeps its legs and its
--- aim quick while everything else browns out.
 name "Apex"
 chassis tank
 color #f5f0e6
+
+var mode = 0
+var cold = 0
 
 var flight = 0
 var aimx = 0
@@ -417,7 +431,25 @@ var aimy = 0
 on start
   turret.sweep 25
   radar.sweep 90
-  drive forward 55
+  drive forward 70
+end
+
+can clock given tick
+  set cold = cold + 1
+end
+
+can prowl given tick every 6
+  -- The way out of every other mood. Nothing has been seen for a while, so put
+  -- both instruments back to sweeping and go and look.
+  if cold > 20 then
+    if mode isnt 0 then
+      set mode = 0
+      set name = "prowling"
+    end
+    drive forward 70
+    turret.sweep 25
+    radar.sweep 90
+  end
 end
 
 can search given tick
@@ -427,9 +459,13 @@ can search given tick
 end
 
 on sense robot
+  set cold = 0
+  if mode isnt 2 then
+    set mode = 2
+    set name = "strike"
+  end
   -- Aim where it is going, not where it is. Three ranges, three shell weights,
-  -- three flight times — the arithmetic is the same each time, only the speed
-  -- of the shell changes.
+  -- three flight times — same arithmetic, only the speed of the shell changes.
   if event.distance < 90 then
     set flight = event.distance / 340 + 0.05
     set aimx = event.x + cos(event.heading) * event.speed * flight
@@ -451,16 +487,16 @@ on sense robot
       fire 1
     end
   end
-  -- Face it, then plant. Turning is cheap and keeps the cone on the target;
-  -- driving at it is expensive and mostly a way of arriving somewhere it has
-  -- already aimed at.
   turn body by event.bearing
   stop
 end
 
 on ping robot
-  -- Far contact. Lead it here too, so the gun is already most of the way round
-  -- by the time it walks into the cone.
+  set cold = 0
+  if mode is 0 then
+    set mode = 1
+    set name = "stalking"
+  end
   radar.aim at event.bearing
   set flight = event.distance / 400
   set aimx = event.x + cos(event.heading) * event.speed * flight
@@ -469,18 +505,32 @@ on ping robot
   turn body by event.bearing
 end
 
+on ping wall
+  -- The beam found nothing but the edge. Put it back to sweeping — left aimed,
+  -- it stares down one line and the robot never finds anything again.
+  radar.sweep 90
+end
+
 on sense fuel
+  if mode isnt 2 then
+    set mode = 3
+    set name = "feeding"
+  end
   turn body by event.bearing
   drive forward 90
 end
 
 on ping fuel
+  if mode isnt 2 then
+    turn body by event.bearing
+    drive forward 90
+  end
   radar.aim at event.bearing
-  turn body by event.bearing
-  drive forward 90
 end
 
 on hit by bullet
+  -- Being shot is contact too, even when nothing has been seen.
+  set cold = 0
   turn body by event.bearing + 90
   drive forward 90
 end

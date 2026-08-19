@@ -277,11 +277,20 @@ pre-fuel golden numbers, so any drain or spawn leaking into the disabled path
 fails the build. A robot written to forage still runs there; it simply never
 hears `on sense fuel`.
 
-`src/bots/index.ts` ships **Apex**, the robot to beat: it leads its target,
+`src/bots/index.ts` ships **Apex**, the robot to beat. It leads its target,
 stops dead the moment somebody enters its cone rather than charging them, fires
 light at range and heavy up close, and eats whatever crosses its path without
-ever making a special trip. It takes 83% of a three-seed round robin against
-everything else here.
+ever making a special trip. It takes 88% of a three-seed round robin against
+everything else here, ten clear of the next best.
+
+It also has four moods and says which one it is in — the label under it reads
+`prowling`, `stalking`, `strike` or `feeding`, and `mode` is a plain number you
+can watch while it runs. The mood that matters is the way *out* of the others:
+a `cold` counter tracks ticks since the last contact of any kind, and twenty
+ticks of silence sends it back to prowling. Without it the robot had no way to
+leave a mood at all — it would stop for a target, lose it, and stand there
+aiming a parked beam down one dead line for up to fifty-nine seconds of a
+two-minute fight. Fixing that was worth more than the aiming arithmetic.
 
 `src/bots/index.ts` also ships **Hungry Hippo**, which ignores the battle entirely
 and forages: it never fires and never sweeps its turret, because both cost fuel
