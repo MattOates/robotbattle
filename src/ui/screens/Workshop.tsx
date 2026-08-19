@@ -1410,7 +1410,7 @@ function TrialPane({
   );
 
   return (
-    <>
+    <div className={`trial-body${expanded ? " has-expanded" : ""}`}>
       <section className={`panel arena-panel${expanded ? " expanded" : ""}`}>
         <div className="panel-head">
           <span className="silkscreen">{words.arena}</span>
@@ -1562,7 +1562,7 @@ function TrialPane({
           </div>
         </section>
       )}
-    </>
+    </div>
   );
 }
 
