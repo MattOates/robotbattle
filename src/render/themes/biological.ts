@@ -22,7 +22,9 @@ export const BIOLOGICAL: ArenaTheme = {
 
   background: 0x0b1a1c,
   gridColor: 0x16333a,
-  gridAlpha: 0.4,
+  // Low: a square grid across a round dish is the one thing that says
+  // "rectangle" here, so it stays as a faint sense of scale and no more.
+  gridAlpha: 0.16,
   gridSize: 60,
   wallColor: 0x2f6b6b,
 
@@ -128,45 +130,61 @@ export const BIOLOGICAL: ArenaTheme = {
    * The dish itself: round glass with liquid in it, sitting on a dark stage.
    *
    * The arena stays rectangular \u2014 walls are walls and the simulation has not
-   * changed \u2014 but the glass rim inset inside them, and the vignette outside
-   * it, do the work of saying you are looking into a dish rather than across a
-   * field.
+   * changed \u2014 but the glass rim inset inside them, and the darkness banked up
+   * outside it, do the work of saying you are looking into a dish rather than
+   * across a field.
    */
   drawBackdrop(g: Graphics, width: number, height: number): void {
     const cx = width / 2;
     const cy = height / 2;
-    const rx = width * 0.52;
-    const ry = height * 0.56;
+    // Inside the walls, not across them. An ellipse wider than the arena reads
+    // as a stray curve rather than as the edge of anything.
+    const rx = width * 0.47;
+    const ry = height * 0.47;
 
-    // Liquid, pooling toward the middle.
-    for (let i = 7; i >= 1; i--) {
-      const k = i / 7;
-      g.ellipse(cx, cy, rx * k, ry * k).fill({
-        color: lighten(0x0b1a1c, 0.14),
-        alpha: 0.06,
+    // Outside the glass, banked up as widening rings rather than as one shape,
+    // because the corners of a rectangle cannot be subtracted from an ellipse
+    // with a Graphics path and this reads as the same thing.
+    for (let i = 1; i <= 14; i++) {
+      g.ellipse(cx, cy, rx + i * 7, ry + i * 7).stroke({
+        width: 9,
+        color: 0x000000,
+        alpha: 0.1,
       });
     }
 
-    // The glass rim, and a meniscus catching the light along its upper left.
-    g.ellipse(cx, cy, rx, ry).stroke({ width: 3, color: 0x2f6b6b, alpha: 0.55 });
-    g.ellipse(cx, cy, rx * 0.985, ry * 0.985).stroke({
-      width: 1.2,
-      color: 0x8fd8cf,
-      alpha: 0.28,
-    });
-    g.arc(cx, cy, Math.min(rx, ry) * 0.99, Math.PI * 1.06, Math.PI * 1.42).stroke({
-      width: 2.5,
-      color: 0xd8f3ea,
-      alpha: 0.16,
-    });
+    // Liquid, pooling toward the middle.
+    for (let i = 8; i >= 1; i--) {
+      const k = i / 8;
+      g.ellipse(cx, cy, rx * k, ry * k).fill({
+        color: lighten(0x0b1a1c, 0.16),
+        alpha: 0.05,
+      });
+    }
+
+    // The glass rim, and a meniscus inside it. Full ellipses, not arcs: an arc
+    // has to be swept on the ellipse itself to follow the rim, and one swept on
+    // a circle just cuts a chord across the dish.
+    g.ellipse(cx, cy, rx, ry).stroke({ width: 4, color: 0x2f6b6b, alpha: 0.5 });
+    g.ellipse(cx, cy, rx - 5, ry - 5).stroke({ width: 1.5, color: 0x8fd8cf, alpha: 0.22 });
+    g.ellipse(cx, cy, rx - 12, ry - 12).stroke({ width: 8, color: 0x8fd8cf, alpha: 0.045 });
   },
 
   /**
    * Goop: the same field as the hills next door, read as viscosity.
    *
-   * Three passes at different offsets and scales rather than one grid of
-   * squares. Overlapping soft blobs have no edge you can point at, which is
-   * the entire difference between "thick fluid" and "a shaded map".
+   * Two traps here, and both had to be seen on screen to be believed. The first
+   * is the lattice \u2014 sample a regular grid, draw one mark per cell, and the eye
+   * finds rows of dots, which is the one thing a fluid must not look like. So
+   * blobs are nudged off the grid by the shape of the ground nearby (which is
+   * smooth, so neighbours drift together rather than scattering) and alternate
+   * rows are offset by half a cell.
+   *
+   * The second is the hard edge. A flat-filled circle stays a findable circle
+   * however low its alpha, and a field of them reads as bubbles. So each blob
+   * is drawn as concentric rings with the alpha ramping toward the middle,
+   * which is a radial falloff by hand \u2014 the cheapest soft edge available to a
+   * Graphics that only knows flat fills.
    */
   drawTerrain(
     g: Graphics,
@@ -175,37 +193,32 @@ export const BIOLOGICAL: ArenaTheme = {
     height: number,
   ): void {
     const goop = 0x2f7a5e;
+    const RINGS = 5;
     const PASSES = [
-      { cell: 34, radius: 30, alpha: 0.3, ox: 0, oy: 0 },
-      { cell: 26, radius: 20, alpha: 0.24, ox: 13, oy: 9 },
-      { cell: 20, radius: 12, alpha: 0.2, ox: 7, oy: 15 },
+      { cell: 34, radius: 46, alpha: 0.2 },
+      { cell: 21, radius: 26, alpha: 0.14 },
     ];
 
     for (const pass of PASSES) {
-      for (let x = -pass.cell; x < width + pass.cell; x += pass.cell) {
-        for (let y = -pass.cell; y < height + pass.cell; y += pass.cell) {
-          const px = x + pass.ox;
-          const py = y + pass.oy;
+      let row = 0;
+      for (let y = -pass.cell; y < height + pass.cell; y += pass.cell, row++) {
+        const stagger = (row % 2) * (pass.cell / 2);
+        for (let x = -pass.cell; x < width + pass.cell; x += pass.cell) {
+          const px = x + stagger + (sample(x + 91, y) - 0.5) * pass.cell * 1.2;
+          const py = y + (sample(x, y + 57) - 0.5) * pass.cell * 1.2;
           const h = sample(px, py);
-          // Only the thick half pools. Thin goop is simply the dish showing
-          // through, which is what makes the thick patches worth avoiding.
-          if (h <= 0.5) continue;
-          const t = (h - 0.5) * 2;
-          g.circle(px, py, pass.radius * (0.45 + t * 0.55)).fill({
-            color: goop,
-            alpha: pass.alpha * t * t,
-          });
+          // Only the thick half pools. Thin goop is the dish showing through,
+          // which is what makes the thick patches worth avoiding.
+          if (h <= 0.45) continue;
+          const t = (h - 0.45) / 0.55;
+          const r = pass.radius * (0.5 + t * 0.5);
+          for (let i = RINGS; i >= 1; i--) {
+            g.circle(px, py, (r * i) / RINGS).fill({
+              color: goop,
+              alpha: pass.alpha * t * t,
+            });
+          }
         }
-      }
-    }
-
-    // A faint bright caustic on the steepest gradients, where a lens would
-    // pick up the change in thickness.
-    for (let x = 0; x < width; x += 16) {
-      for (let y = 0; y < height; y += 16) {
-        const d = Math.abs(sample(x + 16, y) - sample(x, y)) + Math.abs(sample(x, y + 16) - sample(x, y));
-        if (d < 0.035) continue;
-        g.circle(x, y, 3).fill({ color: 0x9be7c4, alpha: Math.min(0.22, d * 2.2) });
       }
     }
   },

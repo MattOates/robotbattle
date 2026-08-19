@@ -153,11 +153,16 @@ export const MECHANICAL: ArenaTheme = {
   /**
    * Hillside: elevation shading, then contour lines over the top.
    *
-   * The shading runs from a cool low ground to a warmer high one, so height is
-   * legible even for someone not reading the lines. The lines themselves are
-   * found by walking a grid and stroking the cells a level passes through \u2014
-   * chunky rather than smooth, which suits a map and costs a fraction of a
-   * proper marching-squares trace.
+   * The shading runs cool in the low ground and warm on the tops, so height is
+   * legible without reading a single line. The lines themselves are marching
+   * squares: each cell's corners are compared against the level, the crossing
+   * points are interpolated along the edges they fall on, and the two crossings
+   * in a cell are joined. Interpolating is what makes this a line rather than a
+   * row of ticks \u2014 the first attempt stroked a fixed mark at each cell centre
+   * and produced scattered dashes that read as debris on the floor.
+   *
+   * Contours are honest gameplay information as well as scenery: lines packed
+   * close together are ground that will cost you.
    */
   drawTerrain(
     g: Graphics,
@@ -165,47 +170,60 @@ export const MECHANICAL: ArenaTheme = {
     width: number,
     height: number,
   ): void {
-    const CELL = 14;
-    const low = 0x1b2430;
-    const high = 0x6b5b43;
+    const CELL = 16;
+    const cols = Math.ceil(width / CELL) + 1;
+    const rows = Math.ceil(height / CELL) + 1;
 
-    for (let x = 0; x < width; x += CELL) {
-      for (let y = 0; y < height; y += CELL) {
-        const h = sample(x + CELL / 2, y + CELL / 2);
-        // Bias toward the top of the range so low ground stays near the
-        // background and hills are what draws the eye.
-        const t = h * h;
-        g.rect(x, y, CELL, CELL).fill({
-          color: t > 0.5 ? high : low,
-          alpha: t > 0.5 ? (t - 0.5) * 0.9 : (0.5 - t) * 0.35,
+    // Sampled once into a grid: the contour pass below reads every corner four
+    // times over, and the noise is much dearer than the array lookup.
+    const h: number[] = new Array(cols * rows);
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) h[j * cols + i] = sample(i * CELL, j * CELL);
+    }
+    const at = (i: number, j: number): number => h[j * cols + i]!;
+
+    // Elevation shading, one flat fill per cell from the average of its corners.
+    for (let j = 0; j < rows - 1; j++) {
+      for (let i = 0; i < cols - 1; i++) {
+        const v = (at(i, j) + at(i + 1, j) + at(i, j + 1) + at(i + 1, j + 1)) / 4;
+        const t = (v - 0.5) * 2; // -1 low, +1 high
+        g.rect(i * CELL, j * CELL, CELL + 1, CELL + 1).fill({
+          color: t >= 0 ? 0x6b5b43 : 0x1b2b3d,
+          alpha: Math.abs(t) * (t >= 0 ? 0.34 : 0.3),
         });
       }
     }
 
-    // Contours at fixed heights. Every cell whose corner values straddle a
-    // level gets a mark, which reads as a line once they join up.
-    const LEVELS = [0.35, 0.5, 0.65, 0.8];
+    const LEVELS = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
     for (let li = 0; li < LEVELS.length; li++) {
       const level = LEVELS[li]!;
-      for (let x = 0; x < width; x += CELL) {
-        for (let y = 0; y < height; y += CELL) {
-          const a = sample(x, y);
-          const b = sample(x + CELL, y);
-          const c = sample(x, y + CELL);
-          if ((a < level) !== (b < level)) {
-            g.moveTo(x + CELL / 2, y).lineTo(x + CELL / 2, y + CELL);
-          }
-          if ((a < level) !== (c < level)) {
-            g.moveTo(x, y + CELL / 2).lineTo(x + CELL, y + CELL / 2);
+      for (let j = 0; j < rows - 1; j++) {
+        for (let i = 0; i < cols - 1; i++) {
+          const x0 = i * CELL;
+          const y0 = j * CELL;
+          const a = at(i, j);
+          const b = at(i + 1, j);
+          const c = at(i + 1, j + 1);
+          const d = at(i, j + 1);
+
+          // Where along an edge the level falls, so segments meet end to end
+          // across cell boundaries instead of stopping short of each other.
+          const cut: [number, number][] = [];
+          if (a < level !== b < level) cut.push([x0 + CELL * ((level - a) / (b - a)), y0]);
+          if (b < level !== c < level) cut.push([x0 + CELL, y0 + CELL * ((level - b) / (c - b))]);
+          if (d < level !== c < level) cut.push([x0 + CELL * ((level - d) / (c - d)), y0 + CELL]);
+          if (a < level !== d < level) cut.push([x0, y0 + CELL * ((level - a) / (d - a))]);
+
+          // Two crossings is the ordinary case. Four is a saddle, where either
+          // pairing is a valid contour, so the arbitrary one is fine.
+          for (let k = 0; k + 1 < cut.length; k += 2) {
+            g.moveTo(cut[k]![0], cut[k]![1]).lineTo(cut[k + 1]![0], cut[k + 1]![1]);
           }
         }
       }
       // Every other line heavier, the way a real map picks out round heights.
-      g.stroke({
-        width: li % 2 === 1 ? 1.3 : 0.8,
-        color: 0x8a7a5c,
-        alpha: li % 2 === 1 ? 0.4 : 0.24,
-      });
+      const major = li % 2 === 1;
+      g.stroke({ width: major ? 1.4 : 0.8, color: 0xa8977a, alpha: major ? 0.42 : 0.2 });
     }
   },
 
