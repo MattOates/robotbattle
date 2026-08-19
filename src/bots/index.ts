@@ -382,6 +382,94 @@ on hit by bullet
 end
 `;
 
+const APEX = `-- Apex: the one to beat.
+--
+-- Hunter and Hungry Hippo in one robot, tuned against the actual cost table
+-- rather than against a feeling about it. Three measured facts shape it:
+--
+--   1. Going somewhere is the most expensive thing a robot does. Everything
+--      else — aiming, sweeping, thinking — is small change beside it.
+--   2. Firing costs the same per point of damage at every power, so the only
+--      thing that makes a shot cheap is landing it. Bullets are slower the
+--      heavier they are, so this fires light at range, where a slow shell can
+--      be driven out of, and heavy up close, where it cannot.
+--   3. Brownout takes your legs and your aim, never your gun. A starving robot
+--      still hits as hard, so there is no winning by waiting for one to run
+--      dry — and every version of this that tried to hide and let the others
+--      burn out did measurably worse than simply going at them.
+--
+-- So it fights like Hunter and eats like the hippo: it never makes a special
+-- trip for food, it just takes what crosses its path, which costs it nothing
+-- it was not already spending.
+name "Apex"
+chassis tank
+color #f5f0e6
+
+on start
+  turret.sweep 40
+  radar.sweep 90
+  drive forward 55
+end
+
+-- Every 24 ticks rather than the 12 the beam allows. Pinging on cooldown is
+-- the single most expensive habit available — more per tick than driving flat
+-- out — and the sense cone does the close work for nothing.
+can search given tick every 24
+  if me.pingHeat is 0 then
+    ping
+  end
+end
+
+on sense robot
+  turret.aim at event.bearing
+  -- Same damage per unit of fuel whichever you pick, so choose for the hit.
+  if event.distance < 90 then
+    fire 3
+  else
+    if event.distance < 150 then
+      fire 2
+    else
+      fire 1
+    end
+  end
+  turn body by event.bearing
+  if event.distance > 150 then
+    drive forward 80
+  else
+    drive forward 30
+  end
+end
+
+on ping robot
+  radar.aim at event.bearing
+  turret.aim at event.bearing
+  turn body by event.bearing
+end
+
+on sense fuel
+  -- No condition on this. A cell in the cone is nearly always closer than the
+  -- fight is, and topping up keeps the legs and the turret quick.
+  turn body by event.bearing
+  drive forward 90
+end
+
+on ping fuel
+  radar.aim at event.bearing
+  turn body by event.bearing
+  drive forward 90
+end
+
+on hit by bullet
+  turn body by event.bearing + 90
+  drive forward 90
+end
+
+on hit wall
+  turn body by 150
+  drive forward 60
+end
+`;
+
 export const SAMPLE_BOTS: SampleBot[] = [
   {
     id: "sitting-duck",
@@ -432,6 +520,12 @@ export const SAMPLE_BOTS: SampleBot[] = [
     source: HUNGRY_HIPPO,
   },
   {
+    id: "apex",
+    title: "Apex",
+    teaches: "the one to beat: fighting and foraging, budgeted against the cost table",
+    source: APEX,
+  },
+  {
     id: "hunter-bio",
     title: "Hunter (biology words)",
     teaches: "the same robot written in the biological vocabulary",
@@ -453,4 +547,5 @@ export {
   SCOUT,
   TOOLKIT,
   HUNGRY_HIPPO,
+  APEX,
 };
