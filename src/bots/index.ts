@@ -317,17 +317,17 @@ can bounce given hit wall
 end
 `;
 
-const HUNGRY_HIPPO = `-- Ignores the battle completely and eats.
+const HUNGRY_HIPPO = `-- Never fights. Just eats.
 --
--- Everything that moves costs fuel and nothing here ever shoots, so this is
--- the fuel economy on its own, with the fighting taken out: the gauge under
--- the hippo fills every time it reaches a cell and drains the whole time it
--- is looking for the next one.
+-- Moving, turning, shooting and pinging all use up fuel. Thinking is free, and
+-- so is the sense cone, which notices things all on its own.
 --
--- Note what it does NOT do. It never fires, and it never sweeps the turret,
--- because both cost fuel and neither finds food. The radar is the exception
--- worth paying for: a ping is the most expensive thing here, and it still
--- pays, because food you cannot see is food you cannot eat.
+-- So this robot does as little as it can. It never shoots, because shooting
+-- does not find food. It never sweeps its turret, for the same reason. The one
+-- thing it pays for is the ping, because the cone only sees a little way ahead
+-- and the beam sees three times as far.
+--
+-- Finding food near or far leads to the same move: turn to face it, then drive.
 name "Hungry Hippo"
 chassis tank
 color #ff6b6b
@@ -338,24 +338,23 @@ on start
 end
 
 on tick
-  -- Ping whenever the beam has recovered, and only then: me.pingHeat counts
-  -- down to zero, and pinging early is simply ignored.
+  -- Ping as often as you are allowed. me.pingHeat counts down to zero after
+  -- each one, and asking early does nothing at all.
   if me.pingHeat is 0 then
     ping
   end
 end
 
 on sense fuel
-  -- Close enough for the cone. Line up and go and get it.
+  -- The cone found food, so it is close. Turn to it and drive over it.
   set name = "nom"
   turn body by event.bearing
   drive forward 100
 end
 
 on ping fuel
-  -- Right across the arena, and found only because the beam was pointed there.
-  -- Hold the beam on it so the next ping says whether it is still going, and
-  -- set off.
+  -- The beam found food a long way off. Keep the beam on it so the next ping
+  -- checks it is still there, then set off.
   set name = "on my way"
   radar.aim at event.bearing
   turn body by event.bearing
@@ -363,7 +362,8 @@ on ping fuel
 end
 
 on ping wall
-  -- Nothing down that line but the edge. Go back to searching.
+  -- The beam hit the wall, so there is nothing that way. Aiming the beam
+  -- stopped it sweeping, so start it sweeping again.
   set name = "hungry"
   radar.sweep 90
 end
@@ -374,49 +374,41 @@ on hit wall
 end
 
 on hit by bullet
-  -- Somebody is shooting at it. The hippo does not shoot back, but a target
-  -- that keeps moving is a harder one.
+  -- Someone is shooting at it. It does not shoot back, but driving sideways
+  -- makes it harder to hit.
   set name = "rude"
   turn body by event.bearing + 90
   drive forward 100
 end
 `;
 
-const APEX = `-- Apex: the one to beat.
+const APEX = `-- Apex: the robot to beat. It hunts, it eats, and it is careful.
 --
--- Hunter and Hungry Hippo in one robot. Every line came out of running the
--- whole corpus rather than out of taste, and several came out backwards from
--- what you would guess.
+-- It is always doing one of four things. The variable called mode remembers
+-- which one, and the label under the robot says it out loud while you watch:
 --
--- It has four moods, and it says which one it is in. \`mode\` is a plain number
--- you can watch in the test bench, and the label under the robot is the same
--- thing in words:
+--   0  prowling  nothing found yet, so drive about and look
+--   1  stalking  the beam can see someone the cone cannot
+--   2  strike    they are in the cone, so stand still and shoot
+--   3  feeding   going to get some fuel
 --
---   0  prowling  nothing found; cover ground and sweep both instruments
---   1  stalking  the beam has something the cone cannot see yet
---   2  strike    it is in the cone; stand and shoot
---   3  feeding   going to a cell
+-- Something has to bring it back to prowling, or it would wait forever for a
+-- robot that has already gone. So cold counts the ticks since it last saw
+-- anything at all. Twenty quiet ticks and it starts sweeping and driving again.
 --
--- \`cold\` counts ticks since the last contact of any kind. Without it the robot
--- had no way back out of a mood: it would stop for a target, lose it, and stand
--- there aiming a parked beam down one dead line for the rest of the match — up
--- to fifty-nine seconds of a two-minute fight. Going back to prowling after
--- twenty ticks of silence is worth seventeen duels on its own, which is more
--- than the aiming maths is worth.
+-- When it shoots it aims where you are GOING, not where you are. A shot waits
+-- until the gun has turned to face where it was aimed, and you keep moving
+-- while it turns. Bullets fly at 460 - 40 x power, and the event says which way
+-- you are heading and how fast, which is enough to work out where to point.
 --
--- It leads its target. A shot is committed when you ask for it and leaves when
--- the gun comes round, so where the target will BE is the only bearing worth
--- aiming at. Flight time is distance over bullet speed, and bullet speed is
--- 460 - 40 x power, so all of it is knowable from the event.
+-- Light bullets far away, heavy ones close up. Every bullet does the same
+-- damage for the fuel it costs, but heavy ones fly slower and are easier to
+-- drive out of the way of.
 --
--- It stops dead in strike. Standing still costs nothing, keeps the gun steady
--- while the committed shot comes round, and beats charging by ten duels.
--- Closing the distance is what every other robot here does, and it is what
--- gets them shot.
+-- In strike it stops. Standing still is free, and it keeps the gun pointing
+-- where it was put while the shot gets ready.
 --
--- It fires light far away and heavy up close. Damage per unit of fuel is the
--- same at every power, so nothing is lost by choosing for the hit instead:
--- heavier shells fly slower and can be driven out of.
+-- It picks up fuel it happens to see, but never goes looking for it.
 name "Apex"
 chassis tank
 color #f5f0e6
@@ -424,6 +416,7 @@ color #f5f0e6
 var mode = 0
 var cold = 0
 
+-- Somewhere to keep the working out while it aims.
 var flight = 0
 var aimx = 0
 var aimy = 0
@@ -435,12 +428,13 @@ on start
 end
 
 can clock given tick
+  -- One tick older since the last time anything was seen.
   set cold = cold + 1
 end
 
 can prowl given tick every 6
-  -- The way out of every other mood. Nothing has been seen for a while, so put
-  -- both instruments back to sweeping and go and look.
+  -- Quiet for a while now, so go back to searching: sweep the turret and the
+  -- beam again, and get moving.
   if cold > 20 then
     if mode isnt 0 then
       set mode = 0
@@ -464,8 +458,8 @@ on sense robot
     set mode = 2
     set name = "strike"
   end
-  -- Aim where it is going, not where it is. Three ranges, three shell weights,
-  -- three flight times — same arithmetic, only the speed of the shell changes.
+  -- Near, middle and far. Each part does the same sum, and only the speed of
+  -- the bullet changes, because that is what decides how long it flies for.
   if event.distance < 90 then
     set flight = event.distance / 340 + 0.05
     set aimx = event.x + cos(event.heading) * event.speed * flight
@@ -487,11 +481,14 @@ on sense robot
       fire 1
     end
   end
+  -- Face them, then plant your feet while the shot gets ready.
   turn body by event.bearing
   stop
 end
 
 on ping robot
+  -- Too far away for the cone. Aim ahead of them anyway, so the gun is already
+  -- most of the way round when they come close enough to shoot at.
   set cold = 0
   if mode is 0 then
     set mode = 1
@@ -506,8 +503,8 @@ on ping robot
 end
 
 on ping wall
-  -- The beam found nothing but the edge. Put it back to sweeping — left aimed,
-  -- it stares down one line and the robot never finds anything again.
+  -- The beam hit the wall, so nobody is that way. Aiming the beam stopped it
+  -- sweeping, so start it sweeping again.
   radar.sweep 90
 end
 
@@ -529,7 +526,8 @@ on ping fuel
 end
 
 on hit by bullet
-  -- Being shot is contact too, even when nothing has been seen.
+  -- Being shot still means somebody is out there, so this counts as seeing
+  -- them, even though neither the cone nor the beam found anything.
   set cold = 0
   turn body by event.bearing + 90
   drive forward 90
