@@ -63,7 +63,11 @@ const GOLDEN = {
   //     generated from, so the digest changed while the world it describes did
   //     not. The behavioural facts are the ones that prove it \u2014 532 ticks and
   //     Hunter, both identical to version 6, and BEFORE_FUEL untouched below.
-  simVersion: 7,
+  // 8 — line of sight. The radar beam is now stopped by ground higher than the
+  //     robot standing on it. Flat ground is level everywhere, so nothing here
+  //     can ever block anything, and `ping` defaults to the power it always
+  //     had: not one number below moved, hashes included.
+  simVersion: 8,
   ticks: 532,
   winner: "Hunter",
   finalHash: "ee38dcac90e1ded5",

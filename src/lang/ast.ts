@@ -26,6 +26,10 @@ export const EVENT_NAMES = [
   // than instead of it, because terrain is everywhere and so could never win or
   // lose a precedence contest sensibly.
   "ping slope",
+  // The beam stopped: ground higher than you are is in the way. This one DOES
+  // take a place in the precedence chain, because it is the reason nothing
+  // further out was found.
+  "ping ridge",
   "hit wall",
   "hit robot",
   "hit by bullet",
@@ -54,7 +58,7 @@ export type ActionKind =
   | "radarTurnBy" // [relative degrees]
   | "radarAim" // [bearing relative to chassis heading]
   | "radarSweep" // [degrees to sweep back and forth]
-  | "ping"; // [] — sends the beam where the radar points
+  | "ping"; // [power 1..3] — sends the beam where the radar points
 
 export interface Expr_Num {
   type: "num";

@@ -14,7 +14,7 @@ import type { PropRef, Value } from "../lang/bytecode.js";
 import { Vm, toNum, toText, type VmHost } from "../lang/vm.js";
 import { angleDelta, atan2Deg, clamp, cosDeg, hypot, normalizeAngle, sinDeg } from "./math.js";
 import { Rng } from "./rng.js";
-import { FLAT_TERRAIN, makeTerrain, slopeAt, uphillAt } from "./terrain.js";
+import { beamReach, FLAT_TERRAIN, makeTerrain, slopeAt, uphillAt } from "./terrain.js";
 import {
   BULLET,
   clampFuelConfig,
@@ -68,8 +68,12 @@ export interface MatchManifest {
  * 7 — terrain: the ground has a gradient, which changes what movement costs and
  *     how fast it happens. Ships switched off, but the manifest shape changed,
  *     so an older peer must refuse the match rather than guess at a flat map.
+ * 8 — line of sight: the radar beam is stopped by ground higher than the robot
+ *     standing on it, and `ping` gained a power that buys the height to see
+ *     over more of it. Flat ground blocks nothing, so a match without terrain
+ *     is unaffected \u2014 but what the beam finds is now a function of the map.
  */
-export const SIM_VERSION = 7;
+export const SIM_VERSION = 8;
 
 /**
  * How far a spawn may vary from its slot on the ring.
@@ -352,7 +356,7 @@ function makeHost(world: World, robot: Robot): VmHost {
           );
           return;
         case "ping":
-          ping(world, robot);
+          ping(world, robot, a0);
           return;
         default:
           return;
@@ -489,10 +493,37 @@ export function releaseShot(world: World, robot: Robot, powerRaw: number): void 
  * empty space still tells you how much room is in that direction. It says
  * nothing at all only when even the wall is out of reach.
  */
-export function ping(world: World, robot: Robot): void {
+export function ping(world: World, robot: Robot, powerRaw: number = RADAR.minPower): void {
   if (!robot.alive || robot.pingHeat > 0) return;
   robot.pingHeat = RADAR.cooldown;
-  spendFuel(world, robot, FUEL.ping);
+  const power = clamp(Math.round(powerRaw) || RADAR.minPower, RADAR.minPower, RADAR.maxPower);
+  spendFuel(world, robot, FUEL.ping * power);
+
+  const wallDist = distanceToWall(world, robot.x, robot.y, robot.radar);
+
+  /**
+   * How far this beam actually gets.
+   *
+   * Ground higher than the robot standing on it stops the beam dead, so where
+   * you are standing decides what you can know. On the top of the highest hill
+   * this is the full range in every direction; on a valley floor it is a box,
+   * and pointed straight uphill it is almost nothing. A harder ping sees over
+   * proportionally higher ground, which is the way out of a hole.
+   *
+   * With terrain off the field is level everywhere, so nothing is ever higher
+   * than the observer and this is always the full range. No branch needed.
+   */
+  const sight = beamReach(
+    world.terrain,
+    robot.x,
+    robot.y,
+    robot.radar,
+    RADAR.range,
+    RADAR.eyeHeight * power,
+  );
+  const reach = Math.min(RADAR.range, wallDist, sight);
+  /** True when the ground, rather than distance or a wall, is what stopped it. */
+  const blocked = sight < RADAR.range && sight < wallDist;
 
   let best: Robot | null = null;
   let bestDist = Infinity;
@@ -501,7 +532,7 @@ export function ping(world: World, robot: Robot): void {
     const dx = other.x - robot.x;
     const dy = other.y - robot.y;
     const dist = hypot(dx, dy);
-    if (dist > RADAR.range || dist >= bestDist) continue;
+    if (dist > reach || dist >= bestDist) continue;
     const offBeam = angleDelta(robot.radar, atan2Deg(dy, dx));
     if (offBeam < -RADAR.halfAngle || offBeam > RADAR.halfAngle) continue;
     best = other;
@@ -517,7 +548,7 @@ export function ping(world: World, robot: Robot): void {
       const dx = f.x - robot.x;
       const dy = f.y - robot.y;
       const dist = hypot(dx, dy);
-      if (dist > RADAR.range || dist >= cellDist) continue;
+      if (dist > reach || dist >= cellDist) continue;
       const offBeam = angleDelta(robot.radar, atan2Deg(dy, dx));
       if (offBeam < -RADAR.halfAngle || offBeam > RADAR.halfAngle) continue;
       cell = f;
@@ -525,15 +556,15 @@ export function ping(world: World, robot: Robot): void {
     }
   }
 
-  const wallDist = distanceToWall(world, robot.x, robot.y, robot.radar);
-
   world.effects.push({
     type: "ping",
     x: robot.x,
     y: robot.y,
     heading: robot.radar,
     tick: world.tick,
-    range: Math.min(RADAR.range, best ? bestDist : cell ? cellDist : wallDist),
+    // Whatever stopped it first, so the drawn wedge ends where the beam really
+    // ended -- at a contact, at a wall, or against a ridge.
+    range: Math.min(reach, best ? bestDist : cell ? cellDist : Infinity),
   });
 
   // Terrain is reported alongside whatever else the beam found, rather than
@@ -542,7 +573,6 @@ export function ping(world: World, robot: Robot): void {
   // one cost, two facts — a sweep that returns both the contact and the shape
   // of the ground between here and there is the honest reading of a radar.
   if (world.terrainConfig.enabled && robot.vm.handles("ping slope")) {
-    const reach = Math.min(RADAR.range, wallDist);
     const tx = robot.x + cosDeg(robot.radar) * reach;
     const ty = robot.y + sinDeg(robot.radar) * reach;
     const there = world.terrain.heightAt(tx, ty);
@@ -581,7 +611,24 @@ export function ping(world: World, robot: Robot): void {
     return;
   }
 
-  if (wallDist <= RADAR.range) {
+  // Before the wall, because the wall is behind it and cannot have been seen.
+  // This is also what keeps a blocked beam from reporting nothing at all: a
+  // robot that aimed its radar and then heard silence would go on pinging the
+  // same ridge forever, which is exactly how a robot locks up.
+  if (blocked) {
+    const tx = robot.x + cosDeg(robot.radar) * reach;
+    const ty = robot.y + sinDeg(robot.radar) * reach;
+    const there = world.terrain.heightAt(tx, ty);
+    robot.vm.enqueue("ping ridge", {
+      bearing: angleDelta(robot.heading, robot.radar),
+      distance: reach,
+      rise: (there - world.terrain.heightAt(robot.x, robot.y)) * 100,
+      height: there * 100,
+    });
+    return;
+  }
+
+  if (wallDist <= reach) {
     robot.vm.enqueue("ping wall", {
       bearing: angleDelta(robot.heading, robot.radar),
       distance: wallDist,

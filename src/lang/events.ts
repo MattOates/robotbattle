@@ -109,7 +109,7 @@ export const EVENT_DOCS: Readonly<Record<EventName, EventDoc>> = {
   },
   "ping robot": {
     summary:
-      "Your {radar} beam found a {robot}. The beam is narrow and reaches much further than the cone, so this is a {robot} you could not otherwise see.",
+      "Your {radar} beam found a {robot}. The beam is narrow and reaches much further than the cone, so this is a {robot} you could not otherwise see \u2014 as long as nothing higher than you was in the way.",
     fields: [BEARING, DISTANCE, HEADING, SPEED, HEALTH, NAME, X, Y],
   },
   "ping fuel": {
@@ -119,12 +119,17 @@ export const EVENT_DOCS: Readonly<Record<EventName, EventDoc>> = {
   },
   "ping wall": {
     summary:
-      "Your {radar} beam reached a wall instead of a {robot}. The distance is how far the wall is in the direction the {radar} points.",
+      "Your {radar} beam went all the way to a wall and found nothing on the way. Nothing higher than you was in the way either, or you would have heard about that instead.",
     fields: [BEARING, DISTANCE],
   },
   "ping slope": {
     summary:
       "Your {radar} beam read the {ground} between you and wherever it is pointing. This one arrives as well as anything else the beam found, not instead of it \u2014 the {ground} is everywhere, so it never has to take its turn.",
+    fields: [BEARING, DISTANCE, RISE, HEIGHT],
+  },
+  "ping ridge": {
+    summary:
+      "Your {radar} beam ran into {ground} higher than you are standing on, and stopped there. You cannot see past it \u2014 so either go round, climb it, or {ping} harder, which costs more but sees over more.",
     fields: [BEARING, DISTANCE, RISE, HEIGHT],
   },
   "hit wall": {

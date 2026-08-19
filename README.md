@@ -109,7 +109,7 @@ end
 ```
 
 **Events** — `start`, `tick`, `sense robot`, `sense bullet`, `sense wall`,
-`sense fuel`, `ping robot`, `ping fuel`, `ping wall`, `ping slope`, `hit wall`, `hit robot`,
+`sense fuel`, `ping robot`, `ping fuel`, `ping wall`, `ping slope`, `ping ridge`, `hit wall`, `hit robot`,
 `hit by bullet`, `bullet hit`, `bullet missed`, `robot destroyed`. Every event carries
 `event.bearing` (relative to your chassis, so it drops straight into
 `turret.aim at` or `turn body by`) and `event.distance`, plus extras like
@@ -145,10 +145,18 @@ the same thing you would have written by hand, minus the chance of getting the
 **Actions** — none of them block; they set a goal the robot moves toward:
 `drive forward|back 0-100`, `stop`, `turn body to|by …`,
 `turret.turn to|by …`, `turret.aim at …`, `turret.sweep …`, `fire 1-3`,
-`radar.turn to|by …`, `radar.aim at …`, `radar.sweep …`, `ping`.
+`radar.turn to|by …`, `radar.aim at …`, `radar.sweep …`, `ping [power]`.
 
 **Readable state** — `me.x/y/heading/speed/health/fuel/turret/gunHeat/radar/pingHeat/aiming`,
 `me.slope/uphill/downhill`, `arena.width/height/time/robots`.
+
+**High ground is worth taking.** The radar beam is stopped by ground higher than
+the robot standing on it. From the top of the highest hill you ping normally in
+every direction; in a hollow you are boxed in, and `on ping ridge` tells you what
+stopped the beam and how much higher it is. A ping can be sent harder — `ping 3`
+costs three times the fuel and sees over three times the height — which is how
+you get a look out of a hole. The passive sense cone is unaffected: it is short,
+always on, and a robot low down has to be able to notice *something*.
 
 **The ground has a shape.** When a match is played with terrain on, the arena
 carries a height field — hills in the mechanical theme, thick and thin goop in
@@ -386,6 +394,7 @@ asserts exactly that. Both vocabularies parse in either arena, and can be mixed.
 | `me.health`            | `me.vitality`                 |
 | `on sense fuel`        | `on sense food`               |
 | `on ping slope`        | `on peek thickness`           |
+| `on ping ridge`        | `on peek murk`                |
 | `me.uphill`            | `me.thickest`                 |
 
 ## Multiplayer

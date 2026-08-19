@@ -202,6 +202,11 @@ const GOAT = `-- Goat: gets to the high ground and holds it.
 -- the same as the bottom is \u2014 so when the slope runs out after a climb, that
 -- is the summit. On a flat map the slope never turns up at all, and then there
 -- is nothing to climb and the goat just goes hunting instead.
+--
+-- The other reason to be up here: your radar beam is stopped by ground higher
+-- than you are standing on. Down in a dip you can barely see out. On the top
+-- of the hill nothing is above you, so the beam goes all the way, in every
+-- direction. That is why the goat only switches its radar on once it arrives.
 name "Goat"
 chassis tank
 color #6ad98a
@@ -210,6 +215,7 @@ var climbed = 0
 
 on start
   turret.sweep 90
+  radar.sweep 90
   drive forward 70
 end
 
@@ -234,6 +240,13 @@ on tick
       -- Level ground, after a climb. This is the top: hold it.
       set name = "high ground"
       stop
+      -- And look around, which is only worth doing from up here. Not below 30
+      -- in the tank though: pinging every time the beam recovers costs about
+      -- three times what simply sitting still does, and a robot whose whole
+      -- plan is to sit still would rather still be able to move afterwards.
+      if me.pingHeat is 0 and me.fuel > 30 then
+        ping
+      end
     else
       -- Never found a hill, so there is no high ground to take. Go and look
       -- for somebody instead.
@@ -246,6 +259,20 @@ end
 on sense robot
   turret.aim at event.bearing
   fire 3
+end
+
+on ping robot
+  -- Found from the top, far outside the cone. Shoot, but stay put: the hill is
+  -- worth more than the chase.
+  set name = "in range"
+  turret.aim at event.bearing
+  fire 3
+end
+
+on ping ridge
+  -- Ground higher than us stopped the beam, so we are not as high as we
+  -- thought. Keep sweeping rather than staring at it.
+  radar.sweep 90
 end
 
 on hit by bullet
@@ -338,6 +365,13 @@ end
 on ping wall
   -- Nothing down that line, only the edge of the arena.
   set name = "searching"
+end
+
+on ping ridge
+  -- The beam stopped at ground higher than we are, so there could be anything
+  -- behind it and we would not know. Sweep on rather than keep looking at it.
+  set name = "blocked"
+  radar.sweep 90
 end
 
 on sense robot
@@ -470,6 +504,13 @@ end
 on ping wall
   -- The beam hit the wall, so there is nothing that way. Aiming the beam
   -- stopped it sweeping, so start it sweeping again.
+  set name = "hungry"
+  radar.sweep 90
+end
+
+on ping ridge
+  -- Same idea, different reason: high ground stopped the beam short. Look
+  -- somewhere else rather than staring at the hill.
   set name = "hungry"
   radar.sweep 90
 end
@@ -611,6 +652,12 @@ end
 on ping wall
   -- The beam hit the wall, so nobody is that way. Aiming the beam stopped it
   -- sweeping, so start it sweeping again.
+  radar.sweep 90
+end
+
+on ping ridge
+  -- High ground cut the beam short. Nothing to learn from a hillside, and the
+  -- aim it was holding is worthless now, so put the beam back to sweeping.
   radar.sweep 90
 end
 

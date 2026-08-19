@@ -21,7 +21,7 @@
  */
 
 import { atan2Deg, clamp, cosDeg, hypot, sinDeg } from "./math.js";
-import { TERRAIN, type TerrainConfig } from "./types.js";
+import { RADAR, TERRAIN, type TerrainConfig } from "./types.js";
 
 export interface TerrainField {
   /** Height at a point, 0..1. Mechanical draws it as elevation, biological as viscosity. */
@@ -197,4 +197,37 @@ export function climbAlong(
   const [gx, gy] = field.gradientAt(x, y);
   const alongPerPixel = gx * cosDeg(heading) + gy * sinDeg(heading);
   return clamp(toSlopeUnits(alongPerPixel) / TERRAIN.refSlope, -1, 1);
+}
+
+/**
+ * How far the beam gets before the ground rises far enough to stop it.
+ *
+ * `allowance` is how much higher than the observer the ground may be and still
+ * be seen over. A robot is not a periscope, so this is small: from a valley
+ * floor the surrounding ridges box you in, and from the top of the highest hill
+ * nothing blocks you at all.
+ *
+ * Distance is `i * step` rather than a running total on purpose. Repeated
+ * `d += step` accumulates rounding differently depending on how the arithmetic
+ * is scheduled, and two peers that disagree about where a beam stopped would
+ * disagree about who is on the radar.
+ */
+export function beamReach(
+  field: TerrainField,
+  x: number,
+  y: number,
+  heading: number,
+  maxRange: number,
+  allowance: number,
+): number {
+  const ceiling = field.heightAt(x, y) + allowance;
+  const dx = cosDeg(heading);
+  const dy = sinDeg(heading);
+  const step = RADAR.occlusionStep;
+  const steps = Math.floor(maxRange / step);
+  for (let i = 1; i <= steps; i++) {
+    const d = i * step;
+    if (field.heightAt(x + dx * d, y + dy * d) > ceiling) return d;
+  }
+  return maxRange;
 }

@@ -717,9 +717,11 @@ class Parser {
     }
 
     if (this.matchWord("ping")) {
-      // No power, no argument: a ping goes wherever the radar is pointing, and
-      // the only choice a script makes is *when*.
-      return make("ping", []);
+      // Power is optional, exactly as it is for `fire`. A bare `ping` is the
+      // cheap one; a harder ping costs more fuel and sees over higher ground.
+      const args =
+        this.peek().kind === "newline" || this.peek().kind === "eof" ? [] : [this.parseExpr()];
+      return make("ping", args);
     }
 
     if (this.matchWord("radar")) {

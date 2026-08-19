@@ -54,6 +54,10 @@ describe("themed vocabulary", () => {
       ["on tick\n  fire me.slope\nend\n", "on tick\n  sting me.thickness\nend\n"],
       ["on tick\n  turn body to me.uphill\nend\n", "on tick\n  turn body to me.thickest\nend\n"],
       ["on tick\n  turn body to me.downhill\nend\n", "on tick\n  turn body to me.thinnest\nend\n"],
+      // What stopped the beam: a ridge to a machine, thick murk to an organism.
+      ["on ping ridge\n  stop\nend\n", "on peek murk\n  stop\nend\n"],
+      // A ping can be sent harder, exactly as a shot can be fired harder.
+      ["on tick\n  ping 3\nend\n", "on tick\n  peek 3\nend\n"],
     ];
     for (const [mech, bio] of pairs) {
       expect(identity(bio), `${bio.trim()} should match ${mech.trim()}`).toBe(

@@ -13,7 +13,7 @@ import { EVENT_DOCS } from "../../src/lang/events.js";
 import { EVENT_NAMES, type EventName } from "../../src/lang/ast.js";
 import { createWorld, makeManifest } from "../../src/sim/world.js";
 import { step } from "../../src/sim/step.js";
-import { FUEL_PRESETS, TERRAIN_PRESETS } from "../../src/sim/types.js";
+import { FUEL_PRESETS, TERRAIN_PRESETS, type TerrainConfig } from "../../src/sim/types.js";
 import { DODGER, HUNTER, RACER, SPINNER } from "../../src/bots/index.js";
 
 interface Seen {
@@ -65,7 +65,16 @@ ${EVENT_NAMES.filter((e) => e !== "start" && e !== "tick")
 
 const NOSY_CAR = NOSY.replace("chassis tank", "chassis car");
 
-function playOut(): Seen[] {
+/**
+ * One match, under a given set of conditions.
+ *
+ * Played twice below, with terrain on and off, because the two arrangements
+ * raise different events and neither alone reaches them all. With terrain on
+ * the beam is stopped by high ground, which is the only way to see `ping
+ * ridge` — and is also why the beam so rarely reaches a fuel cell that
+ * `ping fuel` stops appearing at all. Flat ground gives that one back.
+ */
+function playOut(terrain: TerrainConfig): Seen[] {
   return recordEvents(() => {
     const world = createWorld(
       makeManifest(
@@ -77,14 +86,14 @@ function playOut(): Seen[] {
           { source: SPINNER },
           { source: DODGER },
         ],
-        // Fuel and terrain both switched on, because both gate events: the
-        // documentation for `sense fuel` and `ping slope` would otherwise go
-        // unchecked in the one test whose job is checking it.
+        // Fuel on, because it gates events too: the documentation for
+        // `sense fuel` and `ping fuel` would otherwise go unchecked in the one
+        // test whose job is checking it.
         {
           seed: 31337,
           maxTicks: 30 * 90,
           fuel: FUEL_PRESETS.arena,
-          terrain: TERRAIN_PRESETS.arena,
+          terrain,
         },
       ),
     );
@@ -93,7 +102,7 @@ function playOut(): Seen[] {
 }
 
 describe("event payloads", () => {
-  const seen = playOut();
+  const seen = [...playOut(TERRAIN_PRESETS.arena), ...playOut(TERRAIN_PRESETS.off)];
 
   it("raises a good spread of events", () => {
     expect(seen.length).toBeGreaterThan(200);
@@ -125,12 +134,14 @@ describe("event payloads", () => {
     // settings and the field checks for those two events would pass by never
     // running at all.
     const names = new Set(seen.map((s) => s.name));
-    // `ping fuel` for the fuel switch and `ping slope` for the terrain one.
-    // Not `sense fuel`: a cell has to drift into a narrow forward cone, which
-    // this seed never happens to arrange, and a test that depends on that is a
-    // test that will fail one day for no reason worth investigating.
+    // `ping fuel` for the fuel switch, and `ping slope` plus `ping ridge` for
+    // the terrain one. Not `sense fuel`: a cell has to drift into a narrow
+    // forward cone, which this seed never happens to arrange, and a test that
+    // depends on that is a test that will fail one day for no reason worth
+    // investigating.
     expect(names).toContain("ping fuel");
     expect(names).toContain("ping slope");
+    expect(names).toContain("ping ridge");
   });
 });
 

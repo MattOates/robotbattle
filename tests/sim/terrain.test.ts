@@ -10,9 +10,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createWorld, makeManifest } from "../../src/sim/world.js";
+import { createWorld, makeManifest, ping } from "../../src/sim/world.js";
 import { step } from "../../src/sim/step.js";
 import {
+  beamReach,
   climbAlong,
   FLAT_TERRAIN,
   makeTerrain,
@@ -22,6 +23,8 @@ import {
 import {
   FUEL_PRESETS,
   MAX_FUEL,
+  RADAR,
+  SENSE,
   TERRAIN,
   TERRAIN_PRESETS,
   clampTerrainConfig,
@@ -29,7 +32,7 @@ import {
   type TerrainConfig,
 } from "../../src/sim/types.js";
 import { normalizeAngle } from "../../src/sim/math.js";
-import { GOAT, RACER, SITTING_DUCK } from "../../src/bots/index.js";
+import { GOAT, RACER, SAMPLE_BOTS, SITTING_DUCK } from "../../src/bots/index.js";
 
 const W = 900;
 const H = 620;
@@ -588,4 +591,241 @@ describe("the Goat takes the high ground", () => {
       expect(r.travelled, `seed ${seed}`).toBeGreaterThan(200);
     }
   });
+});
+
+/**
+ * Line of sight.
+ *
+ * Ground higher than the robot standing on it stops the beam, so where you are
+ * decides what you can know. This is the half of terrain that makes a map worth
+ * reading rather than merely expensive to cross.
+ */
+describe("what the radar beam can see", () => {
+  const field = makeTerrain(TERRAIN_PRESETS.arena, W, H);
+
+  /** The highest and lowest points well inside the walls. */
+  function extremes() {
+    let hi = { x: 0, y: 0, h: -1 };
+    let lo = { x: 0, y: 0, h: 2 };
+    for (let x = 120; x < W - 120; x += 5) {
+      for (let y = 120; y < H - 120; y += 5) {
+        const h = field.heightAt(x, y);
+        if (h > hi.h) hi = { x, y, h };
+        if (h < lo.h) lo = { x, y, h };
+      }
+    }
+    return { hi, lo };
+  }
+
+  /** Mean reach over a full turn, which is what "boxed in" actually means. */
+  function meanReach(x: number, y: number, power: number, f = field) {
+    let total = 0;
+    let n = 0;
+    for (let a = 0; a < 360; a += 15) {
+      total += beamReach(f, x, y, a, RADAR.range, RADAR.eyeHeight * power);
+      n++;
+    }
+    return total / n;
+  }
+
+  const { hi, lo } = extremes();
+
+  it("reaches everywhere from the top of the highest hill", () => {
+    // Nothing on the map is above the summit, so nothing can block it. This is
+    // the sentence the whole mechanic was asked for: on the top you ping
+    // normally in every direction.
+    for (let a = 0; a < 360; a += 5) {
+      expect(beamReach(field, hi.x, hi.y, a, RADAR.range, RADAR.eyeHeight)).toBe(RADAR.range);
+    }
+  });
+
+  it("is boxed in at the bottom of a hollow", () => {
+    // Everything around is higher, so the beam stops almost at once — far
+    // shorter than the passive cone, which is the point: down there the radar
+    // is not the long instrument any more.
+    expect(meanReach(lo.x, lo.y, 1)).toBeLessThan(SENSE.range / 2);
+  });
+
+  it("costs a robot most of its reach on ordinary ground", () => {
+    // Averaged over the middle of the map, so this is the typical case rather
+    // than either extreme. A mechanic that only bit at the two endpoints would
+    // not be worth having.
+    let total = 0;
+    let n = 0;
+    for (let x = 150; x < W - 150; x += 50) {
+      for (let y = 150; y < H - 150; y += 50) {
+        total += meanReach(x, y, 1);
+        n++;
+      }
+    }
+    const average = total / n;
+    expect(average).toBeLessThan(RADAR.range * 0.6);
+    expect(average).toBeGreaterThan(RADAR.range * 0.2);
+  });
+
+  it("buys sight with power, and never loses it", () => {
+    // Power must be worth paying for. If a harder ping barely moved the reach
+    // then `eyeHeight` is wrong, not the design.
+    let weak = 0;
+    let strong = 0;
+    for (let x = 150; x < W - 150; x += 50) {
+      for (let y = 150; y < H - 150; y += 50) {
+        weak += meanReach(x, y, 1);
+        strong += meanReach(x, y, RADAR.maxPower);
+      }
+    }
+    expect(strong).toBeGreaterThan(weak * 1.5);
+
+    // And monotonic everywhere, not merely better on average: more power can
+    // never see less.
+    for (let x = 150; x < W - 150; x += 90) {
+      for (let y = 150; y < H - 150; y += 90) {
+        for (const a of [0, 72, 144, 216, 288]) {
+          const p1 = beamReach(field, x, y, a, RADAR.range, RADAR.eyeHeight);
+          const p3 = beamReach(field, x, y, a, RADAR.range, RADAR.eyeHeight * RADAR.maxPower);
+          expect(p3).toBeGreaterThanOrEqual(p1);
+        }
+      }
+    }
+  });
+
+  it("blocks nothing at all on flat ground, at any power", () => {
+    for (const power of [1, 2, 3]) {
+      for (let a = 0; a < 360; a += 15) {
+        expect(beamReach(FLAT_TERRAIN, 400, 300, a, RADAR.range, RADAR.eyeHeight * power)).toBe(
+          RADAR.range,
+        );
+      }
+    }
+  });
+});
+
+describe("hiding behind a hill", () => {
+  // The very map `world()` builds, so the positions found by searching this
+  // field are the positions the simulation actually puts robots on. Reading one
+  // map and fighting on another cost me a confusing failure here.
+  const field = makeTerrain(MAP, W, H);
+
+  /**
+   * Put a watcher and a target at chosen points, aim the watcher's radar
+   * straight at the target, ping, and report what came back.
+   *
+   * This is the mechanic in one sentence, so it is worth testing through the
+   * whole simulation rather than against `beamReach` alone.
+   */
+  function look(from: { x: number; y: number }, at: { x: number; y: number }, power = 1) {
+    const src = `name "Watcher"\nchassis tank\non ping robot\n  set name = "seen"\nend\non ping ridge\n  set name = "blocked"\nend\non ping wall\n  set name = "nothing"\nend\n`;
+    const w = world([src, SITTING_DUCK], { fuel: { maxOnField: 0 } });
+    const me = w.robots[0]!;
+    const them = w.robots[1]!;
+    step(w);
+    me.x = from.x;
+    me.y = from.y;
+    them.x = at.x;
+    them.y = at.y;
+    me.radar = Math.atan2(at.y - from.y, at.x - from.x) * (180 / Math.PI);
+    me.radarSweepAmplitude = 0;
+    me.radarGoal = me.radar;
+    me.pingHeat = 0;
+    ping(w, me, power);
+    // One step for the enqueued event to reach its handler.
+    step(w);
+    return me.name;
+  }
+
+  it("cannot see a robot on the far side of higher ground", () => {
+    // A pair chosen by search rather than by eye: a watcher low down, a target
+    // in range, and a ridge between them.
+    let found: { from: { x: number; y: number }; at: { x: number; y: number } } | null = null;
+    for (let x = 150; x < W - 150 && !found; x += 25) {
+      for (let y = 150; y < H - 150 && !found; y += 25) {
+        for (const a of [0, 45, 90, 135, 180, 225, 270, 315]) {
+          const reach = beamReach(field, x, y, a, RADAR.range, RADAR.eyeHeight);
+          if (reach > 60 && reach < 200) {
+            const d = reach + 80;
+            if (d > RADAR.range) continue;
+            const tx = x + Math.cos((a * Math.PI) / 180) * d;
+            const ty = y + Math.sin((a * Math.PI) / 180) * d;
+            if (tx < 40 || tx > W - 40 || ty < 40 || ty > H - 40) continue;
+            found = { from: { x, y }, at: { x: tx, y: ty } };
+            break;
+          }
+        }
+      }
+    }
+    expect(found).not.toBeNull();
+    if (!found) return;
+    expect(look(found.from, found.at)).toBe("blocked");
+  });
+
+  it("sees the same robot from the top of the hill", () => {
+    // The summit against a target the low ground could not have reached.
+    let hi = { x: 0, y: 0, h: -1 };
+    for (let x = 120; x < W - 120; x += 5) {
+      for (let y = 120; y < H - 120; y += 5) {
+        const h = field.heightAt(x, y);
+        if (h > hi.h) hi = { x, y, h };
+      }
+    }
+    const target = { x: hi.x + 300, y: hi.y };
+    if (target.x > W - 40) target.x = hi.x - 300;
+    expect(look({ x: hi.x, y: hi.y }, target)).toBe("seen");
+  });
+});
+
+/**
+ * No sample robot locks up on a map it cannot see across.
+ *
+ * This is the failure this mechanic can actually cause, and it is one this
+ * project has had before: several robots aim the radar at a contact and rely on
+ * `on ping wall` to start it sweeping again. A ping stopped by a hill used to
+ * report nothing at all, which left the beam pointed at the hillside, pinging
+ * it for the rest of the match. `ping ridge` exists to close that, and this is
+ * the test that says so.
+ */
+describe("every sample robot survives a map with hills in it", () => {
+  // Sitting Duck is the exception, and the only honest one: doing nothing at
+  // all is its entire purpose, and a version of it that stirred would be the
+  // broken one.
+  for (const bot of SAMPLE_BOTS.filter((b) => b.id !== "sitting-duck")) {
+    it(`${bot.title} keeps doing something`, () => {
+      const w = createWorld(
+        makeManifest([{ source: bot.source }, { source: SITTING_DUCK }], {
+          seed: 12,
+          fuel: FUEL_PRESETS.arena,
+          terrain: TERRAIN_PRESETS.arena,
+        }),
+      );
+      const r = w.robots[0]!;
+      const active: boolean[] = [];
+      let px = r.x;
+      let py = r.y;
+      let pr = r.radar;
+      let ph = r.heading;
+      let shots = 0;
+      for (let i = 0; i < 1200 && !w.over; i++) {
+        step(w);
+        active.push(
+          Math.abs(r.x - px) + Math.abs(r.y - py) > 0.1 ||
+            Math.abs(r.radar - pr) > 0.01 ||
+            Math.abs(r.heading - ph) > 0.01 ||
+            r.shotsFired > shots,
+        );
+        px = r.x;
+        py = r.y;
+        pr = r.radar;
+        ph = r.heading;
+        shots = r.shotsFired;
+      }
+
+      // A match that ended is the opposite of a robot stuck on a hillside, so
+      // there is nothing to check. Only a long one can hide the failure.
+      if (active.length < 400) return;
+
+      // The TAIL, not the whole run: thrashing about at the start must not be
+      // allowed to cover for a robot that locked up later.
+      const tail = active.slice(-200);
+      expect(tail.filter(Boolean).length, bot.title).toBeGreaterThan(20);
+    });
+  }
 });

@@ -42,7 +42,7 @@ const ACTION_ARITY: Readonly<Record<ActionKind, number>> = {
   radarTurnBy: 1,
   radarAim: 1,
   radarSweep: 1,
-  ping: 0,
+  ping: 1,
 };
 
 /** Properties a script may read, per object. */
@@ -70,6 +70,15 @@ const ARENA_PROPS = new Set(["width", "height", "time", "robots"]);
 
 /** Default firing power when a script writes a bare `fire`. */
 const DEFAULT_FIRE_POWER = 2;
+
+/**
+ * Default ping power when a script writes a bare `ping`.
+ *
+ * The cheapest one, unlike `fire`. Every script written before pings had a
+ * power says a bare `ping`, and those must keep costing and seeing exactly what
+ * they always did.
+ */
+const DEFAULT_PING_POWER = 1;
 
 /**
  * Ceiling on the size of a compiled script.
@@ -759,9 +768,13 @@ class Compiler {
       case "action": {
         const arity = ACTION_ARITY[s.action];
         const given = [...s.args];
-        // A bare `fire` gains the default power, so every action has fixed arity.
+        // A bare `fire` or `ping` gains its default power, so every action has
+        // fixed arity by the time it reaches the bytecode.
         if (s.action === "fire" && given.length === 0) {
           given.push({ type: "num", value: DEFAULT_FIRE_POWER, pos: s.pos });
+        }
+        if (s.action === "ping" && given.length === 0) {
+          given.push({ type: "num", value: DEFAULT_PING_POWER, pos: s.pos });
         }
         if (given.length !== arity) {
           throw new RoboScriptError(

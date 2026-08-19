@@ -61,6 +61,9 @@ export const SYNONYMS: readonly Synonym[] = [
   { canonical: "slope", mechanical: "slope", biological: "thickness", also: ["gradient"] },
   // The two ways along that gradient. A machine climbs or descends; an organism
   // pushes into thicker goop or slips out into thinner. Same two directions.
+  // What stopped the beam. A machine's line of sight ends at a ridge; an
+  // organism's peek ends where the goop gets too thick to see through.
+  { canonical: "ridge", mechanical: "ridge", biological: "murk" },
   { canonical: "uphill", mechanical: "uphill", biological: "thickest" },
   { canonical: "downhill", mechanical: "downhill", biological: "thinnest" },
   {

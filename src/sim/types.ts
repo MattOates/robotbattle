@@ -97,6 +97,28 @@ export const RADAR = {
   slewRate: 260,
   /** Ticks before another ping can be sent. */
   cooldown: 12,
+
+  // ---- line of sight ----
+  /**
+   * A ping may be sent harder, exactly as a shot may be fired harder. More
+   * power costs proportionally more fuel and sees over proportionally higher
+   * ground; it does not reach further on the flat.
+   */
+  minPower: 1,
+  maxPower: 3,
+  /**
+   * How much higher than you the ground may be, per unit of power, before it
+   * stops the beam. Height runs 0..1 across the whole map, so this is a small
+   * fraction of it on purpose: low ground has to really be blind, or the summit
+   * is not worth the climb.
+   */
+  eyeHeight: 0.04,
+  /**
+   * Step along the beam when testing what it can see over, in pixels. Fine
+   * enough that a ridge cannot be stepped over, coarse enough that a ping is
+   * about a hundred samples rather than six hundred.
+   */
+  occlusionStep: 6,
 } as const;
 
 export const BULLET = {
