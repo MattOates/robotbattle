@@ -154,6 +154,7 @@ export interface ThemeVocab {
   readonly ground: string;
   /** Which way the going gets harder. Its opposite is where you want to be. */
   readonly uphill: string;
+  readonly downhill: string;
   readonly arena: string;
 }
 
@@ -175,6 +176,7 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     slope: "slope",
     ground: "ground",
     uphill: "uphill",
+    downhill: "downhill",
     arena: "arena",
   },
   biological: {
@@ -194,6 +196,7 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     slope: "thickness",
     ground: "goop",
     uphill: "thickest",
+    downhill: "thinnest",
     arena: "microcosm",
   },
 };

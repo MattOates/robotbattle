@@ -37,7 +37,9 @@ export function renderDoc(text: string, theme: Theme = "mechanical"): string {
     .replace(/\{fuel\}/g, words.fuel)
     .replace(/\{slope\}/g, words.slope)
     .replace(/\{ground\}/g, words.ground)
-    .replace(/\{uphill\}/g, words.uphill);
+    .replace(/\{uphill\}/g, words.uphill)
+    .replace(/\{downhill\}/g, words.downhill)
+    .replace(/\{arena\}/g, words.arena);
 }
 
 export interface FieldDoc {

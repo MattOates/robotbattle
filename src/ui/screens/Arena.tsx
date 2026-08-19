@@ -22,12 +22,17 @@ import {
 } from "../../net/matchsetup.js";
 import type { MatchManifest } from "../../sim/world.js";
 import {
-  FUEL_BLURB,
   FUEL_LEVELS,
   FUEL_SETTINGS,
-  TERRAIN_BLURB,
   TERRAIN_LEVELS,
   TERRAIN_SETTINGS,
+  fuelBlurb,
+  fuelHeading,
+  fuelIntro,
+  terrainBlurb,
+  terrainHeading,
+  terrainIntro,
+  terrainLevelWord,
   type FuelLevel,
   type TerrainLevel,
 } from "../matchSettings.js";
@@ -280,13 +285,10 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
       {room.isHost ? (
         <>
           <div className="panel-head">
-            <span className="silkscreen">Fuel</span>
+            <span className="silkscreen">{fuelHeading(theme)}</span>
           </div>
           <div className="panel-body">
-            <p className="empty small">
-              Moving, turning, shooting and pinging all spend fuel; thinking never does. An empty
-              robot is slow, not dead.
-            </p>
+            <p className="empty small">{fuelIntro(theme)}</p>
             <div className="row">
               {FUEL_LEVELS.map((level) => (
                 <button
@@ -299,17 +301,13 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
                 </button>
               ))}
             </div>
-            <p className="empty small">{FUEL_BLURB[fuelLevel]}</p>
+            <p className="empty small">{fuelBlurb(fuelLevel, theme)}</p>
           </div>
           <div className="panel-head">
-            <span className="silkscreen">Ground</span>
+            <span className="silkscreen">{terrainHeading(theme)}</span>
           </div>
           <div className="panel-body">
-            <p className="empty small">
-              Hills, or thick goop if you are playing in the microcosm. Driving uphill is slower and
-              costs more; driving downhill is quicker and costs less; driving along a slope costs
-              exactly what flat ground does.
-            </p>
+            <p className="empty small">{terrainIntro(theme)}</p>
             <div className="row">
               {TERRAIN_LEVELS.map((level) => (
                 <button
@@ -318,11 +316,11 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
                   className={`btn small${terrainLevel === level ? " primary" : ""}`}
                   onClick={() => setTerrainLevel(level)}
                 >
-                  {level}
+                  {terrainLevelWord(level, theme)}
                 </button>
               ))}
             </div>
-            <p className="empty small">{TERRAIN_BLURB[terrainLevel]}</p>
+            <p className="empty small">{terrainBlurb(terrainLevel, theme)}</p>
           </div>
         </>
       ) : null}

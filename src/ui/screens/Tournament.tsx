@@ -27,6 +27,7 @@ import { useAutoJoin, useRoom } from "../useRoom.js";
 import type { LibraryApi } from "../useLibrary.js";
 import { deriveMeta } from "../../store/library.js";
 import { THEMES, type Theme } from "../../lang/vocab.js";
+import { fuelHeading, terrainHeading, terrainLevelWord } from "../matchSettings.js";
 import {
   advance,
   buildBracket,
@@ -661,7 +662,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
         {isHost && !drawn ? (
           <>
             <div className="row" aria-label="fuel">
-              <span className="roster-meta">Fuel</span>
+              <span className="roster-meta">{fuelHeading(theme)}</span>
               {(Object.keys(TOUR_FUEL) as TourFuelLevel[]).map((level) => (
                 <button
                   key={level}
@@ -675,7 +676,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
               ))}
             </div>
             <div className="row" aria-label="ground">
-              <span className="roster-meta">Ground</span>
+              <span className="roster-meta">{terrainHeading(theme)}</span>
               {(Object.keys(TOUR_TERRAIN) as TourTerrainLevel[]).map((level) => (
                 <button
                   key={level}
@@ -684,7 +685,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
                   onClick={() => setTerrainLevel(level)}
                   disabled={qualifying !== null}
                 >
-                  {level}
+                  {terrainLevelWord(level, theme)}
                 </button>
               ))}
             </div>

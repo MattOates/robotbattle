@@ -40,13 +40,16 @@ import { MAX_CHAT_LENGTH, sanitiseChat, sanitiseText } from "../../net/protocol.
 import type { Message } from "../../net/protocol.js";
 import { RoomYProvider, CURSOR_COLORS } from "../../net/yprovider.js";
 import { newId } from "../../store/storage.js";
-import type { Contender, TrialConditions, TrialReport } from "../../workshop/trials.js";
-import type { FuelConfig, TerrainConfig } from "../../sim/types.js";
+import type { Contender, TrialReport } from "../../workshop/trials.js";
 import {
   FUEL_LEVELS,
   FUEL_SETTINGS,
   TERRAIN_LEVELS,
   TERRAIN_SETTINGS,
+  describeConditions,
+  fuelHeading,
+  terrainHeading,
+  terrainLevelWord,
   type FuelLevel,
   type TerrainLevel,
 } from "../matchSettings.js";
@@ -638,6 +641,7 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
             <BenchPane
               robot={selected}
               robots={robots}
+              theme={theme}
               canRun={!inSession || isHost}
               sharedReport={inSession && !isHost ? guestReport : null}
               onShare={(report) =>
@@ -1299,9 +1303,12 @@ function buildContenders(robots: StoredRobot[], currentId: string | null): Conte
 }
 
 /** The contender list, split into the groups the pickers show. */
-function groupContenders(contenders: Contender[], words: { robotPlural: string }) {
+function groupContenders(contenders: Contender[], words: { robotPlural: string; arena: string }) {
+  const here = words.arena.charAt(0).toUpperCase() + words.arena.slice(1);
   return [
-    { title: "Arena bots", items: contenders.filter((c) => c.kind === "arena") },
+    // Themed like everything around it: these are the built-in examples, and in
+    // the microcosm they are organisms in a microcosm, not bots in an arena.
+    { title: `${here} ${words.robotPlural}`, items: contenders.filter((c) => c.kind === "arena") },
     { title: `Your ${words.robotPlural}`, items: contenders.filter((c) => c.kind === "library") },
     { title: "Versions", items: contenders.filter((c) => c.kind === "snapshot") },
   ].filter((group) => group.items.length > 0);
@@ -1505,7 +1512,7 @@ function TrialPane({
           </div>
           <div className="panel-body">
             <div className="row" aria-label="fuel">
-              <span className="roster-meta">Fuel</span>
+              <span className="roster-meta">{fuelHeading(theme)}</span>
               {FUEL_LEVELS.map((level) => (
                 <button
                   key={level}
@@ -1518,7 +1525,7 @@ function TrialPane({
               ))}
             </div>
             <div className="row" aria-label="ground">
-              <span className="roster-meta">Ground</span>
+              <span className="roster-meta">{terrainHeading(theme)}</span>
               {TERRAIN_LEVELS.map((level) => (
                 <button
                   key={level}
@@ -1526,7 +1533,7 @@ function TrialPane({
                   className={`btn small${terrainLevel === level ? " primary" : ""}`}
                   onClick={() => setTerrainLevel(level)}
                 >
-                  {level}
+                  {terrainLevelWord(level, theme)}
                 </button>
               ))}
             </div>
@@ -1570,37 +1577,10 @@ function TrialPane({
 // Test bench
 // ---------------------------------------------------------------------------
 
-/** Name a report's conditions using the same words the buttons offer. */
-function describeConditions(c: TrialConditions): string {
-  const fuel = FUEL_LEVELS.find((l) => sameFuel(FUEL_SETTINGS[l], c.fuel));
-  const ground = TERRAIN_LEVELS.find((l) => sameTerrain(TERRAIN_SETTINGS[l], c.terrain));
-  const fuelWord = c.fuel.enabled ? `${fuel ?? "custom"} fuel` : "no fuel";
-  const groundWord = c.terrain.enabled ? `${ground ?? "custom"} ground` : "flat ground";
-  return `${fuelWord} and ${groundWord}`;
-}
-
-function sameFuel(a: FuelConfig, b: FuelConfig): boolean {
-  return (
-    a.enabled === b.enabled &&
-    a.spawnEveryTicks === b.spawnEveryTicks &&
-    a.maxOnField === b.maxOnField &&
-    a.amount === b.amount &&
-    a.radius === b.radius
-  );
-}
-
-function sameTerrain(a: TerrainConfig, b: TerrainConfig): boolean {
-  return (
-    a.enabled === b.enabled &&
-    a.seed === b.seed &&
-    a.featureSize === b.featureSize &&
-    a.amplitude === b.amplitude
-  );
-}
-
 function BenchPane({
   robot,
   robots,
+  theme,
   canRun,
   sharedReport,
   onShare,
@@ -1608,11 +1588,13 @@ function BenchPane({
 }: {
   robot: StoredRobot | null;
   robots: StoredRobot[];
+  theme: Theme;
   canRun: boolean;
   sharedReport: TrialReport | null;
   onShare: (report: TrialReport) => void;
   inSession: boolean;
 }) {
+  const words = THEMES[theme];
   const [trials, setTrials] = useState(50);
   const [picked, setPicked] = useState<string[]>(["spinner", "racer"]);
   // The same words the Arena lobby offers, from the same table, so a robot
@@ -1710,12 +1692,13 @@ function BenchPane({
         {canRun ? (
           <>
             <p className="empty small">
-              Every trial is a different battle, and your robot swaps sides each time, so the result
-              measures the robot rather than where it happened to start. The ground is the same one
-              every time, though — you cannot tell whether a change helped if the map moves under it.
+              Every trial is a different battle, and your {words.robot} swaps sides each time, so
+              the result measures the {words.robot} rather than where it happened to start. The{" "}
+              {words.ground} is the same every time, though — you cannot tell whether a change
+              helped if it moves under you.
             </p>
             <div className="row" aria-label="fuel">
-              <span className="roster-meta">Fuel</span>
+              <span className="roster-meta">{fuelHeading(theme)}</span>
               {FUEL_LEVELS.map((level) => (
                 <button
                   key={level}
@@ -1729,7 +1712,7 @@ function BenchPane({
               ))}
             </div>
             <div className="row" aria-label="ground">
-              <span className="roster-meta">Ground</span>
+              <span className="roster-meta">{terrainHeading(theme)}</span>
               {TERRAIN_LEVELS.map((level) => (
                 <button
                   key={level}
@@ -1738,7 +1721,7 @@ function BenchPane({
                   onClick={() => setTerrainLevel(level)}
                   disabled={progress !== null}
                 >
-                  {level}
+                  {terrainLevelWord(level, theme)}
                 </button>
               ))}
             </div>
@@ -1802,7 +1785,7 @@ function BenchPane({
                 in a shared session, and 74% on flat ground and 74% in the hills
                 are different claims about a robot. */}
             <p className="empty small">
-              Fought with {describeConditions(shown.conditions)}.
+              Fought with {describeConditions(shown.conditions, theme)}.
             </p>
           </div>
         ) : null}
