@@ -9,7 +9,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { sanitiseArenaSpec } from "../../src/net/protocol.js";
+import { sanitiseArenaSpec, sanitiseGoods, type TradeGoods } from "../../src/net/protocol.js";
+import { blockBundle, graftBlocks, libraryBlocks } from "../../src/workshop/blocks.js";
+import { compile } from "../../src/lang/compiler.js";
+import { parse } from "../../src/lang/parser.js";
 import { TERRAIN_PRESETS, WALL } from "../../src/sim/types.js";
 import { createLoopbackRoom, type LoopbackNetwork } from "../../src/net/loopback.js";
 import { Session } from "../../src/net/session.js";
@@ -17,6 +20,23 @@ import type { Message } from "../../src/net/protocol.js";
 import { Library } from "../../src/store/library.js";
 import { MemoryStore } from "../../src/store/storage.js";
 import { HUNTER, RACER } from "../../src/bots/index.js";
+
+const TOOLBOX = `name "Toolbox"
+chassis tank
+
+can dodge given hit by bullet
+  turn body by event.bearing + 90
+  do scoot
+end
+
+can scoot given hit by bullet
+  drive forward 90
+end
+
+on start
+  drive forward 50
+end
+`;
 
 interface Side {
   session: Session;
@@ -50,10 +70,19 @@ function answerRequest(side: Side, to: string, robotId: string, agreed: boolean)
   const mine = side.library.get(robotId);
   side.session.send(to, {
     t: "copyResponse",
-    robotId,
-    source: agreed && mine ? mine.source : null,
+    kind: "robot",
+    id: robotId,
+    goods:
+      agreed && mine
+        ? { kind: "robot", name: mine.name, color: mine.color, source: mine.source }
+        : null,
     reason: agreed ? null : "Not this one, sorry.",
   });
+}
+
+/** The script inside a robot's goods, or null. Keeps the assertions short. */
+function sourceOf(goods: TradeGoods | null | undefined): string | null {
+  return goods && goods.kind === "robot" ? goods.source : null;
 }
 
 const lastOf = <T extends Message["t"]>(side: Side, t: T) =>
@@ -69,34 +98,33 @@ describe("asking for a copy", () => {
     // Ada puts her shelf up; Bob sees titles, not scripts.
     ada.session.send("all", {
       t: "shelf",
-      robots: ada.library
-        .list()
-        .map((r) => ({
-          id: r.id,
-          name: r.name,
-          color: r.color,
-          locomotion: r.locomotion ?? ("skid" as const),
-        })),
+      items: ada.library.list().map((r) => ({
+        kind: "robot" as const,
+        id: r.id,
+        name: r.name,
+        color: r.color,
+        locomotion: r.locomotion ?? ("skid" as const),
+      })),
     });
     network.flush();
 
     const shelf = lastOf(bob, "shelf");
-    expect(shelf?.robots.map((r) => r.name)).toEqual(["Hunter"]);
+    expect(shelf?.items.map((r) => r.name)).toEqual(["Hunter"]);
     expect(JSON.stringify(shelf)).not.toContain("on start");
 
-    bob.session.send(ada.session.state.selfId, { t: "copyRequest", robotId: hunter.id });
+    bob.session.send(ada.session.state.selfId, { t: "copyRequest", kind: "robot", id: hunter.id });
     network.flush();
 
     const request = lastOf(ada, "copyRequest");
-    expect(request?.robotId).toBe(hunter.id);
+    expect(request?.id).toBe(hunter.id);
 
     answerRequest(ada, bob.session.state.selfId, hunter.id, true);
     network.flush();
 
     const response = lastOf(bob, "copyResponse");
-    expect(response?.source).toBe(HUNTER);
+    expect(sourceOf(response?.goods)).toBe(HUNTER);
 
-    const landed = bob.library.importTraded(response!.source!, "Ada");
+    const landed = bob.library.importTraded(sourceOf(response!.goods)!, "Ada");
     expect(bob.library.get(landed.id)?.source).toBe(HUNTER);
     expect(landed.snapshots[0]?.origin).toMatchObject({
       kind: "trade",
@@ -109,13 +137,13 @@ describe("asking for a copy", () => {
     const { network, ada, bob } = pair();
     const hunter = ada.library.create(HUNTER);
 
-    bob.session.send(ada.session.state.selfId, { t: "copyRequest", robotId: hunter.id });
+    bob.session.send(ada.session.state.selfId, { t: "copyRequest", kind: "robot", id: hunter.id });
     network.flush();
     answerRequest(ada, bob.session.state.selfId, hunter.id, false);
     network.flush();
 
     const response = lastOf(bob, "copyResponse");
-    expect(response?.source).toBeNull();
+    expect(response?.goods).toBeNull();
     expect(response?.reason).toBe("Not this one, sorry.");
     expect(bob.library.list()).toEqual([]);
   });
@@ -128,12 +156,12 @@ describe("asking for a copy", () => {
     const long = `${HUNTER}\n${"-- a very long comment\n".repeat(4000)}`;
     const robot = ada.library.create(long);
 
-    bob.session.send(ada.session.state.selfId, { t: "copyRequest", robotId: robot.id });
+    bob.session.send(ada.session.state.selfId, { t: "copyRequest", kind: "robot", id: robot.id });
     network.flush();
     answerRequest(ada, bob.session.state.selfId, robot.id, true);
     network.flush();
 
-    expect(lastOf(bob, "copyResponse")?.source).toBe(long);
+    expect(sourceOf(lastOf(bob, "copyResponse")?.goods)).toBe(long);
   });
 });
 
@@ -144,23 +172,28 @@ describe("giving one away", () => {
 
     ada.session.send(bob.session.state.selfId, {
       t: "offer",
-      robotId: racer.id,
-      name: racer.name,
-      color: racer.color,
-      source: racer.source,
+      kind: "robot",
+      id: racer.id,
+      goods: {
+        kind: "robot",
+        name: racer.name,
+        color: racer.color,
+        source: racer.source,
+      },
     });
     network.flush();
 
     const offer = lastOf(bob, "offer");
-    expect(offer?.name).toBe("Racer");
+    expect(offer?.goods.name).toBe("Racer");
     // The offer has arrived and the library is still untouched: only Bob
     // pressing something puts it there.
     expect(bob.library.list()).toEqual([]);
 
-    const landed = bob.library.importTraded(offer!.source, "Ada");
+    const landed = bob.library.importTraded(sourceOf(offer!.goods)!, "Ada");
     bob.session.send(ada.session.state.selfId, {
       t: "offerResult",
-      robotId: offer!.robotId,
+      kind: "robot",
+      id: offer!.id,
       accepted: true,
     });
     network.flush();
@@ -174,7 +207,8 @@ describe("giving one away", () => {
     const { network, ada, bob } = pair();
     bob.session.send(ada.session.state.selfId, {
       t: "offerResult",
-      robotId: "whatever",
+      kind: "robot",
+      id: "whatever",
       accepted: false,
     });
     network.flush();
@@ -225,5 +259,83 @@ describe("handing over an arena", () => {
     }));
     const spec = sanitiseArenaSpec({ terrain: TERRAIN_PRESETS.off, walls: many });
     expect(spec!.walls).toHaveLength(WALL.maxCount);
+  });
+});
+
+
+describe("trading the other two kinds", () => {
+  it("hands over a place, walls and all", () => {
+    const { network, ada, bob } = pair();
+    const spec = {
+      terrain: TERRAIN_PRESETS.off,
+      walls: [{ x1: 10, y1: 10, x2: 200, y2: 10 }],
+    };
+
+    ada.session.send(bob.session.state.selfId, {
+      t: "offer",
+      kind: "arena",
+      id: "arena_1",
+      goods: { kind: "arena", name: "Maze", spec },
+    });
+    network.flush();
+
+    const offer = lastOf(bob, "offer");
+    expect(offer?.goods.kind).toBe("arena");
+    // Clamped on arrival: a map goes straight into a simulation, where a bad
+    // number is a desync rather than a display glitch.
+    const clean = sanitiseGoods(offer!.goods);
+    if (!clean) throw new Error("unreachable");
+    expect(clean.kind).toBe("arena");
+    expect(clean.kind === "arena" ? clean.spec.walls : []).toEqual(spec.walls);
+  });
+
+  it("hands over a block with everything it hands off to", () => {
+    // The failure this guards against is silent and only shows up later: a
+    // block arrives, is grafted in, and the script stops compiling because the
+    // block it calls stayed at home.
+    const { network, ada, bob } = pair();
+    const toolbox = ada.library.create(TOOLBOX);
+    const blocks = libraryBlocks(ada.library.list());
+    const dodge = blocks.find((b) => b.name === "dodge")!;
+
+    ada.session.send(bob.session.state.selfId, {
+      t: "offer",
+      kind: "block",
+      id: `${toolbox.id}/dodge`,
+      goods: {
+        kind: "block",
+        name: "dodge",
+        text: blockBundle(dodge, blocks),
+        from: "Toolbox",
+      },
+    });
+    network.flush();
+
+    const goods = sanitiseGoods(lastOf(bob, "offer")!.goods);
+    if (!goods) throw new Error("unreachable");
+    expect(goods.kind).toBe("block");
+    const text = goods.kind === "block" ? goods.text : "";
+
+    // It lands in one of Bob's robots, and that robot still compiles.
+    const mine = bob.library.create(HUNTER);
+    const graft = graftBlocks(mine.source, text, "Ada");
+    expect(graft.added).toContain("dodge");
+    expect(() => compile(parse(graft.source))).not.toThrow();
+  });
+
+  it("refuses goods it cannot make sense of, rather than repairing them", () => {
+    // Accepting a gift and getting an empty robot is worse than being told the
+    // offer was no good.
+    expect(sanitiseGoods(null)).toBeNull();
+    expect(sanitiseGoods({ kind: "robot", name: "x", source: "   " })).toBeNull();
+    expect(sanitiseGoods({ kind: "block", name: "x", text: "" })).toBeNull();
+    expect(sanitiseGoods({ kind: "arena", name: "x" })).toBeNull();
+  });
+
+  it("reads an unknown kind as a robot rather than dropping it", () => {
+    // A peer on a later build may know a kind this one does not. Falling back
+    // to the one every build has always understood beats silence.
+    const goods = sanitiseGoods({ kind: "sculpture", name: "x", source: HUNTER });
+    expect(goods?.kind).toBe("robot");
   });
 });

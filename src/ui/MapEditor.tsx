@@ -31,6 +31,14 @@ export interface MapEditorProps {
   height: number;
   theme: Theme;
   onChange: (spec: ArenaSpec) => void;
+  /**
+   * Draw it, but do not let anybody change it.
+   *
+   * Used to look at somebody else's map across a trade. The drawing is the
+   * whole value — what is worth knowing about a labyrinth is its shape — and
+   * the editing is exactly what must not travel.
+   */
+  readOnly?: boolean;
 }
 
 /** Snap a point to the grid. */
@@ -67,7 +75,7 @@ function distToWallSq(px: number, py: number, w: Wall): number {
   return ex * ex + ey * ey;
 }
 
-export function MapEditor({ spec, width, height, theme, onChange }: MapEditorProps) {
+export function MapEditor({ spec, width, height, theme, onChange, readOnly = false }: MapEditorProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [drag, setDrag] = useState<{ x0: number; y0: number; x: number; y: number } | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
@@ -181,6 +189,7 @@ export function MapEditor({ spec, width, height, theme, onChange }: MapEditorPro
 
   // --- editing ------------------------------------------------------------
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (readOnly) return;
     const [rawX, rawY] = pointAt(e);
     // A click near an existing wall selects it; anywhere else starts a new one.
     // Selecting takes priority so a wall can always be got rid of, even in a
@@ -206,7 +215,7 @@ export function MapEditor({ spec, width, height, theme, onChange }: MapEditorPro
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drag) return;
+    if (readOnly || !drag) return;
     const [rawX, rawY] = pointAt(e);
     let [x, y] = snap ? snapPoint(rawX, rawY) : [rawX, rawY];
     if (snap) [x, y] = snapAngle(drag.x0, drag.y0, x, y);
@@ -214,7 +223,7 @@ export function MapEditor({ spec, width, height, theme, onChange }: MapEditorPro
   };
 
   const onPointerUp = () => {
-    if (!drag) return;
+    if (readOnly || !drag) return;
     const wall: Wall = { x1: drag.x0, y1: drag.y0, x2: drag.x, y2: drag.y };
     setDrag(null);
     // Below minLength this was a click, not a drag. `clampWalls` would drop it
@@ -229,7 +238,7 @@ export function MapEditor({ spec, width, height, theme, onChange }: MapEditorPro
   // Delete removes the selected wall. Kept on the canvas rather than the window
   // so it cannot eat a keystroke meant for the name field beside it.
   const onKeyDown = (e: React.KeyboardEvent<HTMLCanvasElement>) => {
-    if (selected === null) return;
+    if (readOnly || selected === null) return;
     if (e.key !== "Delete" && e.key !== "Backspace") return;
     e.preventDefault();
     onChange({ ...spec, walls: spec.walls.filter((_, i) => i !== selected) });
@@ -239,12 +248,16 @@ export function MapEditor({ spec, width, height, theme, onChange }: MapEditorPro
   return (
     <canvas
       ref={canvasRef}
-      className="map-editor"
+      className={`map-editor${readOnly ? " read-only" : ""}`}
       width={width}
       height={height}
-      tabIndex={0}
-      role="application"
-      aria-label="Arena map. Drag to draw a wall, click a wall to select it, Delete to remove it."
+      tabIndex={readOnly ? -1 : 0}
+      role={readOnly ? "img" : "application"}
+      aria-label={
+        readOnly
+          ? "A map, for looking at."
+          : "Arena map. Drag to draw a wall, click a wall to select it, Delete to remove it."
+      }
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

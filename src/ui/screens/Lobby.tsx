@@ -1,12 +1,94 @@
 /**
  * The shared front door for every networked mode: pick a robot, open or join a
- * room, see who else is here.
+ * room, see who else is here, and talk while you sort it out.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RoomApi, TransportKind } from "../useRoom.js";
 import type { StoredRobot } from "../../store/types.js";
 import { navigate, routePath, type ScreenName } from "../router.js";
+import { useRoomChat, type RoomChat } from "../useRoomChat.js";
+import { MAX_CHAT_LENGTH } from "../../net/protocol.js";
+import { shortAgo } from "../../store/chat.js";
+
+/**
+ * Talk, for as long as the room lasts.
+ *
+ * Here rather than in each mode because it belongs to the room and not to what
+ * the room is for: the same "two minutes, just fixing something" is wanted
+ * whether people are arranging a fight, a draw, or a swap. Every mode that
+ * opens a Lobby gets it, and none of them had to ask.
+ *
+ * Note what it is *not* attached to. The Workshop's chat hangs off a robot and
+ * is kept; this hangs off nothing and is kept nowhere.
+ */
+function LobbyChat({ chat, peers }: { chat: RoomChat; peers: number }) {
+  const [draft, setDraft] = useState("");
+  const endRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [chat.lines.length]);
+
+  return (
+    <section className="panel chat-panel lobby-chat">
+      <div className="panel-head">
+        <span className="silkscreen">Room chat</span>
+        <span className="spacer" />
+        {/* Said plainly, because people assume the opposite of anything that
+            looks like a chat window. */}
+        <span className="roster-meta">not kept</span>
+      </div>
+
+      <div className="chat-log">
+        {chat.lines.length === 0 ? (
+          <p className="empty small">
+            {peers > 1
+              ? "Say something. Nothing here is saved — it goes when the room does."
+              : "Nobody else here yet. Whatever is said here goes when the room does."}
+          </p>
+        ) : null}
+        {chat.lines.map((line) => (
+          <div key={line.key} className={`chat-line${line.mine ? " mine" : ""}`}>
+            <span className="chat-who">
+              {line.fromName}
+              <time
+                className="chat-when"
+                dateTime={new Date(line.at).toISOString()}
+                title={new Date(line.at).toLocaleString()}
+              >
+                {shortAgo(line.at)}
+              </time>
+            </span>
+            <span className="chat-text">{line.text}</span>
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+
+      <form
+        className="chat-compose"
+        onSubmit={(e) => {
+          e.preventDefault();
+          chat.send(draft);
+          setDraft("");
+        }}
+      >
+        <input
+          className="text-input"
+          value={draft}
+          maxLength={MAX_CHAT_LENGTH}
+          placeholder="Say something…"
+          aria-label="Say something to the room"
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <button type="submit" className="btn small" disabled={draft.trim() === ""}>
+          Send
+        </button>
+      </form>
+    </section>
+  );
+}
 
 /** Build the URL someone else can click to land straight in this room. */
 export function roomUrl(screen: ScreenName, room: string): string {
@@ -81,6 +163,7 @@ export function Lobby({
 }: Props) {
   const [code, setCode] = useState("");
   const [kind, setKind] = useState<TransportKind>("online");
+  const chat = useRoomChat(room);
 
   const self = room.state?.peers.find((p) => p.id === room.state?.selfId);
   const iAmReady = self?.ready ?? false;
@@ -117,6 +200,7 @@ export function Lobby({
         {room.error ? <div className="notice bad">{room.error}</div> : null}
 
         <div className="lobby-body">
+          <div className="lobby-side">
           <section className="panel">
             <div className="panel-head">
               <span className="silkscreen">In this room</span>
@@ -189,6 +273,9 @@ export function Lobby({
               </div>
             ) : null}
           </section>
+
+          <LobbyChat chat={chat} peers={room.state.peers.length} />
+          </div>
 
           <section className="panel">{children}</section>
         </div>

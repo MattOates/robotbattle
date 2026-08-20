@@ -44,7 +44,8 @@ import { seedForJob, type DuelJob, type DuelRecord } from "../../tournament/roun
 import { needsQualifier, qualifierMatches, type Standing } from "../../tournament/qualifier.js";
 import { FUEL_PRESETS, TERRAIN_PRESETS, type FuelConfig, type TerrainConfig } from "../../sim/types.js";
 import type { RoundWorkerIn, RoundWorkerOut } from "../../tournament/round.worker.js";
-import { pruneOffered, toggleOffered } from "../tradeShelf.js";
+import { toggleOffered } from "../tradeShelf.js";
+import type { ShelfItem } from "../../net/protocol.js";
 
 interface Props {
   theme: Theme;
@@ -168,7 +169,10 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
 
   useEffect(() => {
     setOffered((prev) => {
-      const next = pruneOffered(prev, robots);
+      // Only robots are ever entered here, so this is the whole of it — the
+      // trade shelf's version has three kinds to reconcile and nothing to say
+      // about a draw.
+      const next = prev.filter((id) => robots.some((r) => r.id === id));
       return next.length === prev.length ? prev : next;
     });
   }, [robots]);
@@ -303,10 +307,24 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
     [fields, mine, others],
   );
 
+  /** Your robots as shelf rows, which is what the shared table now holds. */
+  const myShelf = useMemo<ShelfItem[]>(
+    () =>
+      robots.map((r) => ({
+        kind: "robot" as const,
+        id: r.id,
+        name: r.name,
+        color: r.color,
+        locomotion: r.locomotion ?? "skid",
+      })),
+    [robots],
+  );
+
   const tableEntries = useMemo<TableEntry[]>(
     () =>
       field.map((e) => ({
         item: {
+          kind: "robot" as const,
           id: e.id,
           name: e.robot.name,
           color: e.robot.color,
@@ -804,9 +822,10 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
             <RobotTable
               theme={theme}
               robotPlural={words.robotPlural}
-              robots={robots}
+              robots={myShelf}
               offered={offered}
               onPut={put}
+              keyOf={(item) => item.id}
               entries={tableEntries}
               tableLabel="Entered"
               tableHint={field.length === 0 ? "nothing entered yet" : `${field.length} in the draw`}

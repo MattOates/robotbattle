@@ -271,7 +271,7 @@ describe("mode messages", () => {
     sessions[1]!.onMessage((_f, m) => atGuest1.push(m));
     sessions[2]!.onMessage((_f, m) => atGuest2.push(m));
 
-    sessions[0]!.send("guest2", { t: "peek", robotId: "x" });
+    sessions[0]!.send("guest2", { t: "peek", kind: "robot" as const, id: "x" });
     network.flush();
 
     expect(atGuest1).toHaveLength(0);
@@ -288,9 +288,9 @@ describe("mode messages", () => {
     ]);
     const seen: Message[] = [];
     sessions[2]!.onMessage((_f, m) => seen.push(m));
-    sessions[1]!.send("guest2", { t: "copyRequest", robotId: "abc" });
+    sessions[1]!.send("guest2", { t: "copyRequest", kind: "robot" as const, id: "abc" });
     network.flush();
-    expect(seen).toEqual([{ t: "copyRequest", robotId: "abc" }]);
+    expect(seen).toEqual([{ t: "copyRequest", kind: "robot" as const, id: "abc" }]);
   });
 
   it("ignores malformed traffic instead of crashing", () => {
