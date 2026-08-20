@@ -14,6 +14,7 @@ import { makeManifest } from "../../sim/world.js";
 import { DODGER, HUNTER, RACER, SPINNER } from "../../bots/index.js";
 import { THEMES, type Theme } from "../../lang/vocab.js";
 import { BRANDING } from "../branding.js";
+import { NEWS, formatNewsDate, newsBody, newsTitle } from "../news.js";
 
 interface Props {
   theme: Theme;
@@ -140,6 +141,23 @@ export function Menu({ theme, robotCount }: Props) {
             </button>
           ))}
         </nav>
+
+        {/* Under the modes, not beside them: someone arriving for the first
+            time should meet the game before its changelog. */}
+        <section className="menu-news" aria-labelledby="news-head">
+          <h2 className="menu-news-head" id="news-head">
+            News
+          </h2>
+          <ol className="news-list">
+            {NEWS.map((entry) => (
+              <li key={`${entry.date}-${entry.title}`} className="news-item">
+                <span className="news-date">{formatNewsDate(entry.date)}</span>
+                <span className="news-title">{newsTitle(entry, theme)}</span>
+                <span className="news-body">{newsBody(entry, theme)}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
 
         <footer className="menu-foot">
           <span className="menu-note">
