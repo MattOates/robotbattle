@@ -206,4 +206,87 @@ export function angleDelta(from: number, to: number): number {
   return normalizeAngle(to - from);
 }
 
+// ---- segment geometry ----------------------------------------------------
+//
+// Walls are line segments, so both wall questions the simulation ever asks —
+// "how far am I from that wall" and "how far along my heading is one" — reduce
+// to these two. Both are pure `+ - * /` and `Math.sqrt`, so they satisfy the
+// scanner in `tests/determinism/determinism.test.ts` and can be trusted to give
+// the same answer on every peer.
+
+/**
+ * Nearest point on segment (x1,y1)-(x2,y2) to (px,py), as
+ * `[nearestX, nearestY, squaredDistance]`.
+ *
+ * Squared rather than actual distance because every caller either compares it
+ * against a squared threshold or needs the point anyway, and the square root is
+ * the expensive part of a routine run once per robot per wall per tick.
+ *
+ * A degenerate (zero-length) segment collapses to its own start point, which is
+ * the right answer and costs nothing to allow. `clampWalls` rejects those long
+ * before they reach here, but a routine that returns NaN for one is a routine
+ * that desyncs a match rather than failing a test.
+ */
+export function closestPointOnSegment(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): readonly [number, number, number] {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  // Parametric position along the segment, clamped to its ends so the answer is
+  // a point on the segment rather than on the infinite line through it.
+  let t = lenSq > 0 ? ((px - x1) * dx + (py - y1) * dy) / lenSq : 0;
+  if (t < 0) t = 0;
+  else if (t > 1) t = 1;
+  const nx = x1 + dx * t;
+  const ny = y1 + dy * t;
+  const ex = px - nx;
+  const ey = py - ny;
+  return [nx, ny, ex * ex + ey * ey];
+}
+
+/**
+ * Distance from (ox,oy) along the UNIT direction (dx,dy) to segment
+ * (x1,y1)-(x2,y2), or null if the ray misses it.
+ *
+ * The direction must already be a unit vector — every caller has one from
+ * `cosDeg`/`sinDeg` of a heading — so the returned parameter is a distance in
+ * pixels rather than a fraction of anything.
+ *
+ * Standard 2D ray/segment cross-product solve. `denom` near zero means the ray
+ * and the segment are parallel: a hit would be a grazing pass along the wall's
+ * length, which is not something a robot needs told about, so it counts as a
+ * miss.
+ */
+export function raySegmentDistance(
+  ox: number,
+  oy: number,
+  dx: number,
+  dy: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): number | null {
+  const sx = x2 - x1;
+  const sy = y2 - y1;
+  const denom = dx * sy - dy * sx;
+  if (denom > -1e-9 && denom < 1e-9) return null;
+  const qx = x1 - ox;
+  const qy = y1 - oy;
+  // How far along the SEGMENT the crossing is. Outside 0..1 and the ray passed
+  // the segment's line beyond one of its ends.
+  const u = (qx * dy - qy * dx) / denom;
+  if (u < 0 || u > 1) return null;
+  // How far along the RAY. Negative means the wall is behind us.
+  const t = (qx * sy - qy * sx) / denom;
+  if (t < 0) return null;
+  return t;
+}
+
 export { PI, DEG_TO_RAD, RAD_TO_DEG };

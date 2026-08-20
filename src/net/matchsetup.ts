@@ -7,7 +7,7 @@
  */
 
 import { makeManifest, type Entry, type MatchManifest } from "../sim/world.js";
-import type { FuelConfig, TerrainConfig } from "../sim/types.js";
+import type { ArenaSpec, FuelConfig } from "../sim/types.js";
 import type { RobotEntry } from "./protocol.js";
 import type { PeerId } from "./transport.js";
 import { newId } from "../store/storage.js";
@@ -30,7 +30,7 @@ export const ARENA_SIZE = { width: 900, height: 620 } as const;
 export function manifestFromParticipants(
   participants: readonly Participant[],
   seed: number,
-  options: { maxTicks?: number; fuel?: FuelConfig; terrain?: TerrainConfig } = {},
+  options: { maxTicks?: number; fuel?: FuelConfig; arena?: ArenaSpec } = {},
 ): MatchManifest {
   const ordered = [...participants].sort((a, b) => a.peerId.localeCompare(b.peerId));
   const entries: Entry[] = ordered.map((p) => ({
@@ -43,7 +43,9 @@ export function manifestFromParticipants(
     height: ARENA_SIZE.height,
     ...(options.maxTicks !== undefined ? { maxTicks: options.maxTicks } : {}),
     ...(options.fuel !== undefined ? { fuel: options.fuel } : {}),
-    ...(options.terrain !== undefined ? { terrain: options.terrain } : {}),
+    ...(options.arena !== undefined
+      ? { terrain: options.arena.terrain, walls: options.arena.walls }
+      : {}),
   });
 }
 

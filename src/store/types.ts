@@ -7,6 +7,7 @@
  */
 
 import type { MatchManifest } from "../sim/world.js";
+import type { ArenaSpec } from "../sim/types.js";
 import type { MatchResult } from "../sim/match.js";
 import type { Locomotion } from "../lang/ast.js";
 
@@ -57,6 +58,33 @@ export interface StoredRobot {
   createdAt: number;
   updatedAt: number;
   snapshots: Snapshot[];
+}
+
+/**
+ * A saved place: the ground's recipe plus the walls somebody drew on it.
+ *
+ * Deliberately *not* shaped like a `StoredRobot`. A robot has snapshots because
+ * a script is edited a hundred times and you need to be able to get back to the
+ * version that worked; a map is drawn once and adjusted, and a wall list has no
+ * equivalent of "it used to win and now it doesn't". So there is no history
+ * here, and the Workshop hides the History tab when an arena is selected.
+ *
+ * The name is stored rather than derived. A robot's name is parsed out of its
+ * script, which is the single source of truth for it; a map has no script, so
+ * there is nothing to derive it from.
+ *
+ * The whole thing is a few hundred bytes, which is what makes an arena
+ * shareable over the same trade the scripts use.
+ */
+export interface StoredArena {
+  id: string;
+  name: string;
+  /** The map itself: terrain config and wall segments. */
+  spec: ArenaSpec;
+  createdAt: number;
+  updatedAt: number;
+  /** Absent on arenas you drew yourself. Same shape as a robot version's. */
+  origin?: TradeOrigin;
 }
 
 /** Everything measured about one robot in one battle. */

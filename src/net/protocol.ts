@@ -14,6 +14,13 @@ import type { Bracket } from "./bracket.js";
 import type { DuelRecord } from "../tournament/round.js";
 import type { Standing } from "../tournament/qualifier.js";
 import type { ChatMessage } from "../store/types.js";
+import {
+  clampTerrainConfig,
+  clampWalls,
+  type ArenaSpec,
+  type TerrainConfig,
+  type Wall,
+} from "../sim/types.js";
 
 /** A robot as offered to a room. */
 export interface RobotEntry {
@@ -125,6 +132,16 @@ export type Message =
    * someone's storage with junk.
    */
   | { t: "offer"; robotId: string; name: string; color: string; source: string }
+  /**
+   * The same hand-over, for a place rather than a robot.
+   *
+   * A separate message rather than a widened `offer` because the two carry
+   * genuinely different payloads — one a script, one a map — and a union field
+   * that is sometimes a string and sometimes a wall list is the kind of thing
+   * every reader afterwards has to check. `offerResult` is shared, since "they
+   * took it" reads the same either way.
+   */
+  | { t: "offerArena"; arenaId: string; name: string; spec: ArenaSpec }
   /** So the giver's screen can stop saying "waiting". */
   | { t: "offerResult"; robotId: string; accepted: boolean };
 
@@ -148,6 +165,7 @@ const KNOWN_TYPES: ReadonlySet<string> = new Set<Message["t"]>([
   "view", "session", "chatHistory", "chat", "ydoc", "bench", "history",
   "kick", "endSession",
   "shelf", "peek", "peekResult", "copyRequest", "copyResponse", "offer", "offerResult",
+  "offerArena",
 ]);
 
 /** Cap on a chat line, so nobody can paste a wall of text into the tray. */
@@ -155,6 +173,40 @@ export const MAX_CHAT_LENGTH = 400;
 
 /** Cap on a shared script, generous but not unbounded. */
 export const MAX_SOURCE_LENGTH = 64 * 1024;
+
+/**
+ * Clean an arena arriving from another browser.
+ *
+ * `isMessage` only checks the type tag, so everything inside a message is still
+ * unvalidated at this point. An arena is the one payload that goes straight
+ * into a simulation, where a NaN coordinate is not a display glitch but a
+ * desync — so it is clamped through exactly the same functions `createWorld`
+ * uses, and a peer cannot hand over a map that its own build would refuse.
+ *
+ * Returns null rather than a repaired object when the shape is wrong entirely,
+ * so a caller can decline the offer instead of accepting an empty arena.
+ */
+export function sanitiseArenaSpec(value: unknown): ArenaSpec | null {
+  if (typeof value !== "object" || value === null) return null;
+  const spec = value as { terrain?: unknown; walls?: unknown };
+  if (typeof spec.terrain !== "object" || spec.terrain === null) return null;
+  if (spec.walls !== undefined && !Array.isArray(spec.walls)) return null;
+  const walls = Array.isArray(spec.walls)
+    ? spec.walls.filter(
+        (w): w is Wall =>
+          typeof w === "object" &&
+          w !== null &&
+          typeof (w as Wall).x1 === "number" &&
+          typeof (w as Wall).y1 === "number" &&
+          typeof (w as Wall).x2 === "number" &&
+          typeof (w as Wall).y2 === "number",
+      )
+    : [];
+  return {
+    terrain: clampTerrainConfig(spec.terrain as TerrainConfig),
+    walls: clampWalls(walls),
+  };
+}
 
 /** Trim untrusted strings to something displayable. */
 export function sanitiseText(value: unknown, max: number): string {

@@ -27,6 +27,16 @@ export interface NewsEntry {
 /** Newest first, which is the order they are shown in. */
 export const NEWS: readonly NewsEntry[] = [
   {
+    date: "2026-08-20",
+    title: "Mouse knows the way out",
+    body: "A new {robot} to read: Mouse keeps its left hand on the wall and walks, which is the oldest maze rule there is and enough to get round almost all of a labyrinth with no map and no memory. It is the first one to point its {radar} at a wall instead of at people \u2014 a whisker rather than a way of finding someone.",
+  },
+  {
+    date: "2026-08-20",
+    title: "Somewhere to fight, not just something to fight with",
+    body: "You can build an {arena} now and keep it, the way you keep a {robot}. Draw walls on it, pick its {ground}, or have it generate a whole labyrinth \u2014 then bring it to a Trial, an Arena or a Tournament, or hand it to somebody else. Walls only stop you moving: {bullet}s fly over them and a {ping} sees straight through, so a maze is somewhere you can see across but not drive across.",
+  },
+  {
     date: "2026-08-19",
     title: "The {ground} has a shape",
     body: "Matches can now be fought over real {ground} instead of a flat floor. Heading into the hard going is slow and expensive, coming back out of it is quick and nearly free, and cutting straight across costs no more than the easy stuff does. The host chooses how dramatic it is, or switches it off.",

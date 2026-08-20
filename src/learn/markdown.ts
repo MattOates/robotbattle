@@ -190,12 +190,23 @@ export function extractCode(body: string): Array<{ info: FenceInfo; code: string
 /** Languages whose contents are RoboScript and must therefore compile. */
 export const CODE_LANGS = new Set(["try", "robo"]);
 
+/**
+ * Both of these run their result through `fillVocab`, exactly as the body is.
+ *
+ * A `teachesBio:` line is the escape hatch for when the two worlds need
+ * different *sentences*; a placeholder is the answer when they only need a
+ * different noun. Without the substitution the contents page was offering
+ * "variables, and watching what your {robot} is thinking" in braces, which is
+ * the one place a reader meets a lesson before opening it.
+ */
 export function lessonTitle(lesson: LessonMeta, theme: Theme): string {
-  return theme === "biological" && lesson.titleBio ? lesson.titleBio : lesson.title;
+  const raw = theme === "biological" && lesson.titleBio ? lesson.titleBio : lesson.title;
+  return fillVocab(raw, theme);
 }
 
 export function lessonTeaches(lesson: LessonMeta, theme: Theme): string {
-  return theme === "biological" && lesson.teachesBio ? lesson.teachesBio : lesson.teaches;
+  const raw = theme === "biological" && lesson.teachesBio ? lesson.teachesBio : lesson.teaches;
+  return fillVocab(raw, theme);
 }
 
 /** Build a lesson from one file's raw text. */

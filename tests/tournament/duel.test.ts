@@ -135,7 +135,7 @@ describe("the match offered for watching", () => {
 
       // Exactly what the screen does to watch it.
       const replay = runMatch(
-        duelManifest(a, b, showcase.seed, showcase.aFirst, showcase.fuel, showcase.terrain),
+        duelManifest(a, b, showcase.seed, showcase.aFirst, showcase.fuel, showcase.arena),
       );
       expect(replay.winnerId).toBe(sideIndex(showcase.winner, showcase.aFirst));
       expect(showcase.winner).toBe(duel.winner);
@@ -165,12 +165,12 @@ describe("the match offered for watching", () => {
     // showcase that loses the map illustrates a different match while claiming
     // to be this one.
     const hills = { enabled: true, seed: 77, featureSize: 240, amplitude: 1 };
-    const duel = runDuel(hunter, racer, 8181, DUEL_MATCHES, undefined, undefined, hills);
+    const duel = runDuel(hunter, racer, 8181, DUEL_MATCHES, undefined, undefined, { terrain: hills, walls: [] });
     const showcase = duel.showcase!;
-    expect(showcase.terrain).toEqual(hills);
+    expect(showcase.arena.terrain).toEqual(hills);
 
     const faithful = runMatch(
-      duelManifest(hunter, racer, showcase.seed, showcase.aFirst, showcase.fuel, showcase.terrain),
+      duelManifest(hunter, racer, showcase.seed, showcase.aFirst, showcase.fuel, showcase.arena),
     );
     expect(faithful.winnerId).toBe(sideIndex(showcase.winner, showcase.aFirst));
     expect(faithful.ticks).toBe(showcase.ticks);

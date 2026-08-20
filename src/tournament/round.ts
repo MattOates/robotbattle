@@ -8,7 +8,7 @@
  */
 
 import { runDuel, type Duellist, type DuelResult, DUEL_MATCHES } from "./duel.js";
-import type { FuelConfig, TerrainConfig } from "../sim/types.js";
+import type { ArenaSpec, FuelConfig } from "../sim/types.js";
 
 /** One tie waiting to be played: a bracket slot and the two robots in it. */
 export interface DuelJob {
@@ -22,8 +22,8 @@ export interface DuelJob {
   seedBase: number;
   /** Fuel settings for this tie. Travels with the job so the worker agrees. */
   fuel?: FuelConfig;
-  /** The ground. Travels with the job so a worker cannot fight on a different map. */
-  terrain?: TerrainConfig;
+  /** The map \u2014 ground and walls. Travels with the job so a worker cannot fight on a different one. */
+  arena?: ArenaSpec;
 }
 
 export interface DuelRecord {
@@ -84,7 +84,7 @@ export function runRound(
         }
       },
       job.fuel,
-      job.terrain,
+      job.arena,
     );
     return {
       matchId: job.matchId,

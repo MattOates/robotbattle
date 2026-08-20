@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Library } from "../store/library.js";
+import { ArenaLibrary } from "../store/arenas.js";
 import { BattleLog } from "../store/battles.js";
 import { ChatLog } from "../store/chat.js";
 import {
@@ -42,7 +43,7 @@ function useCrossTabSync(refresh: () => void): void {
     };
   }, [refresh]);
 }
-import type { StoredRobot } from "../store/types.js";
+import type { StoredArena, StoredRobot } from "../store/types.js";
 import type { Theme } from "../lang/vocab.js";
 
 const FIRST_ROBOT = `-- Your first robot. Change anything you like.
@@ -69,6 +70,10 @@ end
 
 export interface LibraryApi {
   library: Library;
+  /** The places you have built. Independent of the robots; see `store/arenas.ts`. */
+  arenaLib: ArenaLibrary;
+  /** Kept in state alongside `robots` so a shelf re-renders when one is saved. */
+  arenas: StoredArena[];
   battles: BattleLog;
   chat: ChatLog;
   robots: StoredRobot[];
@@ -83,17 +88,20 @@ export interface LibraryApi {
 export function useLibrary(): LibraryApi {
   const store = useMemo(() => defaultStore(), []);
   const library = useMemo(() => new Library(store), [store]);
+  const arenaLib = useMemo(() => new ArenaLibrary(store), [store]);
   const battles = useMemo(() => new BattleLog(store), [store]);
   const chat = useMemo(() => new ChatLog(store), [store]);
   const [robots, setRobots] = useState<StoredRobot[]>(() => library.list());
+  const [arenas, setArenas] = useState<StoredArena[]>(() => arenaLib.list());
   // Held in state rather than recomputed each render: it walks every key.
   const [used, setUsed] = useState(() => usedBytes(store));
   const seeded = useRef(false);
 
   const refresh = useCallback(() => {
     setRobots(library.list());
+    setArenas(arenaLib.list());
     setUsed(usedBytes(store));
-  }, [library, store]);
+  }, [arenaLib, library, store]);
 
   // Editing a robot in the Workshop should reach a lobby open in another tab,
   // so what goes into a match is what you last wrote — not what existed when
@@ -118,18 +126,21 @@ export function useLibrary(): LibraryApi {
 
   const clearAll = useCallback(() => {
     for (const robot of library.list()) library.remove(robot.id);
+    for (const arena of arenaLib.list()) arenaLib.remove(arena.id);
     battles.clear();
     chat.clearAll();
     // Let the seeding effect run again so they are not left with nothing.
     seeded.current = false;
     refresh();
-  }, [battles, chat, library, refresh]);
+  }, [arenaLib, battles, chat, library, refresh]);
 
   return {
     library,
+    arenaLib,
     battles,
     chat,
     robots,
+    arenas,
     refresh,
     clearAll,
     clearHistory,

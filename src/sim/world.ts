@@ -12,13 +12,24 @@ import { parse } from "../lang/parser.js";
 import type { RoboScriptError } from "../lang/errors.js";
 import type { PropRef, Value } from "../lang/bytecode.js";
 import { Vm, toNum, toText, type VmHost } from "../lang/vm.js";
-import { angleDelta, atan2Deg, clamp, cosDeg, hypot, normalizeAngle, sinDeg } from "./math.js";
+import {
+  angleDelta,
+  atan2Deg,
+  clamp,
+  closestPointOnSegment,
+  cosDeg,
+  hypot,
+  normalizeAngle,
+  raySegmentDistance,
+  sinDeg,
+} from "./math.js";
 import { Rng } from "./rng.js";
 import { beamReach, FLAT_TERRAIN, makeTerrain, slopeAt, uphillAt } from "./terrain.js";
 import {
   BULLET,
   clampFuelConfig,
   clampTerrainConfig,
+  clampWalls,
   FUEL,
   FUEL_PRESETS,
   MAX_FUEL,
@@ -27,10 +38,12 @@ import {
   ROBOT_RADIUS,
   TERRAIN_PRESETS,
   TURRET,
+  WALL,
   type FuelCell,
   type FuelConfig,
   type Robot,
   type TerrainConfig,
+  type Wall,
   type World,
 } from "./types.js";
 
@@ -53,6 +66,12 @@ export interface MatchManifest {
   fuel: FuelConfig;
   /** The shape of the ground. Four numbers, from which every peer draws the same map. */
   terrain: TerrainConfig;
+  /**
+   * The authored half of the map: segments somebody placed. Optional so every
+   * manifest saved before walls existed — including every stored `BattleRecord`
+   * — still replays, as the wall-free match it was.
+   */
+  walls?: Wall[];
   /** Bumped whenever simulation behaviour changes, so peers can refuse a mismatch. */
   simVersion: number;
 }
@@ -72,8 +91,12 @@ export interface MatchManifest {
  *     standing on it, and `ping` gained a power that buys the height to see
  *     over more of it. Flat ground blocks nothing, so a match without terrain
  *     is unaffected \u2014 but what the beam finds is now a function of the map.
+ * 9 \u2014 walls: hand-placed segments that block motion. They do not stop bullets
+ *     and do not stop the radar beam, but they are reported by `sense wall` and
+ *     `ping wall`, and fuel now avoids spawning inside one \u2014 which moves the
+ *     RNG stream, so an older peer must refuse the match rather than drift.
  */
-export const SIM_VERSION = 8;
+export const SIM_VERSION = 9;
 
 /**
  * How far a spawn may vary from its slot on the ring.
@@ -107,6 +130,9 @@ export function makeManifest(
     // Off by default. Terrain changes every balance number in the game, so it
     // is something a host turns on, never something that arrives unannounced.
     terrain: opts.terrain ?? TERRAIN_PRESETS.off,
+    // Empty by default for the same reason terrain is off by default: a match
+    // gains walls because a host asked for them, never by surprise.
+    walls: opts.walls ?? [],
     simVersion: SIM_VERSION,
   };
 }
@@ -148,6 +174,10 @@ export function createWorld(manifest: MatchManifest): World {
     // Clamped on the way in: a manifest is input from a remote host, not fact.
     fuelConfig: clampFuelConfig(manifest.fuel ?? FUEL_PRESETS.arena),
     terrainConfig,
+    // Clamped for the same reason as the two configs above, plus one of its
+    // own: an unbounded wall list would let one peer decide how much work every
+    // other peer does per tick.
+    walls: clampWalls(manifest.walls),
     over: false,
     winnerId: null,
     maxTicks: manifest.maxTicks,
@@ -216,6 +246,15 @@ export function createWorld(manifest: MatchManifest): World {
     robot.vm = new Vm(program, makeHost(world, robot));
     world.robots.push(robot);
   });
+
+  // Spawns are drawn on a ring without any knowledge of the walls, so on a
+  // hand-drawn map somebody can land half-inside one. Nudging afterwards rather
+  // than rejecting-and-redrawing is deliberate: it touches no RNG, so every
+  // existing seed keeps the exact spawn positions it had on a wall-free arena,
+  // and only a match that actually has walls is affected at all.
+  for (const robot of world.robots) {
+    pushOutOfWalls(world, robot);
+  }
 
   return world;
 }
@@ -499,7 +538,20 @@ export function ping(world: World, robot: Robot, powerRaw: number = RADAR.minPow
   const power = clamp(Math.round(powerRaw) || RADAR.minPower, RADAR.minPower, RADAR.maxPower);
   spendFuel(world, robot, FUEL.ping * power);
 
+  // Two different questions, and this is the one place in the simulation where
+  // the two kinds of wall genuinely differ.
+  //
+  // `wallDist` is what to REPORT: the nearest wall of either kind, because a
+  // script asking "how much room is that way" means any wall.
+  //
+  // `boundaryDist` is what STOPS the beam. A placed wall does not — the beam
+  // carries straight over it and can find a robot on the other side. That is a
+  // deliberate choice about scope: walls block motion and nothing else, so
+  // adding them retunes no combat number. It also means a labyrinth is a place
+  // you can see across but not drive across, which is the interesting shape for
+  // it to have.
   const wallDist = distanceToWall(world, robot.x, robot.y, robot.radar);
+  const boundaryDist = distanceToBoundary(world, robot.x, robot.y, robot.radar);
 
   /**
    * How far this beam actually gets.
@@ -521,9 +573,9 @@ export function ping(world: World, robot: Robot, powerRaw: number = RADAR.minPow
     RADAR.range,
     RADAR.eyeHeight * power,
   );
-  const reach = Math.min(RADAR.range, wallDist, sight);
-  /** True when the ground, rather than distance or a wall, is what stopped it. */
-  const blocked = sight < RADAR.range && sight < wallDist;
+  const reach = Math.min(RADAR.range, boundaryDist, sight);
+  /** True when the ground, rather than distance or the boundary, stopped it. */
+  const blocked = sight < RADAR.range && sight < boundaryDist;
 
   let best: Robot | null = null;
   let bestDist = Infinity;
@@ -637,13 +689,16 @@ export function ping(world: World, robot: Robot, powerRaw: number = RADAR.minPow
 }
 
 /**
- * Distance from a point to the arena boundary along a heading.
+ * Distance from a point to the arena BOUNDARY along a heading.
  *
- * Measured from the hull rather than from the centre, and shared with the sense
- * cone in `step.ts` — a wall reported at two different distances by the cone
- * and the radar would be a bug nobody could explain.
+ * The four outer sides only. Separate from `distanceToWall` because the
+ * boundary and a placed wall differ in exactly one way — the boundary stops the
+ * radar beam and a placed wall does not — and `ping` needs the boundary alone
+ * to work out how far its beam gets.
+ *
+ * Measured from the hull rather than from the centre.
  */
-export function distanceToWall(world: World, x: number, y: number, heading: number): number {
+export function distanceToBoundary(world: World, x: number, y: number, heading: number): number {
   const dx = cosDeg(heading);
   const dy = sinDeg(heading);
   let best = Infinity;
@@ -652,6 +707,81 @@ export function distanceToWall(world: World, x: number, y: number, heading: numb
   if (dy > 1e-9) best = Math.min(best, (world.height - y) / dy);
   if (dy < -1e-9) best = Math.min(best, -y / dy);
   return best === Infinity ? Infinity : Math.max(0, best - ROBOT_RADIUS);
+}
+
+/**
+ * Distance to the nearest wall of EITHER kind along a heading — the boundary,
+ * or a segment somebody placed.
+ *
+ * This is what the language means by "wall". A script has no way to ask which
+ * kind it found and no reason to want one: both stop you dead, and `on sense
+ * wall` written against the boundary works unchanged inside a labyrinth. That
+ * is the whole reason walls were built as segments rather than as a new
+ * obstacle with its own events.
+ *
+ * Shared with the sense cone in `step.ts` — a wall reported at two different
+ * distances by the cone and the radar would be a bug nobody could explain.
+ */
+export function distanceToWall(world: World, x: number, y: number, heading: number): number {
+  let best = distanceToBoundary(world, x, y, heading);
+  if (world.walls.length === 0) return best;
+
+  const dx = cosDeg(heading);
+  const dy = sinDeg(heading);
+  // Array order, and a plain minimum, so the result cannot depend on how the
+  // list was iterated.
+  for (const w of world.walls) {
+    const t = raySegmentDistance(x, y, dx, dy, w.x1, w.y1, w.x2, w.y2);
+    if (t === null) continue;
+    // Hull-relative like the boundary case, and pulled in by the wall's own
+    // half-thickness, so "distance 0" means touching rather than overlapping.
+    const d = t - ROBOT_RADIUS - WALL.halfThickness;
+    if (d < best) best = d < 0 ? 0 : d;
+  }
+  return best;
+}
+
+/**
+ * Push a robot clear of every wall it is inside, in place.
+ *
+ * Returns the normal of the last wall it had to be pushed off, or null if it
+ * was already clear. Used both at spawn and every tick from `step.ts`, so a
+ * robot arriving inside a wall and a robot driving into one are resolved by the
+ * identical code.
+ *
+ * Walls are visited in array order and each push is applied immediately, so
+ * with two overlapping walls the outcome depends on their order in the list —
+ * which is fixed by the manifest and therefore the same on every peer. An
+ * order-independent solve would be nicer and is not worth the machinery.
+ */
+export function pushOutOfWalls(world: World, robot: Robot): { normal: number } | null {
+  if (world.walls.length === 0) return null;
+  const reach = ROBOT_RADIUS + WALL.halfThickness;
+  const reachSq = reach * reach;
+  let hit: { normal: number } | null = null;
+
+  for (const w of world.walls) {
+    const [nx, ny, distSq] = closestPointOnSegment(robot.x, robot.y, w.x1, w.y1, w.x2, w.y2);
+    if (distSq >= reachSq) continue;
+
+    let ex = robot.x - nx;
+    let ey = robot.y - ny;
+    let len = hypot(ex, ey);
+    if (len < 1e-9) {
+      // Dead centre on the wall's own line: there is no direction "out", so the
+      // normal is undefined and normalising it would give NaN. Fall back to the
+      // wall's own perpendicular, which is the direction it would have been in
+      // a moment earlier or later.
+      ex = -(w.y2 - w.y1);
+      ey = w.x2 - w.x1;
+      len = hypot(ex, ey);
+      if (len < 1e-9) continue;
+    }
+    robot.x = nx + (ex / len) * reach;
+    robot.y = ny + (ey / len) * reach;
+    hit = { normal: atan2Deg(ey / len, ex / len) };
+  }
+  return hit;
 }
 
 export { toText };

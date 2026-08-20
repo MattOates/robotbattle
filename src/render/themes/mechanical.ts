@@ -241,6 +241,66 @@ export const MECHANICAL: ArenaTheme = {
     });
   },
 
+  /**
+   * A plate of metal bolted to the ground.
+   *
+   * Drawn as a filled band with a bright top edge and a dark bottom one, which
+   * is the cheapest way to make something read as standing UP off the ground
+   * rather than painted on it. That distinction matters more here than it looks:
+   * the terrain underneath is also drawn as bands of colour, and a wall that
+   * read as a contour line would be a wall people drove into.
+   *
+   * Rivets are spaced along the run rather than counted, so a long wall and a
+   * short one look like the same object at different lengths.
+   */
+  drawWall(
+    g: Graphics,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    halfThickness: number,
+  ): void {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    const ux = dx / len;
+    const uy = dy / len;
+    // Unit normal, for offsetting the two long edges.
+    const nx = -uy;
+    const ny = ux;
+    const t = halfThickness;
+
+    const face = 0x6f7787;
+    const corners = [
+      [x1 + nx * t, y1 + ny * t],
+      [x2 + nx * t, y2 + ny * t],
+      [x2 - nx * t, y2 - ny * t],
+      [x1 - nx * t, y1 - ny * t],
+    ] as const;
+
+    g.poly(corners.flatMap(([x, y]) => [x, y])).fill({ color: face });
+    // Lit edge on one side, shadowed on the other. Which side is which is
+    // consistent across every wall, so the whole map is lit from one place.
+    g.moveTo(corners[0][0], corners[0][1])
+      .lineTo(corners[1][0], corners[1][1])
+      .stroke({ width: 1.5, color: lighten(face, 0.35), alpha: 0.9 });
+    g.moveTo(corners[3][0], corners[3][1])
+      .lineTo(corners[2][0], corners[2][1])
+      .stroke({ width: 1.5, color: darken(face, 0.55), alpha: 0.9 });
+
+    // Bolts every so often along the run, and never fewer than the two ends.
+    const spacing = 26;
+    const count = Math.max(2, Math.round(len / spacing));
+    for (let i = 0; i <= count; i++) {
+      const d = (len * i) / count;
+      const px = x1 + ux * d;
+      const py = y1 + uy * d;
+      g.circle(px, py, t * 0.34).fill({ color: darken(face, 0.4), alpha: 0.85 });
+    }
+  },
+
   drawFuel(g: Graphics, radius: number): void {
     // A squat canister: a bright core in a darker casing, with a band across
     // it so it reads as machinery rather than as a stray bullet.

@@ -22,13 +22,22 @@ import {
   MAX_FUEL,
   MAX_HEALTH,
   TERRAIN,
+  WALL,
 } from "./types.js";
-import { distanceToWall, fuelFactor, gunBears, releaseShot, spendFuel } from "./world.js";
+import {
+  distanceToWall,
+  fuelFactor,
+  gunBears,
+  pushOutOfWalls,
+  releaseShot,
+  spendFuel,
+} from "./world.js";
 import type { Bullet, FuelCell, Robot, World } from "./types.js";
 import {
   angleDelta,
   atan2Deg,
   clamp,
+  closestPointOnSegment,
   cosDeg,
   hypot,
   moveToward,
@@ -278,12 +287,48 @@ function moveRobots(world: World): void {
     r.y += sinDeg(r.heading) * r.speed * DT;
 
     // --- walls ---
-    const hitWall = clampToArena(world, r);
+    const hitWall = resolveWalls(world, r);
     if (hitWall) {
-      // A scrape costs a little health and kills momentum, which discourages
-      // hiding in a corner without being punishing.
-      r.health = Math.max(0, r.health - 0.4);
-      r.speed = 0;
+      // A scrape against the EDGE of the map costs a little health, which
+      // discourages hiding in a corner without being punishing. A scrape
+      // against a placed wall costs nothing.
+      //
+      // That asymmetry is the whole reason a labyrinth is playable. The 0.4 was
+      // tuned for a boundary you touch occasionally; in a maze you are against a
+      // wall almost continuously, and measurement put the Racer at 249 bumps in
+      // 258 ticks \u2014 dead of attrition before it had solved anything. Charging
+      // for it would make the only viable maze robot the one that never moves.
+      //
+      // It is also the rule the mechanic already promised: a placed wall blocks
+      // motion and does nothing else. Health is something else.
+      if (hitWall.boundary) r.health = Math.max(0, r.health - 0.4);
+
+      if (hitWall.boundary) {
+        // Head-on into the edge of the map: stop dead, as it always has.
+        r.speed = 0;
+      } else {
+        // Against a placed wall, keep the part of the motion that runs ALONG
+        // the wall and lose only the part driving into it.
+        //
+        // `hitWall.normal` points out of the wall, so the angle between it and
+        // the heading says how square the contact was: 180 degrees is straight
+        // into it and keeps nothing, 90 is running parallel and keeps
+        // everything. `sinDeg` of that difference is exactly that fraction.
+        //
+        // Without this a wall cannot be followed at all. Measured before it
+        // existed, a robot grazing a wall at ten degrees covered 61px in three
+        // seconds where clear ground would have given it 280 \u2014 it was being
+        // stopped dead and made to accelerate again on every tick of contact.
+        // Corridors are the normal case in a labyrinth, so that is not a
+        // penalty for bad driving, it is a rule against going down a corridor.
+        //
+        // The boundary keeps the old behaviour deliberately. It is there to
+        // discourage hiding in a corner, nothing is ever meant to run along it,
+        // and leaving it alone means every match without placed walls plays
+        // exactly as it did.
+        const into = sinDeg(angleDelta(hitWall.normal, r.heading));
+        r.speed = r.speed * (into < 0 ? -into : into);
+      }
       r.vm.enqueue("hit wall", {
         bearing: angleDelta(r.heading, hitWall.normal + 180),
         distance: 0,
@@ -342,26 +387,46 @@ function updateTurret(world: World, r: Robot, fuelled: number): void {
 
 interface WallHit {
   normal: number;
+  /**
+   * True for the edge of the map, false for a segment somebody placed.
+   *
+   * The only thing this distinguishes is the scrape damage below. A script
+   * cannot see it and has no way to ask \u2014 `on hit wall` is one event, because
+   * to a robot the two are the same fact.
+   */
+  boundary: boolean;
 }
 
-/** Keep a robot inside the arena; returns the wall it touched, if any. */
-function clampToArena(world: World, r: Robot): WallHit | null {
+/**
+ * Keep a robot out of every wall; returns one it touched, if any.
+ *
+ * The boundary first, then the placed segments. The order matters only in that
+ * a robot squeezed between a wall and the edge ends up reported against the
+ * wall, which is the more useful of the two facts.
+ *
+ * Both kinds return the same `WallHit`, which is what makes `on hit wall`
+ * behave identically for the edge of the map and for something drawn in the
+ * middle of it — the point of building walls as segments rather than as a new
+ * kind of obstacle.
+ */
+function resolveWalls(world: World, r: Robot): WallHit | null {
   let hit: WallHit | null = null;
   if (r.x < ROBOT_RADIUS) {
     r.x = ROBOT_RADIUS;
-    hit = { normal: 0 };
+    hit = { normal: 0, boundary: true };
   } else if (r.x > world.width - ROBOT_RADIUS) {
     r.x = world.width - ROBOT_RADIUS;
-    hit = { normal: 180 };
+    hit = { normal: 180, boundary: true };
   }
   if (r.y < ROBOT_RADIUS) {
     r.y = ROBOT_RADIUS;
-    hit = { normal: 90 };
+    hit = { normal: 90, boundary: true };
   } else if (r.y > world.height - ROBOT_RADIUS) {
     r.y = world.height - ROBOT_RADIUS;
-    hit = { normal: -90 };
+    hit = { normal: -90, boundary: true };
   }
-  return hit;
+  const placed = pushOutOfWalls(world, r);
+  return placed ? { normal: placed.normal, boundary: false } : hit;
 }
 
 /**
@@ -576,6 +641,26 @@ function collectFuel(world: World): void {
 }
 
 /**
+ * How many placements a fuel cell may try before it settles for the last one.
+ *
+ * Small on purpose. It exists to avoid the obviously silly outcome — a cell
+ * inside a wall — not to guarantee a good one, and every extra try is RNG draws
+ * spent on every peer for a diminishing return.
+ */
+const FUEL_SPAWN_TRIES = 8;
+
+/** Is there room for a cell of this radius here, clear of every placed wall? */
+function clearOfWalls(world: World, x: number, y: number, radius: number): boolean {
+  const reach = radius + WALL.halfThickness;
+  const reachSq = reach * reach;
+  for (const w of world.walls) {
+    const [, , distSq] = closestPointOnSegment(x, y, w.x1, w.y1, w.x2, w.y2);
+    if (distSq < reachSq) return false;
+  }
+  return true;
+}
+
+/**
  * Put a new cell out on a fixed cadence.
  *
  * The RNG is only touched when a cell is actually spawned, so a match whose
@@ -591,12 +676,30 @@ function spawnFuel(world: World): void {
   // Kept off the walls so a cell is never half-buried in one, and so it cannot
   // sit where a robot would have to scrape itself to reach it.
   const margin = ROBOT_RADIUS + cfg.radius;
-  world.fuel.push({
-    id: world.nextFuelId++,
-    x: world.rng.range(margin, Math.max(margin, world.width - margin)),
-    y: world.rng.range(margin, Math.max(margin, world.height - margin)),
-    amount: cfg.amount,
-  });
+  const loX = margin;
+  const hiX = Math.max(margin, world.width - margin);
+  const loY = margin;
+  const hiY = Math.max(margin, world.height - margin);
+
+  // Placed walls need the same treatment, but they can be anywhere, so a margin
+  // will not do it — reject and redraw instead. Bounded rather than a `while`,
+  // and it takes the last draw regardless once the tries run out: a map walled
+  // so densely that eight draws all land badly must still spawn something, and
+  // an unbounded loop on a peer is a hang on every peer at once.
+  //
+  // Every attempt draws from `world.rng`, so the whole loop is part of the
+  // deterministic stream and every peer runs it identically. It does move that
+  // stream relative to older builds, which is one of the reasons SIM_VERSION
+  // went to 9.
+  let x = 0;
+  let y = 0;
+  for (let attempt = 0; attempt < FUEL_SPAWN_TRIES; attempt++) {
+    x = world.rng.range(loX, hiX);
+    y = world.rng.range(loY, hiY);
+    if (clearOfWalls(world, x, y, cfg.radius)) break;
+  }
+
+  world.fuel.push({ id: world.nextFuelId++, x, y, amount: cfg.amount });
 }
 
 // ---- phase: housekeeping -------------------------------------------------

@@ -25,8 +25,10 @@ import { RobotGlyph } from "../RobotGlyph.js";
 import { RobotTable, type TableEntry } from "../RobotTable.js";
 import type { Locomotion } from "../../lang/ast.js";
 import { offeredSource, pruneOffered, shelfFor, toggleOffered } from "../tradeShelf.js";
+import type { ArenaSpec } from "../../sim/types.js";
 import {
   MAX_SOURCE_LENGTH,
+  sanitiseArenaSpec,
   sanitiseShelf,
   sanitiseText,
   type Message,
@@ -45,6 +47,15 @@ interface Props {
   playerName: string;
   onPlayerName: (name: string) => void;
   initialRoom: string | null;
+}
+
+/** Someone has offered us a map and is waiting to hear back. */
+interface IncomingArena {
+  from: string;
+  fromName: string;
+  arenaId: string;
+  name: string;
+  spec: ArenaSpec;
 }
 
 /** Someone has offered us a script and is waiting to hear back. */
@@ -94,6 +105,7 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
 
   const [shelves, setShelves] = useState<Record<string, ShelfItem[]>>({});
   const [offers, setOffers] = useState<IncomingOffer[]>([]);
+  const [arenaOffers, setArenaOffers] = useState<IncomingArena[]>([]);
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -274,6 +286,29 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
             return;
           }
 
+          case "offerArena": {
+            // Clamped on arrival rather than on accept: a map that this build
+            // would refuse to simulate should never reach the point of being
+            // offered, and declining is cheaper than repairing.
+            const spec = sanitiseArenaSpec(message.spec);
+            if (!spec) return;
+            setArenaOffers((prev) =>
+              prev.some((o) => o.from === from && o.arenaId === message.arenaId)
+                ? prev
+                : [
+                    ...prev,
+                    {
+                      from,
+                      fromName: nameOf(from),
+                      arenaId: message.arenaId,
+                      name: sanitiseText(message.name, 40) || "Their arena",
+                      spec,
+                    },
+                  ],
+            );
+            return;
+          }
+
           case "offerResult":
             setNotice(
               message.accepted ? `${nameOf(from)} took it.` : `${nameOf(from)} passed on it.`,
@@ -311,6 +346,48 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
       setNotice(`Offered ${mine.name} to ${nameOf(target)}. Waiting for them.`);
     },
     [nameOf, robots, room.session, target],
+  );
+
+  const giveArena = useCallback(
+    (arenaId: string) => {
+      const mine = lib.arenas.find((a) => a.id === arenaId);
+      if (!mine || !target || !room.session) return;
+      room.session.send(target, {
+        t: "offerArena",
+        arenaId: mine.id,
+        name: mine.name,
+        spec: mine.spec,
+      });
+      setNotice(`Offered ${mine.name} to ${nameOf(target)}. Waiting for them.`);
+    },
+    [lib.arenas, nameOf, room.session, target],
+  );
+
+  const acceptArena = useCallback(
+    (offer: IncomingArena) => {
+      const added = lib.arenaLib.importTraded(offer.name, offer.spec, offer.fromName);
+      refresh();
+      setArenaOffers((prev) => prev.filter((o) => o !== offer));
+      room.session?.send(offer.from, {
+        t: "offerResult",
+        robotId: offer.arenaId,
+        accepted: true,
+      });
+      setNotice(`${added.name} is yours, from ${offer.fromName}.`);
+    },
+    [lib.arenaLib, refresh, room.session],
+  );
+
+  const declineArena = useCallback(
+    (offer: IncomingArena) => {
+      setArenaOffers((prev) => prev.filter((o) => o !== offer));
+      room.session?.send(offer.from, {
+        t: "offerResult",
+        robotId: offer.arenaId,
+        accepted: false,
+      });
+    },
+    [room.session],
   );
 
   const accept = useCallback(
@@ -435,6 +512,23 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           </div>
         ))}
 
+        {arenaOffers.map((offer) => (
+          <div key={`${offer.from}:${offer.arenaId}`} className="notice trade-ask">
+            <span>
+              <strong>{offer.fromName}</strong> is offering you the {words.arena}{" "}
+              {offer.name}
+              {offer.spec.walls.length > 0 ? ` — ${offer.spec.walls.length} walls` : ""}.
+            </span>
+            <span className="spacer" />
+            <button type="button" className="btn small primary" onClick={() => acceptArena(offer)}>
+              Take it
+            </button>
+            <button type="button" className="btn small" onClick={() => declineArena(offer)}>
+              No thanks
+            </button>
+          </div>
+        ))}
+
         {requests.map((request) => (
           <div key={`${request.from}:${request.robotId}`} className="notice trade-ask">
             <span>
@@ -506,6 +600,44 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
             )
           }
         />
+
+        {/* Arenas are given directly rather than put on a table.
+            There is nothing to browse or read: a map is what it looks like, and
+            the name plus a wall count says everything a shelf entry would. So
+            this is the give half of a trade without the showing half. */}
+        {lib.arenas.length > 0 ? (
+          <section className="panel">
+            <div className="panel-head">
+              <span className="silkscreen">Your {words.arenaPlural}</span>
+              <span className="spacer" />
+              <span className="roster-meta">
+                {target ? `give one to ${nameOf(target)}` : "nobody else here yet"}
+              </span>
+            </div>
+            <div className="panel-body flush">
+              {lib.arenas.map((arena) => (
+                <div key={arena.id} className="roster-item">
+                  <span className="roster-select" style={{ cursor: "default" }}>
+                    <span className="roster-name">{arena.name}</span>
+                    <span className="roster-meta">
+                      {arena.spec.walls.length === 0
+                        ? "no walls"
+                        : `${arena.spec.walls.length} walls`}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={target === null}
+                    onClick={() => giveArena(arena.id)}
+                  >
+                    Give
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {preview ? (
           /* Their script in a real editor rather than a block of text: the

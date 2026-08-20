@@ -113,7 +113,7 @@ describe("running a match across a room", () => {
 
     const hills = { enabled: true, seed: 31337, featureSize: 210, amplitude: 1 };
     const participants = sessions[0]!.entries() as Participant[];
-    const manifest = manifestFromParticipants(participants, 909, { terrain: hills });
+    const manifest = manifestFromParticipants(participants, 909, { arena: { terrain: hills, walls: [] } });
     sessions[0]!.broadcast({ t: "start", matchId: newMatchId(), manifest, label: "Arena" });
     network.flush();
 
@@ -132,7 +132,7 @@ describe("running a match across a room", () => {
     // And a peer handed a DIFFERENT map diverges immediately rather than
     // drifting apart quietly \u2014 which is what hashing the config buys.
     const wrongMap = manifestFromParticipants(participants, 909, {
-      terrain: { ...hills, seed: 4 },
+      arena: { terrain: { ...hills, seed: 4 }, walls: [] },
     });
     expect(runMatchWithHashes(wrongMap).hashes[0]).not.toBe(streams[0]![0]);
   });

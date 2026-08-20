@@ -28,6 +28,7 @@ import type { LibraryApi } from "../useLibrary.js";
 import { deriveMeta } from "../../store/library.js";
 import { THEMES, type Theme } from "../../lang/vocab.js";
 import { fuelHeading, terrainHeading, terrainLevelWord } from "../matchSettings.js";
+import { GENERATE, type ArenaChoiceValue } from "../ArenaChoice.js";
 import {
   advance,
   buildBracket,
@@ -102,7 +103,26 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
   const [fuelLevel, setFuelLevel] = useState<TourFuelLevel>("normal");
   const fuel = TOUR_FUEL[fuelLevel];
   const [terrainLevel, setTerrainLevel] = useState<TourTerrainLevel>("flat");
-  const terrain = TOUR_TERRAIN[terrainLevel];
+  // Generate by default; a saved arena is something a host deliberately brings.
+  const [arenaChoice, setArenaChoice] = useState<ArenaChoiceValue>(GENERATE);
+  /**
+   * The map every tie in this tournament is fought on.
+   *
+   * Fixed before the draw and never read from the control afterwards, for the
+   * same reason the fuel setting is: rounds have to be comparable, and a host
+   * nudging a button between rounds would quietly make the semi-final a
+   * different competition from the quarter.
+   *
+   * A brought arena overrides the preset words entirely \u2014 it carries its own
+   * ground, so honouring both would leave two sources of truth for it.
+   */
+  const arena = useMemo(() => {
+    if (arenaChoice.kind === "saved") {
+      const found = lib.arenas.find((a) => a.id === arenaChoice.id);
+      if (found) return found.spec;
+    }
+    return { terrain: TOUR_TERRAIN[terrainLevel], walls: [] };
+  }, [arenaChoice, lib.arenas, terrainLevel]);
 
   useEffect(() => {
     if (connected && room.roomCode && parseRoute(window.location.hash).room !== room.roomCode) {
@@ -334,7 +354,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
         b,
         seedBase: seedForJob(seedBase, match.id),
         fuel,
-        terrain,
+        arena,
       });
     }
     if (jobs.length === 0) return;
@@ -406,7 +426,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       matches: DUEL_MATCHES,
       round: currentRound,
     } satisfies RoundWorkerIn);
-  }, [bracket, currentRound, fuel, terrain, isHost, room.session, running]);
+  }, [bracket, currentRound, fuel, arena, isHost, room.session, running]);
 
   const draw = useCallback(
     (ranking: string[]) => {
@@ -484,9 +504,9 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       entrants: field.map((e) => ({ id: e.id, robot: e.robot })),
       seedBase: newMatchSeed(),
       fuel,
-      terrain,
+      arena,
     } satisfies RoundWorkerIn);
-  }, [draw, field, fuel, terrain, isHost, qualifying, room.session]);
+  }, [draw, field, fuel, arena, isHost, qualifying, room.session]);
 
   const reset = useCallback(() => {
     if (!isHost) return;
@@ -540,7 +560,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       // From the showcase, never from the control above. The host may have
       // moved the setting since this duel was fought, and a replay has to show
       // the match that actually happened.
-      showcase.terrain,
+      showcase.arena,
     );
   }, [bracket, viewingRecord]);
 
@@ -677,18 +697,49 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
             </div>
             <div className="row" aria-label="ground">
               <span className="roster-meta">{terrainHeading(theme)}</span>
-              {(Object.keys(TOUR_TERRAIN) as TourTerrainLevel[]).map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  className={`btn small${terrainLevel === level ? " primary" : ""}`}
-                  onClick={() => setTerrainLevel(level)}
-                  disabled={qualifying !== null}
-                >
-                  {terrainLevelWord(level, theme)}
-                </button>
-              ))}
+              {arenaChoice.kind === "saved" ? (
+                // The preset words are gone rather than disabled: a brought
+                // arena carries its own ground, so a row of words that no
+                // longer describe the tournament would be worse than no row.
+                <span className="roster-meta">brought with the {words.arena}</span>
+              ) : (
+                (Object.keys(TOUR_TERRAIN) as TourTerrainLevel[]).map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    className={`btn small${terrainLevel === level ? " primary" : ""}`}
+                    onClick={() => setTerrainLevel(level)}
+                    disabled={qualifying !== null}
+                  >
+                    {terrainLevelWord(level, theme)}
+                  </button>
+                ))
+              )}
             </div>
+            {lib.arenas.length > 0 ? (
+              <div className="row" aria-label={`saved ${words.arenaPlural}`}>
+                <span className="roster-meta">{words.arena.charAt(0).toUpperCase() + words.arena.slice(1)}</span>
+                <select
+                  className="btn small"
+                  aria-label={`Bring a saved ${words.arena}`}
+                  value={arenaChoice.kind === "saved" ? arenaChoice.id : ""}
+                  disabled={qualifying !== null}
+                  onChange={(e) =>
+                    setArenaChoice(
+                      e.target.value ? { kind: "saved", id: e.target.value } : GENERATE,
+                    )
+                  }
+                >
+                  <option value="">Generate a new one</option>
+                  {lib.arenas.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                      {a.spec.walls.length > 0 ? ` \u2014 ${a.spec.walls.length} walls` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
           </>
         ) : null}
 

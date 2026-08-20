@@ -9,6 +9,8 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { sanitiseArenaSpec } from "../../src/net/protocol.js";
+import { TERRAIN_PRESETS, WALL } from "../../src/sim/types.js";
 import { createLoopbackRoom, type LoopbackNetwork } from "../../src/net/loopback.js";
 import { Session } from "../../src/net/session.js";
 import type { Message } from "../../src/net/protocol.js";
@@ -177,5 +179,51 @@ describe("giving one away", () => {
     });
     network.flush();
     expect(lastOf(ada, "offerResult")?.accepted).toBe(false);
+  });
+});
+
+describe("handing over an arena", () => {
+  it("clamps what arrives, because a map goes straight into a simulation", () => {
+    // The failure guarded against is not a display glitch. A NaN coordinate in
+    // a wall poisons every distance computed against it, and a featureSize of
+    // zero divides by zero on every peer at once.
+    const spec = sanitiseArenaSpec({
+      terrain: { enabled: true, seed: 2.6, featureSize: 0, amplitude: 9 },
+      walls: [
+        { x1: 10.4, y1: 10.6, x2: 200.5, y2: 10.6 },
+        { x1: NaN, y1: 0, x2: 100, y2: 0 },
+        "not a wall",
+      ],
+    });
+    expect(spec).not.toBeNull();
+    expect(spec!.terrain.featureSize).toBeGreaterThanOrEqual(20);
+    expect(spec!.terrain.amplitude).toBeLessThanOrEqual(1);
+    expect(spec!.walls).toEqual([{ x1: 10, y1: 11, x2: 201, y2: 11 }]);
+  });
+
+  it("declines a shape it cannot make sense of, rather than repairing it", () => {
+    // Returning an empty arena would mean somebody accepting a gift and getting
+    // a blank sheet, which is worse than being told the offer was no good.
+    expect(sanitiseArenaSpec(null)).toBeNull();
+    expect(sanitiseArenaSpec("maze")).toBeNull();
+    expect(sanitiseArenaSpec({ walls: [] })).toBeNull();
+    expect(sanitiseArenaSpec({ terrain: TERRAIN_PRESETS.off, walls: "lots" })).toBeNull();
+  });
+
+  it("accepts a map with no walls at all", () => {
+    // An arena that is only a terrain seed is a perfectly good thing to share.
+    const spec = sanitiseArenaSpec({ terrain: TERRAIN_PRESETS.arena });
+    expect(spec?.walls).toEqual([]);
+  });
+
+  it("caps the wall list so one peer cannot decide everyone else's frame time", () => {
+    const many = Array.from({ length: WALL.maxCount + 100 }, (_, i) => ({
+      x1: 0,
+      y1: i,
+      x2: 100,
+      y2: i,
+    }));
+    const spec = sanitiseArenaSpec({ terrain: TERRAIN_PRESETS.off, walls: many });
+    expect(spec!.walls).toHaveLength(WALL.maxCount);
   });
 });

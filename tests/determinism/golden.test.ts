@@ -73,49 +73,65 @@ const GOLDEN = {
   //     times a match and grind itself down doing it, so this fight is very
   //     different now: 1833 ticks instead of 532, and Racer wins it rather
   //     than dying to the scenery.
-  simVersion: 8,
+  // 9 \u2014 walls. Hand-placed segments that block motion. Like terrain before it,
+  //     the mechanic ships switched off: this match carries no walls, so not
+  //     one thing about it happens differently. Ticks, winner and the fuel-off
+  //     pair below are all identical to version 8, and that is the claim this
+  //     entry is making \u2014 an empty wall list is genuinely empty.
+  //
+  //     The hashes moved for the same reason they moved at version 7, and it is
+  //     worth being just as precise: `hashWorld` now folds in the wall count,
+  //     so a match with zero walls hashes one more integer than it used to. The
+  //     digest changed; the world it describes did not.
+  //
+  //     The version bump is not about this match. It is about `spawnFuel`,
+  //     which now rejects a placement that lands inside a wall and redraws \u2014
+  //     no walls means no rejection and no extra draw here, but the code path
+  //     differs between builds, so a version 8 peer must refuse rather than
+  //     guess.
+  simVersion: 9,
   ticks: 1833,
   winner: "Racer",
-  finalHash: "349a068135dcc387",
+  finalHash: "c839fc09c2a1c557",
   /** Hash at ticks 0, 50, 100, ... */
   every50: [
-    "39a9bf70a87e1511",
-    "18db2eab6b88176b",
-    "b206883fc66a4140",
-    "cfe0c352560d1c3f",
-    "3c9e2ff818b3a440",
-    "ce33258723173c3b",
-    "882efcdcdc75a5c3",
-    "798b3b58b6167b12",
-    "a1822b994644e059",
-    "947231702c0daeeb",
-    "1a2fa3debd2a1b8d",
-    "37383e0738ac00a9",
-    "8499764619bbc400",
-    "de93c6a344f790c8",
-    "0afb2967a2e18410",
-    "e1c0f54a1f8815e9",
-    "eb1e7da20554b066",
-    "01c8fa051d9cc93d",
-    "2826810fa2ba2742",
-    "a60d492bef4fbc15",
-    "d8e5b2a6cd445ec7",
-    "2f48829e8c0d1e9d",
-    "1475dd74aef84a97",
-    "de5e3d7170551e97",
-    "6c5d91ba940dac43",
-    "c4590dd4f7f64ecf",
-    "8719f9daeca56116",
-    "bb5a17a7a5cf852e",
-    "7241d276be9c7261",
-    "98bb07cc30271ed7",
-    "9f2358631bc738ea",
-    "7deee0cc07afad76",
-    "4972826cedbffe06",
-    "3584c5ea001f3fbc",
-    "aed94bb4f99e13b9",
-    "a1e6b015e34cf899",
-    "08f083642859456a",
+    "6aa7a02f282b3621",
+    "088827e3ed097d9b",
+    "d703020a743e9c50",
+    "afa23a02768b786f",
+    "cdd8b26007ca30d0",
+    "d885f454515b958b",
+    "09aaae6eef04f283",
+    "f28b2b7f2ab6cdf2",
+    "53c4ea7dc03e5b59",
+    "d90e5a6b75028fcb",
+    "dd0333c659b0a14d",
+    "2f9c023cd0837d19",
+    "cb2da97e60fa9530",
+    "e0b18edcda6eae78",
+    "049f9f24ad478060",
+    "bca29f4506bf4899",
+    "b83cb34a7c9ab406",
+    "249584b590ff1ebd",
+    "7b01646ed2e591e2",
+    "badaf711bb497055",
+    "f7fbb239697325e7",
+    "d0b1981bfc869c2d",
+    "686c75d03764d347",
+    "2736f767fdcaa727",
+    "8aef8fa2ee2785d3",
+    "44cfde9e70d30adf",
+    "2d29d63030fd0396",
+    "c572ebd21bb1ab0e",
+    "5fc82e30c9e7fd21",
+    "50be8198d43450f7",
+    "d0161af82de2aeea",
+    "7c672bc958575c26",
+    "68bdd8f1974655d6",
+    "856e7a9d5c207e4c",
+    "c24df9c853ac52e9",
+    "0981ab02a1760569",
+    "b3fec20aa2dc6b0a",
   ],
 };
 

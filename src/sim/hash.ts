@@ -81,6 +81,19 @@ export function hashWorld(world: World): string {
   h.int(world.terrainConfig.featureSize);
   h.float(world.terrainConfig.amplitude);
 
+  // Walls, for the same reason and with more force: they are immutable for the
+  // whole match, so hashing them every tick buys nothing except the one thing
+  // that matters \u2014 a peer that received a different wall list is caught at
+  // tick 0 rather than after its robots have quietly taken different routes.
+  // Coordinates are whole pixels out of `clampWalls`, so `int` is exact.
+  h.int(world.walls.length);
+  for (const w of world.walls) {
+    h.int(w.x1);
+    h.int(w.y1);
+    h.int(w.x2);
+    h.int(w.y2);
+  }
+
   const [rngHi, rngLo] = world.rng.getState();
   h.int(rngHi);
   h.int(rngLo);

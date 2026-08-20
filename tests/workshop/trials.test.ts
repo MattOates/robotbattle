@@ -27,19 +27,19 @@ describe("the conditions a run was fought under", () => {
     // actually face is the failure worth guarding against.
     const report = runTrials(request());
     expect(report.conditions.fuel).toEqual(FUEL_PRESETS.arena);
-    expect(report.conditions.terrain).toEqual(TERRAIN_PRESETS.off);
+    expect(report.conditions.arena.terrain).toEqual(TERRAIN_PRESETS.off);
   });
 
   it("reports them back even when the run could not happen", () => {
     const report = runTrials(request({ opponents: [] }));
     expect(report.error).not.toBeNull();
-    expect(report.conditions.terrain).toEqual(TERRAIN_PRESETS.off);
+    expect(report.conditions.arena.terrain).toEqual(TERRAIN_PRESETS.off);
   });
 
   it("carries them into the matches, so the ground really is under the robots", () => {
-    const flat = runTrials(request({ terrain: TERRAIN_PRESETS.off }));
-    const hills = runTrials(request({ terrain: TERRAIN_PRESETS.arena }));
-    expect(hills.conditions.terrain).toEqual(TERRAIN_PRESETS.arena);
+    const flat = runTrials(request({ arena: { terrain: TERRAIN_PRESETS.off, walls: [] } }));
+    const hills = runTrials(request({ arena: { terrain: TERRAIN_PRESETS.arena, walls: [] } }));
+    expect(hills.conditions.arena.terrain).toEqual(TERRAIN_PRESETS.arena);
     // A setting that changed nothing about the fight would be a setting that
     // was accepted and then dropped on the way to `makeManifest`.
     expect(hills.rows).not.toEqual(flat.rows);

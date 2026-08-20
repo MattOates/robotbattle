@@ -18,7 +18,7 @@
 import { runMatch } from "../sim/match.js";
 import { makeManifest } from "../sim/world.js";
 import { checkScript } from "../sim/world.js";
-import { FUEL_PRESETS, TERRAIN_PRESETS, type FuelConfig, type TerrainConfig } from "../sim/types.js";
+import { FLAT_ARENA, FUEL_PRESETS, type ArenaSpec, type FuelConfig } from "../sim/types.js";
 
 export type ContenderKind = "arena" | "library" | "snapshot" | "working";
 
@@ -44,13 +44,13 @@ export interface TrialRequest {
    * against hills fifty times.
    */
   fuel?: FuelConfig;
-  terrain?: TerrainConfig;
+  arena?: ArenaSpec;
 }
 
 /** What a report was produced under. Carried so a shared table is not ambiguous. */
 export interface TrialConditions {
   fuel: FuelConfig;
-  terrain: TerrainConfig;
+  arena: ArenaSpec;
 }
 
 export interface MatchupRow {
@@ -98,7 +98,7 @@ export function runTrials(
 ): TrialReport {
   const conditions: TrialConditions = {
     fuel: request.fuel ?? FUEL_PRESETS.arena,
-    terrain: request.terrain ?? TERRAIN_PRESETS.off,
+    arena: request.arena ?? FLAT_ARENA,
   };
   const subjectCheck = checkScript(request.subject.source);
   if (!subjectCheck.ok) {
@@ -151,7 +151,8 @@ export function runTrials(
         makeManifest(entries, {
           seed: request.seedBase + matchupIndex * SEED_STRIDE + i,
           fuel: conditions.fuel,
-          terrain: conditions.terrain,
+          terrain: conditions.arena.terrain,
+          walls: conditions.arena.walls,
         }),
       );
 

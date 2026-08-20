@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  arenaForLevel,
   FUEL_LEVELS,
   TERRAIN_LEVELS,
   describeConditions,
@@ -110,14 +111,34 @@ describe("the settings speak both languages", () => {
 });
 
 describe("naming a set of conditions", () => {
+  it("says how many walls were in the way, when there were any", () => {
+    // A robot measured at 74% in an open arena and one measured at 74% in a
+    // labyrinth are making very different claims about themselves.
+    const walled = {
+      fuel: FUEL_SETTINGS.normal,
+      arena: {
+        terrain: TERRAIN_SETTINGS.flat,
+        walls: [
+          { x1: 0, y1: 0, x2: 100, y2: 0 },
+          { x1: 0, y1: 50, x2: 100, y2: 50 },
+        ],
+      },
+    };
+    expect(describeConditions(walled, "mechanical")).toContain("2 walls");
+    // An open arena says nothing about walls at all, rather than "0 walls".
+    expect(describeConditions({ fuel: FUEL_SETTINGS.normal, arena: arenaForLevel("flat") }, "mechanical")).not.toContain(
+      "walls",
+    );
+  });
+
   it("uses each world's words", () => {
-    const conditions = { fuel: FUEL_SETTINGS.scarce, terrain: TERRAIN_SETTINGS.hilly };
+    const conditions = { fuel: FUEL_SETTINGS.scarce, arena: arenaForLevel("hilly") };
     expect(describeConditions(conditions, "mechanical")).toBe("scarce fuel and hilly ground");
     expect(describeConditions(conditions, "biological")).toBe("scarce food and gloopy goop");
   });
 
   it("says what off means rather than naming a level nobody picked", () => {
-    const conditions = { fuel: FUEL_SETTINGS.off, terrain: TERRAIN_SETTINGS.flat };
+    const conditions = { fuel: FUEL_SETTINGS.off, arena: arenaForLevel("flat") };
     expect(describeConditions(conditions, "mechanical")).toBe("no fuel and flat ground");
     expect(describeConditions(conditions, "biological")).toBe("no food and even goop");
   });
@@ -127,7 +148,7 @@ describe("naming a set of conditions", () => {
     // wrong name on a number is worse than an honest shrug.
     const conditions = {
       fuel: { ...FUEL_SETTINGS.normal, amount: 99 },
-      terrain: { ...TERRAIN_SETTINGS.hilly, seed: 12345 },
+      arena: { terrain: { ...TERRAIN_SETTINGS.hilly, seed: 12345 }, walls: [] },
     };
     for (const theme of THEME_LIST) {
       expect(describeConditions(conditions, theme)).toContain("custom");
