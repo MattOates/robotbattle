@@ -135,6 +135,14 @@ export function fillVocab(body: string, theme: Theme): string {
     drive: w.driveVerb,
     skid: w.skidName,
     steered: w.steeredName,
+    fuel: w.fuel,
+    Fuel: w.fuel[0]!.toUpperCase() + w.fuel.slice(1),
+    ground: w.ground,
+    Ground: w.ground[0]!.toUpperCase() + w.ground.slice(1),
+    slope: w.slope,
+    Slope: w.slope[0]!.toUpperCase() + w.slope.slice(1),
+    uphill: w.uphill,
+    downhill: w.downhill,
   };
   return body.replace(/\{(\w+)\}/g, (whole, key: string) => map[key] ?? whole);
 }
@@ -210,7 +218,13 @@ export function toLesson(id: string, raw: string): Lesson {
 }
 
 /** Sections in the order they should be read. */
-export const SECTION_ORDER = ["The game", "The language", "Reference"] as const;
+/**
+ * "The world" is the arena's own rules rather than the language's: what things
+ * cost, and what the ground does to you. They come after the language because
+ * you need to be able to write a {robot} before it is worth explaining what
+ * driving it about is going to cost.
+ */
+export const SECTION_ORDER = ["The game", "The language", "The world", "Reference"] as const;
 
 export function sortLessons(lessons: readonly Lesson[]): Lesson[] {
   return [...lessons].sort((a, b) => {

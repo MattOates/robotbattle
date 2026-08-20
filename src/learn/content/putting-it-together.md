@@ -71,7 +71,7 @@ Each block has one job:
 | `on tick` | wander while there is nothing to do |
 | `on sense robot` | aim, close or hold, and shoot |
 | `on hit by bullet` | get off the line of fire |
-| `on hit wall` | back off properly and head for open ground |
+| `on hit wall` | back off properly and head for open space |
 | `on bullet missed` | admit the target is gone and go looking again |
 
 ## Why the wall block is that long
@@ -89,7 +89,7 @@ taking damage the whole way and never gets free.
 Backing off first breaks the cycle. `drive back 60` puts clear space between the
 {robot} and the wall, `wait 8 ticks` gives the turn somewhere to happen, and only
 then does it set off. Heading for the middle rather than simply away means it
-commits to open ground instead of skimming the edge.
+commits to open space instead of skimming the edge.
 
 The difference is not subtle: over sixty matches against these three opponents,
 the version that turns on the spot wins eight and finishes on about 9 health,

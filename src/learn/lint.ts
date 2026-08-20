@@ -30,6 +30,21 @@ const LOADED_WORDS = [
   "stinger",
   "radar",
   "eyespot",
+  // The world's own words, added when two lessons about {fuel} and the
+  // {ground} slipped "hills" and "the slope" past a list that only knew about
+  // robots and turrets.
+  "fuel",
+  "food",
+  "ground",
+  "goop",
+  "hill",
+  "hills",
+  "slope",
+  "thickness",
+  "uphill",
+  "downhill",
+  "thickest",
+  "thinnest",
   "cilia",
   "flagellum",
   "ciliate",
