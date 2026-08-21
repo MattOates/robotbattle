@@ -90,7 +90,7 @@ const ARENA_PROPS = new Set<string>(ARENA_PROP_NAMES.map((n) => n.toLowerCase())
 // in, so it is validated against EVENT_DOCS rather than one flat list.
 
 /** Default firing power when a script writes a bare `fire`. */
-const DEFAULT_FIRE_POWER = 2;
+export const DEFAULT_FIRE_POWER = 2;
 
 /**
  * Default ping power when a script writes a bare `ping`.

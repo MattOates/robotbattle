@@ -866,6 +866,21 @@ function propSuggestions(props: readonly PropDoc[], theme: Theme): Suggestion[] 
 }
 
 /**
+ * The same properties the popup offers, for a page that lists them all.
+ *
+ * Exported so the reference does not repeat the themed-label rule — that
+ * `health` becomes `vitality` and `turret` becomes whatever the biological
+ * world calls it — which is the kind of small duplication that ends with the
+ * documentation and the editor disagreeing about what a property is called.
+ */
+export function propertyReference(theme: Theme): {
+  me: Suggestion[];
+  arena: Suggestion[];
+} {
+  return { me: propSuggestions(ME_PROPS, theme), arena: propSuggestions(ARENA_PROPS, theme) };
+}
+
+/**
  * The payoff of the per-event table: inside `on sense wall` you are offered
  * bearing and distance, and nothing else, because that is genuinely all a wall
  * can tell you.

@@ -30,6 +30,13 @@ describe("every rule is accounted for", () => {
     expect(ruleDocs()).toHaveLength(names.length);
   });
 
+  it("gives every rule a short label, since diagrams show it and not the code's name", () => {
+    const unlabelled = Object.entries(ANNOTATIONS).filter(
+      ([, a]) => !a.label || a.label.trim() === "" || /[A-Z]/.test(a.label),
+    );
+    expect(unlabelled.map(([name]) => name)).toEqual([]);
+  });
+
   it("says something about every rule a player will meet", () => {
     const silent = ruleDocs().filter((r) => r.section !== "plumbing" && r.summary.trim() === "");
     expect(silent.map((r) => r.name)).toEqual([]);

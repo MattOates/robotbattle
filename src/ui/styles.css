@@ -3344,3 +3344,173 @@ button {
   /* Enough for a couple of lines and the box to type in, on a short screen. */
   min-height: 150px;
 }
+
+/* --- Reference ---------------------------------------------------------- */
+
+.ref-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.ref-tab {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  background: var(--panel);
+  border: 1px solid var(--bezel);
+  border-radius: var(--radius);
+  padding: 7px 14px;
+  cursor: pointer;
+}
+
+.ref-tab:hover {
+  color: var(--ink);
+  border-color: var(--bezel-light);
+}
+
+.ref-tab.on {
+  color: var(--chassis);
+  background: var(--signal);
+  border-color: var(--signal);
+}
+
+.ref-section > h2 {
+  border-bottom: 1px solid var(--bezel);
+  padding-bottom: 6px;
+}
+
+.ref-rule,
+.ref-event,
+.ref-facts {
+  background: var(--panel);
+  border: 1px solid var(--bezel);
+  border-radius: var(--radius);
+  padding: var(--gap);
+  margin: var(--gap) 0;
+}
+
+.ref-rule > h3,
+.ref-event > h4,
+.ref-facts > h3 {
+  margin-top: 0;
+}
+
+/* The one-line form of a rule: dense, and meant to be scanned. */
+.ref-syntax {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--readout);
+  background: var(--chassis);
+  border: 1px solid var(--bezel);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  margin: 8px 0;
+  /* Long rules scroll rather than widening the page. */
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.ref-diagram {
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.ref-example {
+  margin-bottom: 0;
+}
+
+.ref-fields {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.ref-fields > div {
+  display: grid;
+  grid-template-columns: minmax(140px, 210px) 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+@media (max-width: 620px) {
+  .ref-fields > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+.ref-fields dt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--signal);
+}
+
+.ref-fields dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+/* A measured number, set apart from the thing it measures. */
+.ref-value {
+  display: block;
+  color: var(--readout);
+  font-size: 13px;
+}
+
+.ref-none {
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* --- railroad diagrams --------------------------------------------------- */
+
+.railroad {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.rr-line,
+.rr-cap {
+  fill: none;
+  stroke: var(--bezel-light);
+  stroke-width: 1.5;
+}
+
+.rr-cap {
+  stroke: var(--ink-muted);
+}
+
+/* A word you type, a shape you supply, another rule: three colours, because
+   which of the three a box is, is the first thing a reader needs. */
+.rr-word {
+  fill: var(--panel-raised);
+  stroke: var(--readout);
+}
+
+.rr-placeholder {
+  fill: var(--panel-raised);
+  stroke: var(--signal-dim);
+}
+
+.rr-rule {
+  fill: var(--chassis);
+  stroke: var(--bezel-light);
+}
+
+.rr-text {
+  fill: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
