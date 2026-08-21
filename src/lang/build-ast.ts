@@ -19,8 +19,10 @@ import type { CstNode, IToken } from "chevrotain";
 import { parser } from "./grammar.js";
 import { toTokens, type RoboToken } from "./tokens.js";
 import { checkCounts, checkNotRepeated } from "./counts.js";
+import { validate } from "./validate.js";
+import { canonicalizeProperty } from "./vocab.js";
 import { RoboScriptError, type SourcePos } from "./errors.js";
-import { hintFor } from "./diagnostics.js";
+import { hintFor, messagesFor, positionFor } from "./diagnostics.js";
 import {
   EVENT_NAMES,
   type CountClause,
@@ -510,7 +512,9 @@ class AstBuilder extends Base {
     return {
       type: "prop",
       obj: obj.image as "me" | "arena" | "event",
-      prop: this.visit(node(c, "propName")) as string,
+      // `vitality` and `health` are the same field said two ways, and the
+      // vocabulary is settled here so nothing downstream has to know that.
+      prop: canonicalizeProperty(this.visit(node(c, "propName")) as string),
       pos: at(obj),
     };
   }
@@ -543,16 +547,21 @@ const builder = new AstBuilder();
  * always given, so everything downstream is unchanged.
  */
 export function parseWithChevrotain(source: string): Program {
-  parser.input = toTokens(source);
+  const tokens = toTokens(source);
+  // The provider is rebuilt for each parse so a message can look back over this
+  // parse's tokens. It has exactly the lifetime of `parser.input`, which is the
+  // same singleton and already means one parse at a time.
+  parser.useMessages(messagesFor(tokens));
+  parser.input = tokens;
   const cst = parser.program();
   const failure = parser.errors[0];
   if (failure) {
     const token = failure.token as RoboToken | undefined;
     throw new RoboScriptError(
       failure.message,
-      { line: token?.startLine ?? 0, col: token?.startColumn ?? 0 },
+      positionFor(failure) ?? { line: token?.startLine ?? 0, col: token?.startColumn ?? 0 },
       hintFor(failure),
     );
   }
-  return builder.visit(cst) as Program;
+  return validate(builder.visit(cst) as Program);
 }

@@ -14,6 +14,7 @@
 
 import { createToken, Lexer, type IToken, type TokenType } from "chevrotain";
 import { tokenize, type Token } from "./lexer.js";
+import { WORD_ALIASES } from "./vocab.js";
 
 /**
  * `Lexer.NA` on every pattern, because Chevrotain never lexes here.
@@ -118,6 +119,26 @@ export const ALL_TOKENS: TokenType[] = [
   ColorLit,
   Newline,
 ];
+
+/**
+ * Words that may never be used as a variable name.
+ *
+ * Every reserved word is a token type, so this is that list and not a second
+ * copy of it. The editor's highlighter has its own tables, and a word the
+ * language reserves but the highlighter has never heard of renders as an
+ * ordinary variable — which is how a new instruction ships looking like a typo.
+ * `tests/ui/highlight.test.ts` compares the two.
+ *
+ * The alternate spellings the lexer folds away belong here too: `colour` never
+ * reaches the parser, but somebody typing it as a variable name still gets a
+ * `color` and still needs telling why.
+ */
+export const RESERVED: ReadonlySet<string> = new Set([
+  ...KEYWORDS,
+  ...Object.keys(WORD_ALIASES).filter((spelling) =>
+    WORD_ALIASES[spelling]!.every((canonical) => KEYWORD_TYPES.has(canonical)),
+  ),
+]);
 
 /** Our token wearing Chevrotain's shape, with the original spelling kept. */
 export interface RoboToken extends IToken {

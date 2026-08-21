@@ -16,14 +16,14 @@
  * `IParserErrorMessageProvider`, keyed by the rule that failed.
  */
 
-import { CstParser } from "chevrotain";
+import { CstParser, type IParserErrorMessageProvider } from "chevrotain";
 import { ALL_TOKENS, ColorLit, Ident, kw, Newline, NumLit, op, StrLit } from "./tokens.js";
-import { errorMessageProvider } from "./diagnostics.js";
+import { messagesFor } from "./diagnostics.js";
 
 class RoboScriptParser extends CstParser {
   constructor() {
     super(ALL_TOKENS, {
-      errorMessageProvider,
+      errorMessageProvider: messagesFor([]),
       // Recovery invents nodes to keep going. A robot that half-compiles is
       // worse than one that does not: the player would be told it was fine.
       recoveryEnabled: false,
@@ -32,6 +32,19 @@ class RoboScriptParser extends CstParser {
       maxLookahead: 4,
     });
     this.performSelfAnalysis();
+  }
+
+  /**
+   * Point the parser at a set of messages built for the input it is about to
+   * read. Some wording has to look back over the tokens — "the `on tick` block
+   * never finishes" names a block that opened lines ago — and Chevrotain's
+   * provider is given no way to reach them.
+   */
+  useMessages(provider: IParserErrorMessageProvider): void {
+    // Chevrotain keeps this on the instance but does not declare it, so the
+    // cast is the honest way to say what is happening.
+    (this as unknown as { errorMessageProvider: IParserErrorMessageProvider })
+      .errorMessageProvider = provider;
   }
 
   // --- the shape of a program ---------------------------------------------

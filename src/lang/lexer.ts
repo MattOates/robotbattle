@@ -98,7 +98,11 @@ export function tokenize(source: string): Token[] {
           "colours look like #ff8800 (red, green, blue) or the short form #f80",
         );
       }
-      push("color", "#" + hex.toLowerCase(), "#" + hex, at);
+      // The short form expands here, so that everything downstream sees one
+      // spelling of a colour and `raw` still holds the one that was typed.
+      const full =
+        hex.length === 3 ? hex[0]! + hex[0]! + hex[1]! + hex[1]! + hex[2]! + hex[2]! : hex;
+      push("color", "#" + full.toLowerCase(), "#" + hex, at);
       i = j;
       continue;
     }

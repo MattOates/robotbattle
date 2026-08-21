@@ -89,6 +89,10 @@ export const WORD_ALIASES: Readonly<Record<string, readonly string[]>> = (() => 
     // The one multi-word shorthand: too good a word to give up for the sake of
     // a uniform table.
     stung: ["hit", "by", "bullet"],
+    // Not a theme, just the other spelling. It used to be handled by the
+    // parser matching either word, which meant every other reader of the
+    // language had to know about it separately.
+    colour: ["color"],
   };
   for (const s of SYNONYMS) {
     for (const spelling of [s.mechanical, s.biological, ...(s.also ?? [])]) {
