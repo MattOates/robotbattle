@@ -59,13 +59,26 @@ describe("the news reads in both worlds", () => {
 });
 
 describe("the news matches the history", () => {
+  const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8" }).trim();
+
+  /**
+   * Whether this checkout can actually see the past.
+   *
+   * A shallow clone has one commit in it, which makes every entry older than
+   * that commit look invented — so the check below would fail loudly while
+   * proving nothing. It is skipped rather than fudged, because a test that
+   * cannot answer its question should say so instead of guessing.
+   *
+   * CI asks for the full history (`fetch-depth: 0`), so there it always runs.
+   * This guard is for whoever clones with `--depth`.
+   */
+  const shallow = git("rev-parse", "--is-shallow-repository") === "true";
+
   const days = new Set(
-    execFileSync("git", ["log", "--date=short", "--pretty=format:%ad"], { encoding: "utf8" })
-      .split("\n")
-      .filter(Boolean),
+    git("log", "--date=short", "--pretty=format:%ad").split("\n").filter(Boolean),
   );
 
-  it("only claims days that something actually landed on", () => {
+  it.skipIf(shallow)("only claims days that something actually landed on", () => {
     // A changelog whose dates are invented is worse than no changelog.
     for (const entry of NEWS) {
       expect(days.has(entry.date), `${entry.date} — ${entry.title}`).toBe(true);

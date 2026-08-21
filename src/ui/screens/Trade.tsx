@@ -1,17 +1,25 @@
 /**
- * Trade: handing scripts between two people.
+ * Trade: handing things between two people.
+ *
+ * Three kinds of thing, through one set of gestures. A **robot** is a whole
+ * personality; a **place** is somewhere to fight, walls and ground together; a
+ * **block** is one named behaviour out of a script. They travel the same way
+ * because the conversation is the same in each case, and only the goods differ.
  *
  * Two directions, because they are different intentions. You can *give* one of
  * yours away, and you can *ask* for one you can see on someone's shelf. Both
- * end in the same place — a script written into a library — and both need the
- * agreement of whoever is on the other end. Nothing arrives in your library
- * without you pressing something, and nothing leaves it without the owner
- * pressing something.
+ * need the agreement of whoever is on the other end: nothing arrives in your
+ * library without you pressing something, and nothing leaves it without the
+ * owner pressing something.
  *
- * What lands is a new robot with the traded script kept as a version, marked
- * with who gave it to you and when. That version is the whole point: a robot
- * that has been traded and then edited for a fortnight still came from someone,
- * and the version list is the only place that stays true.
+ * What lands keeps its origin. A robot arrives with the traded script as a
+ * version marked with who gave it to you; a place carries the same mark. That
+ * is the whole point — something traded and then edited for a fortnight still
+ * came from someone, and this is the only place that stays true.
+ *
+ * A block is the exception, and has to be: a block is not a thing a library can
+ * hold on its own, it is text inside a script. So taking one grafts it into a
+ * robot you already have, bringing whatever it hands off to along with it.
  */
 
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,14 +31,27 @@ import { deriveMeta } from "../../store/library.js";
 import { THEMES, type Theme } from "../../lang/vocab.js";
 import { RobotGlyph } from "../RobotGlyph.js";
 import { RobotTable, type TableEntry } from "../RobotTable.js";
-import type { Locomotion } from "../../lang/ast.js";
-import { offeredSource, pruneOffered, shelfFor, toggleOffered } from "../tradeShelf.js";
 import {
-  MAX_SOURCE_LENGTH,
+  allTradeables,
+  offeredGoods,
+  pruneOffered,
+  shelfFor,
+  tableKey,
+  toggleOffered,
+  type Tradeables,
+} from "../tradeShelf.js";
+import { graftBlocks, libraryBlocks } from "../../workshop/blocks.js";
+import { MapEditor } from "../MapEditor.js";
+import { ARENA_SIZE } from "../../net/matchsetup.js";
+import {
+  sanitiseGoods,
   sanitiseShelf,
   sanitiseText,
   type Message,
+  TRADE_KINDS,
   type ShelfItem,
+  type TradeGoods,
+  type TradeKind,
 } from "../../net/protocol.js";
 
 /**
@@ -47,33 +68,35 @@ interface Props {
   initialRoom: string | null;
 }
 
-/** Someone has offered us a script and is waiting to hear back. */
-interface IncomingOffer {
+/** Something somebody is holding out to us, waiting to hear back. */
+interface Incoming {
   from: string;
   fromName: string;
-  robotId: string;
-  name: string;
-  color: string;
-  locomotion: Locomotion;
-  source: string;
+  kind: TradeKind;
+  id: string;
+  goods: TradeGoods;
 }
 
 /** Someone would like a copy of one of ours. */
 interface IncomingRequest {
   from: string;
   fromName: string;
-  robotId: string;
-  robotName: string;
+  kind: TradeKind;
+  id: string;
+  name: string;
 }
 
-/** A script we are reading before deciding whether to ask for it. */
+/** Something we are reading before deciding whether to ask for it. */
 interface Preview {
   from: string;
-  robotId: string;
-  name: string;
-  color: string;
-  locomotion: Locomotion;
-  source: string;
+  kind: TradeKind;
+  id: string;
+  goods: TradeGoods;
+}
+
+/** The words for one kind, in the reader's own world. */
+function kindWord(kind: TradeKind, words: { robot: string; arena: string }): string {
+  return kind === "robot" ? words.robot : kind === "arena" ? words.arena : "block";
 }
 
 export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Props) {
@@ -93,7 +116,11 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
   }, [connected, room.roomCode]);
 
   const [shelves, setShelves] = useState<Record<string, ShelfItem[]>>({});
-  const [offers, setOffers] = useState<IncomingOffer[]>([]);
+  /** Which kinds the library column is showing. All three to begin with. */
+  const [showing, setShowing] = useState<Set<TradeKind>>(
+    () => new Set<TradeKind>(["robot", "arena", "block"]),
+  );
+  const [offers, setOffers] = useState<Incoming[]>([]);
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -101,8 +128,17 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
   const [selectedId, setSelectedId] = useState<string | null>(robots[0]?.id ?? null);
   /** Ids you have put on the table, in the order you put them there. */
   const [offered, setOffered] = useState<string[]>([]);
+  /**
+   * The robot a traded block would go into.
+   *
+   * Whatever you last touched, falling back to the first thing in the library.
+   * A block has to land in a script and there is no sensible way to guess which
+   * one, so the screen says which it will be rather than asking every time.
+   */
   /** Which list the pointer is over mid-drag, so the target is obvious. */
   const [dropping, setDropping] = useState<"table" | "library" | null>(null);
+
+  const into = robots.find((r) => r.id === selectedId) ?? robots[0] ?? null;
 
   const others = useMemo(
     () => (room.state?.peers ?? []).filter((p) => p.id !== room.state?.selfId),
@@ -127,13 +163,30 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
     setOffered([]);
   }, [connected]);
 
-  // A robot deleted in another tab cannot stay on the table.
+  /**
+   * Everything of yours that could be traded.
+   *
+   * Blocks are derived rather than stored, so this recomputes them from the
+   * scripts — which also means editing a robot can quietly rename or delete a
+   * block, and the table has to be re-checked against it rather than trusted.
+   */
+  const tradeables = useMemo<Tradeables>(
+    () => ({ robots, arenas: lib.arenas, blocks: libraryBlocks(robots) }),
+    [robots, lib.arenas],
+  );
+
+  const myThings = useMemo(
+    () => allTradeables(tradeables).filter((item) => showing.has(item.kind)),
+    [tradeables, showing],
+  );
+
+  // Anything deleted — or edited out of a script — cannot stay on the table.
   useEffect(() => {
     setOffered((prev) => {
-      const next = pruneOffered(prev, robots);
+      const next = pruneOffered(prev, tradeables);
       return next.length === prev.length ? prev : next;
     });
-  }, [robots]);
+  }, [tradeables]);
 
   // Whoever is on screen by default is whoever is here; with one other person
   // in the room — which is the usual case — there is nothing to choose.
@@ -149,7 +202,7 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
    * out, and never a script. Everything past a title is a decision somebody
    * has to make.
    */
-  const shelf = useMemo(() => shelfFor(robots, offered), [offered, robots]);
+  const shelf = useMemo(() => shelfFor(tradeables, offered), [offered, tradeables]);
   const sent = useRef<string>("");
   useEffect(() => {
     const session = room.session;
@@ -159,8 +212,55 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
     const key = JSON.stringify(shelf) + others.map((p) => p.id).join(",");
     if (sent.current === key) return;
     sent.current = key;
-    session.send("all", { t: "shelf", robots: shelf });
+    session.send("all", { t: "shelf", items: shelf });
   }, [connected, others, room.session, shelf]);
+
+  /**
+   * Write arrived goods into the library.
+   *
+   * The one place a trade actually changes anything of yours, which is why it
+   * is a single function rather than three scattered ones — and why a block,
+   * which has nowhere of its own to live, has to say so here rather than fail
+   * quietly somewhere else.
+   */
+  const keep = useCallback(
+    (goods: TradeGoods, fromName: string): boolean => {
+      if (goods.kind === "robot") {
+        const added = library.importTraded(goods.source, fromName);
+        refresh();
+        setSelectedId(added.id);
+        setNotice(`${added.name} is in your library, from ${fromName}.`);
+        return true;
+      }
+      if (goods.kind === "arena") {
+        const added = lib.arenaLib.importTraded(goods.name, goods.spec, fromName);
+        refresh();
+        setNotice(`${added.name} is yours, from ${fromName}.`);
+        return true;
+      }
+
+      // A block goes *into* a script, so there has to be one to put it in.
+      const target = robots.find((r) => r.id === selectedId) ?? robots[0];
+      if (!target) {
+        setNotice("Make a robot first — a block has to go into one.");
+        return false;
+      }
+      const graft = graftBlocks(target.source, goods.text, fromName);
+      if (graft.added.length === 0) {
+        setNotice(`${target.name} already has ${goods.name}.`);
+        return false;
+      }
+      library.updateSource(target.id, graft.source);
+      refresh();
+      setSelectedId(target.id);
+      // The landed name is worth saying: it is not always the one it left with.
+      setNotice(
+        `${graft.added.map((n) => `\`${n}\``).join(", ")} added to ${target.name}, from ${fromName}.`,
+      );
+      return true;
+    },
+    [lib.arenaLib, library, refresh, robots, selectedId],
+  );
 
   // --- incoming ------------------------------------------------------------
   useEffect(
@@ -171,68 +271,60 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           case "shelf":
             setShelves((prev) => ({
               ...prev,
-              [from]: sanitiseShelf(message.robots),
+              [from]: sanitiseShelf(message.items),
             }));
             return;
 
           case "peek": {
             // Reading something you put out needs no further ceremony: it is
-            // the script its owner would read aloud over their shoulder. But
-            // only what is out — the table answers this, not the library.
+            // what its owner would read aloud over their shoulder. But only
+            // what is out — the table answers this, not the library.
             session?.send(from, {
               t: "peekResult",
-              robotId: message.robotId,
-              source: offeredSource(robots, offered, message.robotId),
+              kind: message.kind,
+              id: message.id,
+              goods: offeredGoods(tradeables, offered, message.kind, message.id),
             });
             return;
           }
 
           case "peekResult": {
-            const source = typeof message.source === "string" ? message.source : null;
-            if (source === null) {
+            const goods = sanitiseGoods(message.goods);
+            if (!goods) {
               setNotice("That one is no longer there.");
               return;
             }
-            const item = (shelves[from] ?? []).find((r) => r.id === message.robotId);
-            setPreview({
-              from,
-              robotId: message.robotId,
-              name: item?.name ?? "Their robot",
-              color: item?.color ?? "#8a8f98",
-              locomotion: item?.locomotion ?? "skid",
-              source: source.slice(0, MAX_SOURCE_LENGTH),
-            });
+            setPreview({ from, kind: message.kind, id: message.id, goods });
             return;
           }
 
           case "copyRequest": {
-            // Asking about something that is not on the table is answered the
-            // same way whether it was taken back, deleted or never offered.
-            const mine =
-              offeredSource(robots, offered, message.robotId) === null
-                ? undefined
-                : robots.find((r) => r.id === message.robotId);
-            if (!mine) {
+            // Asking about something not on the table is answered the same way
+            // whether it was taken back, deleted or never offered.
+            const goods = offeredGoods(tradeables, offered, message.kind, message.id);
+            if (!goods) {
               session?.send(from, {
                 t: "copyResponse",
-                robotId: message.robotId,
-                source: null,
+                kind: message.kind,
+                id: message.id,
+                goods: null,
                 reason: "That one isn't on the table.",
               });
               return;
             }
             setRequests((prev) =>
-              // One pending ask per robot per person; clicking twice is not two
+              // One pending ask per thing per person; clicking twice is not two
               // questions.
-              prev.some((r) => r.from === from && r.robotId === message.robotId)
+              prev.some((r) => r.from === from && r.kind === message.kind && r.id === message.id)
                 ? prev
                 : [
                     ...prev,
                     {
                       from,
                       fromName: nameOf(from),
-                      robotId: message.robotId,
-                      robotName: mine.name,
+                      kind: message.kind,
+                      id: message.id,
+                      name: goods.name,
                     },
                   ],
             );
@@ -240,35 +332,34 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           }
 
           case "copyResponse": {
-            const source = typeof message.source === "string" ? message.source : null;
-            if (source === null) {
+            const goods = sanitiseGoods(message.goods);
+            if (!goods) {
               setNotice(sanitiseText(message.reason, 200) || `${nameOf(from)} said no thank you.`);
               return;
             }
-            const added = library.importTraded(source.slice(0, MAX_SOURCE_LENGTH), nameOf(from));
-            refresh();
-            setSelectedId(added.id);
-            setNotice(`${added.name} is in your library, from ${nameOf(from)}.`);
+            // An answered ask is consent already given, so it lands rather than
+            // queueing a second question — except a block, which still needs to
+            // be told which script to go into.
+            if (goods.kind === "block") {
+              setOffers((prev) => [
+                ...prev,
+                { from, fromName: nameOf(from), kind: goods.kind, id: message.id, goods },
+              ]);
+              return;
+            }
+            keep(goods, nameOf(from));
             return;
           }
 
           case "offer": {
+            const goods = sanitiseGoods(message.goods);
+            if (!goods) return;
             setOffers((prev) =>
-              prev.some((o) => o.from === from && o.robotId === message.robotId)
+              prev.some((o) => o.from === from && o.kind === message.kind && o.id === message.id)
                 ? prev
                 : [
                     ...prev,
-                    {
-                      from,
-                      fromName: nameOf(from),
-                      robotId: message.robotId,
-                      name: sanitiseText(message.name, 32) || "Their robot",
-                      color: /^#[0-9a-fA-F]{6}$/.test(message.color) ? message.color : "#8a8f98",
-                      // An offer carries the whole script, so how it looks can
-                      // simply be read off it rather than trusted from the wire.
-                      locomotion: deriveMeta(message.source ?? "")?.locomotion ?? "skid",
-                      source: sanitiseText(message.source, MAX_SOURCE_LENGTH),
-                    },
+                    { from, fromName: nameOf(from), kind: message.kind, id: message.id, goods },
                   ],
             );
             return;
@@ -284,57 +375,58 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
             return;
         }
       }),
-    [library, nameOf, offered, refresh, robots, room, shelves],
+    [keep, nameOf, offered, room, tradeables],
   );
 
   // --- outgoing ------------------------------------------------------------
 
-  /** Put a robot on the table, or take it back. Idempotent either way. */
-  const put = useCallback((robotId: string, onTable: boolean) => {
-    if (!robotId) return;
-    setOffered((prev) =>
-      prev.includes(robotId) === onTable ? prev : toggleOffered(prev, robotId),
-    );
+  /** Put something on the table, or take it back. Idempotent either way. */
+  const put = useCallback((key: string, onTable: boolean) => {
+    if (!key) return;
+    setOffered((prev) => (prev.includes(key) === onTable ? prev : toggleOffered(prev, key)));
   }, []);
 
+  /** Hand one of yours to whoever is selected. */
   const give = useCallback(
-    (robotId: string) => {
-      const mine = robots.find((r) => r.id === robotId);
-      if (!mine || !target || !room.session) return;
-      room.session.send(target, {
-        t: "offer",
-        robotId: mine.id,
-        name: mine.name,
-        color: mine.color,
-        source: mine.source,
-      });
-      setNotice(`Offered ${mine.name} to ${nameOf(target)}. Waiting for them.`);
+    (item: ShelfItem) => {
+      if (!target || !room.session) return;
+      // Given straight from the library rather than from the table: giving is
+      // its own decision, and having to put something out first would be
+      // ceremony for nothing.
+      const goods = offeredGoods(
+        { ...tradeables, blocks: tradeables.blocks },
+        [tableKey(item.kind, item.id)],
+        item.kind,
+        item.id,
+      );
+      if (!goods) return;
+      room.session.send(target, { t: "offer", kind: item.kind, id: item.id, goods });
+      setNotice(`Offered ${item.name} to ${nameOf(target)}. Waiting for them.`);
     },
-    [nameOf, robots, room.session, target],
+    [nameOf, room.session, target, tradeables],
   );
 
   const accept = useCallback(
-    (offer: IncomingOffer) => {
-      const added = library.importTraded(offer.source, offer.fromName);
-      refresh();
-      setSelectedId(added.id);
+    (offer: Incoming) => {
+      if (!keep(offer.goods, offer.fromName)) return;
       setOffers((prev) => prev.filter((o) => o !== offer));
       room.session?.send(offer.from, {
         t: "offerResult",
-        robotId: offer.robotId,
+        kind: offer.kind,
+        id: offer.id,
         accepted: true,
       });
-      setNotice(`${added.name} is in your library, from ${offer.fromName}.`);
     },
-    [library, refresh, room.session],
+    [keep, room.session],
   );
 
   const decline = useCallback(
-    (offer: IncomingOffer) => {
+    (offer: Incoming) => {
       setOffers((prev) => prev.filter((o) => o !== offer));
       room.session?.send(offer.from, {
         t: "offerResult",
-        robotId: offer.robotId,
+        kind: offer.kind,
+        id: offer.id,
         accepted: false,
       });
     },
@@ -343,16 +435,19 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
 
   const answer = useCallback(
     (request: IncomingRequest, agreed: boolean) => {
-      const mine = robots.find((r) => r.id === request.robotId);
       setRequests((prev) => prev.filter((r) => r !== request));
       room.session?.send(request.from, {
         t: "copyResponse",
-        robotId: request.robotId,
-        source: agreed && mine ? mine.source : null,
+        kind: request.kind,
+        id: request.id,
+        // Read from the table again rather than from the copy taken when they
+        // asked: it may have been taken back in between, and the table is
+        // always the authority on what may leave.
+        goods: agreed ? offeredGoods(tradeables, offered, request.kind, request.id) : null,
         reason: agreed ? null : "Not this one, sorry.",
       });
     },
-    [robots, room.session],
+    [offered, room.session, tradeables],
   );
 
   /**
@@ -364,7 +459,7 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
    * decides what you can do with it.
    */
   const table: TableEntry[] = [
-    ...shelfFor(robots, offered).map((item) => ({ item, ownerId: null, ownerName: "you" })),
+    ...shelf.map((item) => ({ item, ownerId: null, ownerName: "you" })),
     ...others.flatMap((peer) =>
       (shelves[peer.id] ?? []).map((item) => ({
         item,
@@ -414,16 +509,35 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
         {notice ? <div className="notice">{notice}</div> : null}
 
         {offers.map((offer) => (
-          <div key={`${offer.from}:${offer.robotId}`} className="notice trade-ask">
-            <RobotGlyph
-              color={offer.color}
-              locomotion={offer.locomotion}
-              theme={theme}
-              size={32}
-              name={offer.name}
-            />
+          <div key={`${offer.from}:${offer.kind}:${offer.id}`} className="notice trade-ask">
+            {offer.goods.kind === "robot" ? (
+              <RobotGlyph
+                color={offer.goods.color}
+                // An offer carries the whole script, so how it looks can simply
+                // be read off it rather than trusted from the wire.
+                locomotion={deriveMeta(offer.goods.source)?.locomotion ?? "skid"}
+                theme={theme}
+                size={32}
+                name={offer.goods.name}
+              />
+            ) : null}
             <span>
-              <strong>{offer.fromName}</strong> is offering you {offer.name}.
+              <strong>{offer.fromName}</strong> is offering you{" "}
+              {offer.goods.kind === "block" ? (
+                <>
+                  the block <code>{offer.goods.name}</code> from {offer.goods.from}
+                </>
+              ) : offer.goods.kind === "arena" ? (
+                <>
+                  the {words.arena} {offer.goods.name}
+                  {offer.goods.spec.walls.length > 0
+                    ? ` — ${offer.goods.spec.walls.length} walls`
+                    : ""}
+                </>
+              ) : (
+                offer.goods.name
+              )}
+              {offer.goods.kind === "block" && into ? `, for ${into.name}` : ""}.
             </span>
             <span className="spacer" />
             <button type="button" className="btn small primary" onClick={() => accept(offer)}>
@@ -436,9 +550,14 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
         ))}
 
         {requests.map((request) => (
-          <div key={`${request.from}:${request.robotId}`} className="notice trade-ask">
+          <div
+            key={`${request.from}:${request.kind}:${request.id}`}
+            className="notice trade-ask"
+          >
             <span>
-              <strong>{request.fromName}</strong> would like a copy of {request.robotName}.
+              <strong>{request.fromName}</strong> would like a copy of{" "}
+              {request.kind === "block" ? <code>{request.name}</code> : request.name}
+              {request.kind === "robot" ? "" : ` (${kindWord(request.kind, words)})`}.
             </span>
             <span className="spacer" />
             <button
@@ -454,12 +573,41 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           </div>
         ))}
 
+        {/* Which kinds the left-hand column shows. A library with forty blocks
+            in it would otherwise bury the three robots. */}
+        <div className="row kind-filter" aria-label="what to show">
+          {TRADE_KINDS.map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              aria-pressed={showing.has(kind)}
+              className={`btn small${showing.has(kind) ? " primary" : ""}`}
+              onClick={() =>
+                setShowing((prev) => {
+                  const next = new Set(prev);
+                  // Never all off: an empty column looks like a bug.
+                  if (next.has(kind) && next.size > 1) next.delete(kind);
+                  else next.add(kind);
+                  return next;
+                })
+              }
+            >
+              {kind === "robot"
+                ? words.robotPlural
+                : kind === "arena"
+                  ? words.arenaPlural
+                  : words.blockPlural}
+            </button>
+          ))}
+        </div>
+
         <RobotTable
           theme={theme}
           robotPlural={words.robotPlural}
-          robots={robots}
+          robots={myThings}
           offered={offered}
           onPut={put}
+          keyOf={(item) => tableKey(item.kind, item.id)}
           entries={table}
           tableLabel="On the table"
           tableHint={table.length === 0 ? "nothing out yet" : `${table.length} up for viewing`}
@@ -475,11 +623,15 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
             ownerId === null ? (
               <>
                 {target === null ? null : (
-                  <button type="button" className="btn small" onClick={() => give(item.id)}>
+                  <button type="button" className="btn small" onClick={() => give(item)}>
                     Give to {nameOf(target)}
                   </button>
                 )}
-                <button type="button" className="btn small" onClick={() => put(item.id, false)}>
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => put(tableKey(item.kind, item.id), false)}
+                >
                   Take back
                 </button>
               </>
@@ -488,7 +640,9 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
                 <button
                   type="button"
                   className="btn small"
-                  onClick={() => room.session?.send(ownerId, { t: "peek", robotId: item.id })}
+                  onClick={() =>
+                    room.session?.send(ownerId, { t: "peek", kind: item.kind, id: item.id })
+                  }
                 >
                   Read
                 </button>
@@ -496,7 +650,11 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
                   type="button"
                   className="btn small"
                   onClick={() => {
-                    room.session?.send(ownerId, { t: "copyRequest", robotId: item.id });
+                    room.session?.send(ownerId, {
+                      t: "copyRequest",
+                      kind: item.kind,
+                      id: item.id,
+                    });
                     setNotice(`Asked ${ownerName} for ${item.name}.`);
                   }}
                 >
@@ -515,15 +673,19 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
              is by its owner agreeing to send it. */
           <section className="panel trade-preview">
             <div className="panel-head">
-              <RobotGlyph
-                color={preview.color}
-                locomotion={preview.locomotion}
-                theme={theme}
-                size={28}
-                name={preview.name}
-              />
-              <span className="silkscreen">{preview.name}</span>
-              <span className="roster-meta">from {nameOf(preview.from)}</span>
+              {preview.goods.kind === "robot" ? (
+                <RobotGlyph
+                  color={preview.goods.color}
+                  locomotion={deriveMeta(preview.goods.source)?.locomotion ?? "skid"}
+                  theme={theme}
+                  size={28}
+                  name={preview.goods.name}
+                />
+              ) : null}
+              <span className="silkscreen">{preview.goods.name}</span>
+              <span className="roster-meta">
+                {kindWord(preview.kind, words)} from {nameOf(preview.from)}
+              </span>
               <span className="spacer" />
               <button
                 type="button"
@@ -531,9 +693,10 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
                 onClick={() => {
                   room.session?.send(preview.from, {
                     t: "copyRequest",
-                    robotId: preview.robotId,
+                    kind: preview.kind,
+                    id: preview.id,
                   });
-                  setNotice(`Asked ${nameOf(preview.from)} for ${preview.name}.`);
+                  setNotice(`Asked ${nameOf(preview.from)} for ${preview.goods.name}.`);
                 }}
               >
                 Ask for a copy
@@ -542,17 +705,32 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
                 Close
               </button>
             </div>
-            <Suspense fallback={<div className="empty small">Opening the editor…</div>}>
-              <CodeEditor
-                key={`${preview.from}:${preview.robotId}`}
-                source={preview.source}
+
+            {preview.goods.kind === "arena" ? (
+              /* A map is looked at rather than read. The same editor the
+                 Workshop draws with, with nothing to drag: what is worth
+                 knowing about somebody's labyrinth is its shape. */
+              <MapEditor
+                spec={preview.goods.spec}
+                width={ARENA_SIZE.width}
+                height={ARENA_SIZE.height}
                 theme={theme}
-                preview
-                // Nothing can change the document, so this never fires; a no-op
-                // is the honest implementation of "you cannot change it".
+                readOnly
                 onChange={() => undefined}
               />
-            </Suspense>
+            ) : (
+              <Suspense fallback={<div className="empty small">Opening the editor…</div>}>
+                <CodeEditor
+                  key={`${preview.from}:${preview.kind}:${preview.id}`}
+                  source={preview.goods.kind === "block" ? preview.goods.text : preview.goods.source}
+                  theme={theme}
+                  preview
+                  // Nothing can change the document, so this never fires; a
+                  // no-op is the honest implementation of "you cannot change it".
+                  onChange={() => undefined}
+                />
+              </Suspense>
+            )}
           </section>
         ) : null}
       </div>

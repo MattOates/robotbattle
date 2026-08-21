@@ -159,6 +159,16 @@ export interface ThemeVocab {
   readonly uphill: string;
   readonly downhill: string;
   readonly arena: string;
+  /** More than one of them. Saved arenas are listed, so the plural is needed. */
+  readonly arenaPlural: string;
+  /**
+   * What a reusable `can ... given` block is called.
+   *
+   * Here rather than as a ternary at the one call site, because there are now
+   * three "Your ..." shelves in the Workshop sidebar and they should all get
+   * their heading from the same table.
+   */
+  readonly blockPlural: string;
 }
 
 export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
@@ -181,6 +191,8 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     uphill: "uphill",
     downhill: "downhill",
     arena: "arena",
+    arenaPlural: "arenas",
+    blockPlural: "blocks",
   },
   biological: {
     theme: "biological",
@@ -201,6 +213,8 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     uphill: "thickest",
     downhill: "thinnest",
     arena: "microcosm",
+    arenaPlural: "microcosms",
+    blockPlural: "behaviours",
   },
 };
 

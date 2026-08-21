@@ -12,6 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The whole history, not the single commit checkout gives by
+          # default. `tests/ui/news.test.ts` checks every news entry against
+          # the days work actually landed on, and one commit makes every
+          # entry older than the last push look invented.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22

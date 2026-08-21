@@ -45,7 +45,7 @@ import {
   FUEL_LEVELS,
   FUEL_SETTINGS,
   TERRAIN_LEVELS,
-  TERRAIN_SETTINGS,
+  arenaForLevel,
   describeConditions,
   fuelHeading,
   terrainHeading,
@@ -54,7 +54,13 @@ import {
   type TerrainLevel,
 } from "../matchSettings.js";
 import type { TrialWorkerIn, TrialWorkerOut } from "../../workshop/trials.worker.js";
-import type { BattleRecord, ChatMessage, StoredRobot } from "../../store/types.js";
+import type { BattleRecord, ChatMessage, StoredArena, StoredRobot } from "../../store/types.js";
+import type { ArenaSpec, TerrainConfig } from "../../sim/types.js";
+import { WALL } from "../../sim/types.js";
+import { drivableMazeGrid, generateFittingMaze } from "../../sim/maze.js";
+import { blankArena } from "../../store/arenas.js";
+import { MapEditor } from "../MapEditor.js";
+import { ARENA_SIZE } from "../../net/matchsetup.js";
 
 interface Props {
   theme: Theme;
@@ -63,14 +69,38 @@ interface Props {
   initialRoom: string | null;
 }
 
-type Pane = "editor" | "trial" | "bench" | "history";
+type Pane = "editor" | "map" | "trial" | "bench" | "history";
 
 const PANE_LABELS: Record<Pane, string> = {
   editor: "Editor",
+  map: "Map",
   trial: "Trial",
   bench: "Test bench",
   history: "History",
 };
+
+/**
+ * Which tabs each kind of thing gets.
+ *
+ * An arena has no Editor because there is no script, and no History because a
+ * map does not accumulate one: battle records are filed against a robot, and
+ * "this wall layout used to win" is not a sentence. What it keeps is Trial and
+ * Test bench, which is the point of editing a map inside the Workshop at all —
+ * you draw a labyrinth and immediately find out whether anything can solve it.
+ */
+const ROBOT_PANES: Pane[] = ["editor", "trial", "bench", "history"];
+
+/**
+ * Spread an `ArenaSpec` into the two flat fields a manifest carries.
+ *
+ * The manifest keeps `terrain` and `walls` side by side rather than nesting a
+ * spec, because it is the wire format and a flat shape is the one worth
+ * versioning. This is the one-line bridge between the two.
+ */
+function specToManifest(spec: ArenaSpec) {
+  return { terrain: spec.terrain, walls: spec.walls };
+}
+const ARENA_PANES: Pane[] = ["map", "trial", "bench"];
 
 /** What is on screen — for a guest, whatever the host is showing. */
 interface ViewedRobot {
@@ -83,6 +113,15 @@ interface ViewedRobot {
 export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
   const { library, robots, refresh, chat } = lib;
   const [selectedId, setSelectedId] = useState<string | null>(robots[0]?.id ?? null);
+  /**
+   * Which arena is being edited, or null when a robot is.
+   *
+   * Kept beside `selectedId` rather than replacing it with a tagged union,
+   * because the selected ROBOT still matters while an arena is open: Trial and
+   * Test bench on a map need something to run on it, and it should be whatever
+   * you were last working on rather than a second thing to pick.
+   */
+  const [selectedArenaId, setSelectedArenaId] = useState<string | null>(null);
   const [pane, setPane] = useState<Pane>("editor");
   const [showCones, setShowCones] = useState(true);
 
@@ -110,6 +149,23 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
 
   const selected = robots.find((r) => r.id === selectedId) ?? robots[0] ?? null;
+  const selectedArena = lib.arenas.find((a) => a.id === selectedArenaId) ?? null;
+  const editingArena = selectedArena !== null;
+  const panes = editingArena ? ARENA_PANES : ROBOT_PANES;
+
+  /**
+   * The map Trial and Test bench fight on.
+   *
+   * An open arena unless one is being edited, in which case it is that one —
+   * so "does anything get through my labyrinth" is one click from drawing it.
+   */
+  const benchArena = selectedArena?.spec ?? null;
+
+  // A tab that does not exist for what is now selected falls back to the first
+  // one that does, rather than showing an empty column.
+  useEffect(() => {
+    if (!panes.includes(pane)) setPane(panes[0]!);
+  }, [panes, pane]);
 
   useEffect(() => {
     if (!selected && robots.length > 0) setSelectedId(robots[0]!.id);
@@ -504,6 +560,18 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
             }}
           />
 
+          {/* Last of the three shelves. Places are the thing you reach for
+              least often, and the one whose selection changes the most. Hidden
+              for a guest, who is here to look at somebody else's robot. */}
+          {!inSession || isHost ? (
+            <ArenaShelf
+              lib={lib}
+              theme={theme}
+              selectedId={selectedArenaId}
+              onSelect={setSelectedArenaId}
+            />
+          ) : null}
+
           <SessionPanel
             room={room}
             inSession={inSession}
@@ -543,7 +611,7 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
 
         <div className="column">
           <div className="pane-tabs" role="tablist">
-            {(Object.keys(PANE_LABELS) as Pane[]).map((name) => (
+            {panes.map((name) => (
               <button
                 key={name}
                 type="button"
@@ -556,7 +624,9 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
               </button>
             ))}
             <span className="spacer" />
-            <span className="roster-meta">{viewedName}</span>
+            <span className="roster-meta">
+              {editingArena ? selectedArena.name : viewedName}
+            </span>
           </div>
 
           {pane === "editor" ? (
@@ -616,6 +686,10 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
             </section>
           ) : null}
 
+          {pane === "map" && selectedArena ? (
+            <MapPane arena={selectedArena} lib={lib} theme={theme} />
+          ) : null}
+
           {pane === "trial" ? (
             <TrialPane
               robot={selected}
@@ -635,6 +709,8 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
                 })
               }
               inSession={inSession}
+              arenaOverride={benchArena}
+              arenaName={selectedArena?.name ?? null}
             />
           ) : null}
           {pane === "bench" ? (
@@ -652,6 +728,8 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
                 })
               }
               inSession={inSession}
+              arenaOverride={benchArena}
+              arenaName={selectedArena?.name ?? null}
             />
           ) : null}
           {pane === "history" ? (
@@ -990,7 +1068,7 @@ function BlockShelf({
     <section className="panel">
       <div className="panel-head">
         <span className="silkscreen">
-          {theme === "biological" ? "Your behaviours" : "Your blocks"}
+          Your {THEMES[theme].blockPlural}
         </span>
         <span className="spacer" />
         {total > 0 ? <span className="roster-meta">{total}</span> : null}
@@ -1051,6 +1129,291 @@ function BlockShelf({
         )}
       </div>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Arenas
+// ---------------------------------------------------------------------------
+
+/**
+ * The places you have built, beside the robots and the blocks.
+ *
+ * Selecting one switches the whole right-hand column: no editor, no history,
+ * and a Map tab in their place. That is a bigger change than a shelf usually
+ * makes, which is why the panel says what it is for rather than only listing
+ * names — somebody who clicks an arena and finds the editor gone should be able
+ * to see immediately why.
+ */
+function ArenaShelf({
+  lib,
+  theme,
+  selectedId,
+  onSelect,
+}: {
+  lib: LibraryApi;
+  theme: Theme;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+}) {
+  const { arenaLib, arenas, refresh } = lib;
+  const words = THEMES[theme];
+  const selected = arenas.find((a) => a.id === selectedId) ?? null;
+
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <span className="silkscreen">Your {words.arenaPlural}</span>
+        <span className="spacer" />
+        {arenas.length > 0 ? <span className="roster-meta">{arenas.length}</span> : null}
+      </div>
+
+      <div className="panel-body flush">
+        {arenas.length === 0 ? (
+          <p className="empty small">
+            Nothing yet. An {words.arena} is somewhere to fight rather than something to fight
+            with &mdash; draw walls on it, pick its {words.ground}, and bring it to a match.
+          </p>
+        ) : (
+          arenas.map((arena) => (
+            <div
+              key={arena.id}
+              className="roster-item"
+              aria-current={arena.id === selectedId ? "true" : undefined}
+            >
+              <button
+                type="button"
+                className="roster-select"
+                // Clicking the one already open closes it, which is how you get
+                // back to your robot without hunting for it in the other list.
+                onClick={() => onSelect(arena.id === selectedId ? null : arena.id)}
+              >
+                <span className="roster-name">{arena.name}</span>
+                <span className="roster-meta">
+                  {wallCountLabel(arena.spec.walls.length)}
+                  {arena.origin ? ` \u00b7 from ${arena.origin.from}` : ""}
+                </span>
+              </button>
+            </div>
+          ))
+        )}
+
+        <div className="roster-actions">
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => {
+              const created = arenaLib.create(`New ${words.arena}`, blankArena());
+              refresh();
+              onSelect(created.id);
+            }}
+          >
+            New {words.arena}
+          </button>
+          <button
+            type="button"
+            className="btn small"
+            disabled={!selected}
+            onClick={() => {
+              if (!selected) return;
+              const copy = arenaLib.duplicate(selected.id);
+              refresh();
+              if (copy) onSelect(copy.id);
+            }}
+          >
+            Duplicate
+          </button>
+          <button
+            type="button"
+            className="btn small"
+            disabled={!selected}
+            onClick={() => {
+              if (!selected) return;
+              // A map is not recoverable from anywhere else \u2014 there are no
+              // versions to fall back on \u2014 so this asks first.
+              if (!window.confirm(`Delete ${selected.name}? This cannot be undone.`)) return;
+              arenaLib.remove(selected.id);
+              refresh();
+              onSelect(null);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The map editor.
+ *
+ * Everything here writes straight through to storage rather than holding a
+ * draft. A map has no versions to fall back on, so a "save" button would only
+ * create a state where what you can see and what a match would use disagree.
+ */
+function MapPane({
+  arena,
+  lib,
+  theme,
+}: {
+  arena: StoredArena;
+  lib: LibraryApi;
+  theme: Theme;
+}) {
+  const { arenaLib, refresh } = lib;
+  const words = THEMES[theme];
+
+  const commit = (spec: ArenaSpec) => {
+    arenaLib.update(arena.id, spec);
+    refresh();
+  };
+
+  const grid = drivableMazeGrid(ARENA_SIZE.width, ARENA_SIZE.height);
+
+  return (
+    <section className="panel map-panel">
+      <div className="panel-head">
+        <span className="silkscreen">Map</span>
+        <span className="spacer" />
+        <span className="roster-meta">
+          {arena.spec.walls.length} / {WALL.maxCount} walls
+        </span>
+      </div>
+
+      <div className="panel-body">
+        <div className="row">
+          <input
+            className="text-input"
+            aria-label={`Name of this ${words.arena}`}
+            value={arena.name}
+            onChange={(e) => {
+              arenaLib.rename(arena.id, e.target.value);
+              refresh();
+            }}
+          />
+        </div>
+
+        <MapEditor
+          spec={arena.spec}
+          width={ARENA_SIZE.width}
+          height={ARENA_SIZE.height}
+          theme={theme}
+          onChange={commit}
+        />
+
+        <p className="empty small">
+          Drag to draw a wall. Hold <kbd>Shift</kbd> to snap to the grid and to right angles.
+          Click a wall to select it, then <kbd>Delete</kbd> to remove it. Walls stop{" "}
+          {words.robotPlural} and nothing else &mdash; {words.bullet}s fly over them and a{" "}
+          {words.pingVerb} sees straight through.
+        </p>
+
+        <div className="row" aria-label="ground">
+          <span className="roster-meta">{terrainHeading(theme)}</span>
+          {TERRAIN_LEVELS.map((level) => (
+            <button
+              key={level}
+              type="button"
+              className={`btn small${
+                sameGround(arena.spec.terrain, arenaForLevel(level).terrain) ? " primary" : ""
+              }`}
+              onClick={() =>
+                commit({
+                  ...arena.spec,
+                  // The seed is kept across a change of level, so switching
+                  // from rolling to hilly makes the same map harder rather
+                  // than replacing it with a different one.
+                  terrain: { ...arenaForLevel(level).terrain, seed: arena.spec.terrain.seed },
+                })
+              }
+            >
+              {terrainLevelWord(level, theme)}
+            </button>
+          ))}
+          <span className="spacer" />
+          <span className="roster-meta">seed {arena.spec.terrain.seed}</span>
+          <button
+            type="button"
+            className="btn small"
+            disabled={!arena.spec.terrain.enabled}
+            onClick={() =>
+              commit({
+                ...arena.spec,
+                terrain: {
+                  ...arena.spec.terrain,
+                  // A fresh map from a new number. Seeds are how the ground is
+                  // varied here rather than sculpting it by hand: the ground is
+                  // generated, the walls are drawn, and keeping the two jobs
+                  // separate is what keeps a saved arena a few hundred bytes.
+                  seed: (Math.floor(Math.random() * 2147483647) | 0) || 1,
+                },
+              })
+            }
+          >
+            New seed
+          </button>
+        </div>
+
+        <div className="roster-actions">
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => {
+              if (
+                arena.spec.walls.length > 0 &&
+                !window.confirm("Replace every wall with a new labyrinth? This cannot be undone.")
+              ) {
+                return;
+              }
+              const seed = (Math.floor(Math.random() * 2147483647) | 0) || 1;
+              commit({
+                ...arena.spec,
+                walls: generateFittingMaze(
+                  seed,
+                  grid.cols,
+                  grid.rows,
+                  ARENA_SIZE.width,
+                  ARENA_SIZE.height,
+                ),
+              });
+            }}
+          >
+            Generate labyrinth
+          </button>
+          <button
+            type="button"
+            className="btn small"
+            disabled={arena.spec.walls.length === 0}
+            onClick={() => {
+              if (!window.confirm("Remove every wall?")) return;
+              commit({ ...arena.spec, walls: [] });
+            }}
+          >
+            Clear walls
+          </button>
+        </div>
+
+        <p className="empty small">
+          A labyrinth is drawn on a {grid.cols}&times;{grid.rows} grid &mdash; the finest one whose
+          corridors a {words.robot} can actually get down. Anything tighter is a wall with a
+          pattern on it.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/** "no walls" / "1 wall" / "12 walls". */
+function wallCountLabel(count: number): string {
+  if (count === 0) return "no walls";
+  return count === 1 ? "1 wall" : `${count} walls`;
+}
+
+/** Do two terrain configs describe the same ground, ignoring which seed? */
+function sameGround(a: TerrainConfig, b: TerrainConfig): boolean {
+  return (
+    a.enabled === b.enabled && a.featureSize === b.featureSize && a.amplitude === b.amplitude
   );
 }
 
@@ -1325,6 +1688,8 @@ function TrialPane({
   liveMatch,
   onBroadcast,
   inSession,
+  arenaOverride,
+  arenaName,
 }: {
   robot: StoredRobot | null;
   theme: Theme;
@@ -1336,6 +1701,17 @@ function TrialPane({
   liveMatch: MatchManifest | null;
   onBroadcast: (manifest: MatchManifest) => void;
   inSession: boolean;
+  /**
+   * The map to fight on, when an arena is being edited. Null means "use the
+   * preset words below", which is the ordinary case.
+   *
+   * An override does not merely add walls: it carries the ground too, so the
+   * terrain buttons are hidden while it is in force. Same reasoning as the
+   * lobby \u2014 two sources of truth for the ground would drift, and the map you
+   * drew would not be the map you tested against.
+   */
+  arenaOverride: ArenaSpec | null;
+  arenaName: string | null;
 }) {
   const [opponents, setOpponents] = useState<string[]>(["spinner", "racer"]);
   const [fuelLevel, setFuelLevel] = useState<FuelLevel>("normal");
@@ -1392,7 +1768,7 @@ function TrialPane({
       {
         seed: (Date.now() % 2147483647) | 0,
         fuel: FUEL_SETTINGS[fuelLevel],
-        terrain: TERRAIN_SETTINGS[terrainLevel],
+        ...specToManifest(arenaOverride ?? arenaForLevel(terrainLevel)),
       },
     );
     setManifest(next);
@@ -1526,16 +1902,22 @@ function TrialPane({
             </div>
             <div className="row" aria-label="ground">
               <span className="roster-meta">{terrainHeading(theme)}</span>
-              {TERRAIN_LEVELS.map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  className={`btn small${terrainLevel === level ? " primary" : ""}`}
-                  onClick={() => setTerrainLevel(level)}
-                >
-                  {terrainLevelWord(level, theme)}
-                </button>
-              ))}
+              {arenaOverride ? (
+                // Hidden rather than disabled while a map is open: a row of
+                // words that no longer describe the fight is worse than no row.
+                <span className="roster-meta">from {arenaName}</span>
+              ) : (
+                TERRAIN_LEVELS.map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    className={`btn small${terrainLevel === level ? " primary" : ""}`}
+                    onClick={() => setTerrainLevel(level)}
+                  >
+                    {terrainLevelWord(level, theme)}
+                  </button>
+                ))
+              )}
             </div>
             <p className="empty small">Takes effect on the next start.</p>
             {groups.map((group) => (
@@ -1585,6 +1967,8 @@ function BenchPane({
   sharedReport,
   onShare,
   inSession,
+  arenaOverride,
+  arenaName,
 }: {
   robot: StoredRobot | null;
   robots: StoredRobot[];
@@ -1593,6 +1977,9 @@ function BenchPane({
   sharedReport: TrialReport | null;
   onShare: (report: TrialReport) => void;
   inSession: boolean;
+  /** The map to measure on, when an arena is being edited. See `TrialPane`. */
+  arenaOverride: ArenaSpec | null;
+  arenaName: string | null;
 }) {
   const words = THEMES[theme];
   const [trials, setTrials] = useState(50);
@@ -1633,7 +2020,10 @@ function BenchPane({
           rows: [],
           totalMatches: 0,
           overallWinRate: 0,
-          conditions: { fuel: FUEL_SETTINGS[fuelLevel], terrain: TERRAIN_SETTINGS[terrainLevel] },
+          conditions: {
+            fuel: FUEL_SETTINGS[fuelLevel],
+            arena: arenaOverride ?? arenaForLevel(terrainLevel),
+          },
           error: message.message,
         });
         setProgress(null);
@@ -1648,7 +2038,7 @@ function BenchPane({
         trials,
         seedBase: 1234,
         fuel: FUEL_SETTINGS[fuelLevel],
-        terrain: TERRAIN_SETTINGS[terrainLevel],
+        arena: arenaOverride ?? arenaForLevel(terrainLevel),
       },
     };
     worker.postMessage(request);
@@ -1713,17 +2103,21 @@ function BenchPane({
             </div>
             <div className="row" aria-label="ground">
               <span className="roster-meta">{terrainHeading(theme)}</span>
-              {TERRAIN_LEVELS.map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  className={`btn small${terrainLevel === level ? " primary" : ""}`}
-                  onClick={() => setTerrainLevel(level)}
-                  disabled={progress !== null}
-                >
-                  {terrainLevelWord(level, theme)}
-                </button>
-              ))}
+              {arenaOverride ? (
+                <span className="roster-meta">from {arenaName}</span>
+              ) : (
+                TERRAIN_LEVELS.map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    className={`btn small${terrainLevel === level ? " primary" : ""}`}
+                    onClick={() => setTerrainLevel(level)}
+                    disabled={progress !== null}
+                  >
+                    {terrainLevelWord(level, theme)}
+                  </button>
+                ))
+              )}
             </div>
             <div className="chip-row">
               {contenders.map((c) => (

@@ -20,6 +20,7 @@ import { THEMES, type Theme } from "../lang/vocab.js";
 import {
   FUEL_PRESETS,
   TERRAIN_PRESETS,
+  type ArenaSpec,
   type FuelConfig,
   type TerrainConfig,
 } from "../sim/types.js";
@@ -89,6 +90,18 @@ const FUEL_INTRO =
 const TERRAIN_INTRO =
   "Some of the {arena} is harder going than the rest. Heading {uphill} is slower and costs more; heading {downhill} is quicker and costs less; going across is exactly as cheap as the easy {ground}.";
 
+/**
+ * The map a terrain level describes, when nobody brought a saved arena.
+ *
+ * The three preset words have never had anything to say about walls and still
+ * do not: a generated match is an open arena. Walls arrive only by choosing a
+ * saved arena, which carries its own terrain too — which is why the two are
+ * alternatives in the lobby rather than settings that combine.
+ */
+export function arenaForLevel(level: TerrainLevel): ArenaSpec {
+  return { terrain: TERRAIN_SETTINGS[level], walls: [] };
+}
+
 export const FUEL_LEVELS = Object.keys(FUEL_SETTINGS) as FuelLevel[];
 export const TERRAIN_LEVELS = Object.keys(TERRAIN_SETTINGS) as TerrainLevel[];
 
@@ -139,19 +152,26 @@ export function terrainLevelWord(level: TerrainLevel, theme: Theme): string {
  * number is worse than an honest shrug.
  */
 export function describeConditions(
-  conditions: { fuel: FuelConfig; terrain: TerrainConfig },
+  conditions: { fuel: FuelConfig; arena: ArenaSpec },
   theme: Theme,
 ): string {
   const words = THEMES[theme];
+  const terrain = conditions.arena.terrain;
   const fuel = FUEL_LEVELS.find((l) => sameFuel(FUEL_SETTINGS[l], conditions.fuel));
-  const ground = TERRAIN_LEVELS.find((l) => sameTerrain(TERRAIN_SETTINGS[l], conditions.terrain));
+  const ground = TERRAIN_LEVELS.find((l) => sameTerrain(TERRAIN_SETTINGS[l], terrain));
   const fuelPart = conditions.fuel.enabled
     ? `${fuel ?? "custom"} ${words.fuel}`
     : `no ${words.fuel}`;
-  const groundPart = conditions.terrain.enabled
+  const groundPart = terrain.enabled
     ? `${ground ? terrainLevelWord(ground, theme) : "custom"} ${words.ground}`
     : `${terrainLevelWord("flat", theme)} ${words.ground}`;
-  return `${fuelPart} and ${groundPart}`;
+  // Walls are worth naming rather than folding into "custom ground": a robot
+  // measured at 74% in an open arena and one measured at 74% in a labyrinth are
+  // making very different claims, and this line is the only place a shared
+  // table says what was fought over.
+  const wallCount = conditions.arena.walls.length;
+  const wallPart = wallCount > 0 ? `, and ${wallCount} walls` : "";
+  return `${fuelPart} and ${groundPart}${wallPart}`;
 }
 
 function sameFuel(a: FuelConfig, b: FuelConfig): boolean {

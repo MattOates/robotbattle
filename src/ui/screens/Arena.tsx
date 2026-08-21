@@ -7,6 +7,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ArenaChoicePanel,
+  GENERATE,
+  resolveArena,
+  type ArenaChoiceValue,
+} from "../ArenaChoice.js";
 import { Lobby } from "./Lobby.js";
 import { Countdown } from "../Countdown.js";
 import { MatchCanvas, type MatchOutcome, type MatchStatus } from "../MatchCanvas.js";
@@ -24,15 +30,9 @@ import type { MatchManifest } from "../../sim/world.js";
 import {
   FUEL_LEVELS,
   FUEL_SETTINGS,
-  TERRAIN_LEVELS,
-  TERRAIN_SETTINGS,
   fuelBlurb,
   fuelHeading,
   fuelIntro,
-  terrainBlurb,
-  terrainHeading,
-  terrainIntro,
-  terrainLevelWord,
   type FuelLevel,
   type TerrainLevel,
 } from "../matchSettings.js";
@@ -76,6 +76,9 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
   // else inside the manifest, so there is nothing here to keep in sync.
   const [fuelLevel, setFuelLevel] = useState<FuelLevel>("normal");
   const [terrainLevel, setTerrainLevel] = useState<TerrainLevel>("flat");
+  // Generate by default. A saved arena is something a host deliberately brings,
+  // never something that arrives because it happened to be first in the list.
+  const [arenaChoice, setArenaChoice] = useState<ArenaChoiceValue>(GENERATE);
   const hashesRef = useRef(new Map<number, string>());
 
   useAutoJoin(room, initialRoom);
@@ -183,7 +186,7 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
     session.setNotice(null);
     const manifest = manifestFromParticipants(participants, newMatchSeed(), {
       fuel: FUEL_SETTINGS[fuelLevel],
-      terrain: TERRAIN_SETTINGS[terrainLevel],
+      arena: resolveArena(arenaChoice, terrainLevel, lib.arenas),
     });
     session.broadcast({ t: "start", matchId: newMatchId(), manifest, label: "Arena" });
   };
@@ -303,25 +306,14 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
             </div>
             <p className="empty small">{fuelBlurb(fuelLevel, theme)}</p>
           </div>
-          <div className="panel-head">
-            <span className="silkscreen">{terrainHeading(theme)}</span>
-          </div>
-          <div className="panel-body">
-            <p className="empty small">{terrainIntro(theme)}</p>
-            <div className="row">
-              {TERRAIN_LEVELS.map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  className={`btn small${terrainLevel === level ? " primary" : ""}`}
-                  onClick={() => setTerrainLevel(level)}
-                >
-                  {terrainLevelWord(level, theme)}
-                </button>
-              ))}
-            </div>
-            <p className="empty small">{terrainBlurb(terrainLevel, theme)}</p>
-          </div>
+          <ArenaChoicePanel
+            theme={theme}
+            arenas={lib.arenas}
+            choice={arenaChoice}
+            onChoice={setArenaChoice}
+            level={terrainLevel}
+            onLevel={setTerrainLevel}
+          />
         </>
       ) : null}
       <div className="panel-head">

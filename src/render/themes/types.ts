@@ -67,6 +67,30 @@ export interface ArenaTheme {
    */
   drawFuel(g: Graphics, radius: number): void;
 
+  /**
+   * Draw one placed wall, in WORLD coordinates, from (x1,y1) to (x2,y2).
+   *
+   * `halfThickness` is the simulation's own figure, so what is drawn is what a
+   * robot actually collides with — a wall drawn thinner than it is would be a
+   * wall players learn to distrust.
+   *
+   * The two art packs are expected to disagree completely about what a wall
+   * *is*, the same way they disagree about the ground: one is a plate of metal
+   * bolted down, the other a strand of algae grown across the way. Neither
+   * reading changes anything about what it does.
+   *
+   * Drawn once per match into the same layer as the boundary, so a theme is
+   * free to be as detailed here as it likes.
+   */
+  drawWall(
+    g: Graphics,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    halfThickness: number,
+  ): void;
+
   /** Optional decorative backdrop drawn once, beneath everything else. */
   drawBackdrop?(g: Graphics, width: number, height: number): void;
 

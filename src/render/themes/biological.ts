@@ -264,6 +264,79 @@ export const BIOLOGICAL: ArenaTheme = {
     });
   },
 
+  /**
+   * A strand of algae grown across the way.
+   *
+   * Translucent, because in the microcosm nothing is opaque and because it is
+   * honest about the mechanic: the beam passes through a wall and so should the
+   * light. You can see what is on the other side; you simply cannot swim there.
+   *
+   * Built from overlapping cells along the run rather than a rectangle. The
+   * cells are what make it read as grown rather than placed, and the wobble is
+   * derived from position rather than from `Math.random`, so the same wall looks
+   * the same every time it is drawn \u2014 a strand that reshuffled itself on every
+   * replay would be maddening to watch.
+   */
+  drawWall(
+    g: Graphics,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    halfThickness: number,
+  ): void {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+    const ux = dx / len;
+    const uy = dy / len;
+    const nx = -uy;
+    const ny = ux;
+
+    const strand = 0x5fbf7a;
+
+    // A soft envelope first, so the whole run reads as one continuous thing
+    // rather than as a row of beads.
+    const t = halfThickness;
+    g.poly([
+      x1 + nx * t,
+      y1 + ny * t,
+      x2 + nx * t,
+      y2 + ny * t,
+      x2 - nx * t,
+      y2 - ny * t,
+      x1 - nx * t,
+      y1 - ny * t,
+    ]).fill({ color: darken(strand, 0.35), alpha: 0.45 });
+
+    // Then the cells. Spaced a little under their own diameter so they touch,
+    // which is what a filament of algae actually looks like.
+    const spacing = halfThickness * 1.5;
+    const count = Math.max(2, Math.round(len / spacing));
+    for (let i = 0; i <= count; i++) {
+      const d = (len * i) / count;
+      const px = x1 + ux * d;
+      const py = y1 + uy * d;
+      // Deterministic wobble: a cheap hash of the cell's own position, so it is
+      // stable across redraws and varies along the strand.
+      const wobble = (((px * 13 + py * 7 + i * 29) % 10) / 10 - 0.5) * halfThickness * 0.5;
+      const r = halfThickness * (0.85 + ((i * 37) % 7) / 20);
+      g.circle(px + nx * wobble, py + ny * wobble, r).fill({
+        color: strand,
+        alpha: 0.5,
+      });
+      // A nucleus in every other cell, so the divisions are visible without
+      // making the strand busy.
+      if (i % 2 === 0) {
+        g.circle(px + nx * wobble, py + ny * wobble, r * 0.3).fill({
+          color: lighten(strand, 0.45),
+          alpha: 0.55,
+        });
+      }
+    }
+  },
+
   drawFuel(g: Graphics, radius: number): void {
     // A morsel: a soft blob with a lighter nucleus, deliberately rounder and
     // less regular than the mechanical canister.

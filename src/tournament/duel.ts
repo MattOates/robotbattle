@@ -17,9 +17,9 @@ import { runMatch, type MatchResult } from "../sim/match.js";
 import { checkScript, makeManifest, type MatchManifest } from "../sim/world.js";
 import {
   FUEL_PRESETS,
-  TERRAIN_PRESETS,
   type FuelConfig,
-  type TerrainConfig,
+  FLAT_ARENA,
+  type ArenaSpec,
 } from "../sim/types.js";
 import { ARENA_SIZE } from "../net/matchsetup.js";
 
@@ -56,7 +56,7 @@ export interface Showcase {
    * fuel settings above: replaying a duel on a different map would show a
    * different match while claiming to show this one.
    */
-  terrain: TerrainConfig;
+  arena: ArenaSpec;
   /** Whether `a` took the first manifest slot; the sides alternate. */
   aFirst: boolean;
   /** Who won this particular match — always the winner of the duel. */
@@ -104,7 +104,7 @@ export function duelManifest(
   seed: number,
   aFirst: boolean,
   fuel: FuelConfig = FUEL_PRESETS.tournament,
-  terrain: TerrainConfig = TERRAIN_PRESETS.off,
+  arena: ArenaSpec = FLAT_ARENA,
 ): MatchManifest {
   const first = aFirst ? a : b;
   const second = aFirst ? b : a;
@@ -113,7 +113,14 @@ export function duelManifest(
       { source: first.source, color: first.color },
       { source: second.source, color: second.color },
     ],
-    { seed, width: ARENA_SIZE.width, height: ARENA_SIZE.height, fuel, terrain },
+    {
+      seed,
+      width: ARENA_SIZE.width,
+      height: ARENA_SIZE.height,
+      fuel,
+      terrain: arena.terrain,
+      walls: arena.walls,
+    },
   );
 }
 
@@ -146,7 +153,7 @@ export function runDuel(
   matches: number = DUEL_MATCHES,
   onMatch?: (played: number, total: number) => void,
   fuel: FuelConfig = FUEL_PRESETS.tournament,
-  terrain: TerrainConfig = TERRAIN_PRESETS.off,
+  arena: ArenaSpec = FLAT_ARENA,
 ): DuelResult {
   const aOk = checkScript(a.source).ok;
   const bOk = checkScript(b.source).ok;
@@ -186,7 +193,7 @@ export function runDuel(
     const canonicalFirst = i % 2 === 0;
     const aFirst = flip ? !canonicalFirst : canonicalFirst;
     const seed = seedBase + i;
-    const manifest = duelManifest(a, b, seed, aFirst, fuel, terrain);
+    const manifest = duelManifest(a, b, seed, aFirst, fuel, arena);
     const result = runMatch(manifest);
 
     const health = {
@@ -254,7 +261,7 @@ export function runDuel(
     winner,
     winRate: played === 0 ? 0 : (winnerWins / played) * 100,
     decidedBy,
-    showcase: pickShowcase(wonBy[winner], winner, fuel, terrain),
+    showcase: pickShowcase(wonBy[winner], winner, fuel, arena),
   };
 }
 
@@ -278,7 +285,7 @@ function pickShowcase(
   candidates: Candidate[],
   winner: Side,
   fuel: FuelConfig,
-  terrain: TerrainConfig,
+  arena: ArenaSpec,
 ): Showcase | null {
   if (candidates.length === 0) return null;
   const decisive = candidates.filter((c) => c.decisive);
@@ -288,7 +295,7 @@ function pickShowcase(
   // Lower median, so an even number of wins leans to the shorter of the middle
   // pair rather than picking arbitrarily.
   const pick = ordered[Math.floor((ordered.length - 1) / 2)]!;
-  return { seed: pick.seed, fuel, terrain, aFirst: pick.aFirst, winner, ticks: pick.ticks };
+  return { seed: pick.seed, fuel, arena, aFirst: pick.aFirst, winner, ticks: pick.ticks };
 }
 
 function healthOf(result: MatchResult, entryIndex: number): number {

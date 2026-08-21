@@ -343,6 +343,96 @@ export function clampTerrainConfig(cfg: TerrainConfig): TerrainConfig {
   };
 }
 
+/**
+ * A wall: a line segment somebody placed on purpose.
+ *
+ * Terrain is generated and walls are authored, and that is the whole difference
+ * between them. A seed makes ground worth routing around; a wall makes a *place*
+ * — a corridor, a chicane, a labyrinth — and a place can be saved, named and
+ * handed to somebody else, which a seed cannot.
+ *
+ * What a wall does is deliberately narrow: it **blocks motion, and nothing
+ * else**. Bullets fly over it and the radar beam passes through it (though the
+ * beam does report it — see `ping` in `world.ts`). That narrowness is what lets
+ * walls be added without retuning a single combat number, and it is the whole
+ * mechanic in one sentence.
+ *
+ * Stored as two endpoints rather than as a rectangle because a maze is
+ * overwhelmingly axis-aligned runs, and merged collinear runs are what keep a
+ * 20x14 labyrinth inside `WALL.maxCount`.
+ */
+export interface Wall {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+export const WALL = {
+  /**
+   * Half the wall's thickness. A robot is pushed out to `ROBOT_RADIUS + this`,
+   * so a wall is a capsule rather than a mathematical line — a zero-width wall
+   * is one a fast robot can tunnel through between two ticks.
+   */
+  halfThickness: 4,
+  /**
+   * Cap on how many segments a match will carry.
+   *
+   * Every wall query is linear — once per robot per tick for collision, once
+   * per `ping` for the beam — so this is the number that keeps the cost honest.
+   * A merged 20x14 labyrinth lands comfortably under it. Raising it means
+   * adding a broadphase first; see the note in `maze.ts`.
+   */
+  maxCount: 512,
+  /** Shorter than this and it was a stray click, not a wall. */
+  minLength: 8,
+} as const;
+
+/**
+ * The map: generated ground plus authored walls.
+ *
+ * Bundled rather than passed as two parameters because every layer that carries
+ * match conditions — the duel runner, the tournament worker, the test bench,
+ * the lobby — carries both or neither, and this is also exactly what a saved
+ * arena is.
+ */
+export interface ArenaSpec {
+  terrain: TerrainConfig;
+  walls: Wall[];
+}
+
+/** Featureless: flat ground, no walls. What a match runs on unless asked otherwise. */
+export const FLAT_ARENA: ArenaSpec = { terrain: TERRAIN_PRESETS.off, walls: [] };
+
+/**
+ * Same reasoning as `clampTerrainConfig`: a manifest arrives from a remote
+ * host, so its walls are input rather than fact. A NaN coordinate would poison
+ * every distance computed against it, and an unbounded list would let one peer
+ * decide how much work everybody else does per tick.
+ *
+ * Coordinates are rounded to whole pixels. Not for tidiness — two peers that
+ * received `100.00000000000001` and `100` through different JSON paths would
+ * compute different distances and diverge.
+ */
+export function clampWalls(walls: readonly Wall[] | undefined): Wall[] {
+  if (!walls) return [];
+  const out: Wall[] = [];
+  for (const w of walls) {
+    if (out.length >= WALL.maxCount) break;
+    const x1 = Math.round(w.x1);
+    const y1 = Math.round(w.y1);
+    const x2 = Math.round(w.x2);
+    const y2 = Math.round(w.y2);
+    if (!Number.isFinite(x1) || !Number.isFinite(y1)) continue;
+    if (!Number.isFinite(x2) || !Number.isFinite(y2)) continue;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    if (dx * dx + dy * dy < WALL.minLength * WALL.minLength) continue;
+    out.push({ x1, y1, x2, y2 });
+  }
+  return out;
+}
+
 /** A pickup sitting in the arena, waiting to be driven over. */
 export interface FuelCell {
   id: number;
@@ -496,6 +586,12 @@ export interface World {
    * the ground.
    */
   terrainConfig: TerrainConfig;
+  /**
+   * The authored half of the map. Already clamped, and never mutated once the
+   * world exists — walls are the one part of the arena that cannot change
+   * mid-match, which is what lets the renderer draw them once.
+   */
+  walls: Wall[];
   /** Set once fewer than two robots remain, or the tick limit is reached. */
   over: boolean;
   winnerId: number | null;

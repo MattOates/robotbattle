@@ -2955,3 +2955,128 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- the map editor ---------------------------------------------------- */
+
+/*
+ * Scaled to fit the column while keeping the arena's proportions, because the
+ * editor works in arena coordinates and a stretched canvas would put walls
+ * somewhere other than where they were drawn.
+ */
+.map-editor {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  aspect-ratio: 900 / 620;
+  /*
+   * Capped so the controls underneath stay on screen \u2014 left to grow with the
+   * column, "Generate labyrinth" ends up below the fold, which is where nobody
+   * finds it.
+   *
+   * Capping the WIDTH rather than the height on purpose. `MapEditor` converts a
+   * pointer position through `getBoundingClientRect`, which assumes the
+   * element's box is exactly the bitmap's shape; a max-height (or an
+   * `object-fit`) would leave letterboxing inside the box and put every wall
+   * somewhere other than where it was drawn.
+   */
+  max-width: min(100%, calc(60vh * 900 / 620));
+  margin-inline: auto;
+  border: 1px solid var(--bezel-light);
+  border-radius: var(--radius);
+  background: #0b0d11;
+  /* Crosshair rather than the default arrow: this surface is drawn on. */
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.map-editor:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.map-panel .panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.map-panel kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 4px;
+  border: 1px solid var(--bezel-light);
+  border-radius: 3px;
+  background: #12150f;
+}
+
+/* ---- trading places and blocks ---------------------------------------- */
+
+/*
+ * A robot card carries its glyph; the other two carry a line of text instead.
+ * Sized to the glyph so the three kinds line up on one table rather than
+ * stepping up and down as you read across it.
+ */
+.trade-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  padding: 2px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--ink-muted);
+  border: 1px dashed var(--bezel-light);
+}
+
+/* A wall list reads as the map it is; a block as the script it came out of. */
+.trade-face.arena {
+  background: #12150f;
+}
+
+.trade-face.block {
+  background: var(--panel);
+  font-style: italic;
+}
+
+/* Kept dim until it is out, so the eye goes to what is being traded. */
+.trade-card.arena .trade-card-name,
+.trade-card.block .trade-card-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.kind-filter {
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+/* ---- room chat --------------------------------------------------------- */
+
+/*
+ * The left column is the room: who is here, what you are bringing, and the
+ * talk. It stacks, and the chat takes whatever height is left after the roster
+ * has had what it needs — which is the space that was otherwise empty under the
+ * ready button, and which grows on a tall screen instead of being wasted.
+ */
+.lobby-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+/* The roster is as tall as its contents; nothing else competes for the space. */
+.lobby-side > .panel:first-child {
+  flex: 0 0 auto;
+}
+
+.lobby-chat {
+  flex: 1 1 auto;
+  /* Enough for a couple of lines and the box to type in, on a short screen. */
+  min-height: 150px;
+}

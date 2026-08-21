@@ -12,6 +12,7 @@ import { DEG_TO_RAD } from "../sim/math.js";
 import { RADAR, ROBOT_RADIUS, SENSE, MAX_HEALTH, type Effect, type World } from "../sim/types.js";
 import { ART, hexToNumber, type ArenaTheme } from "./themes/index.js";
 import type { TerrainField } from "../sim/terrain.js";
+import { WALL, type Wall } from "../sim/types.js";
 import type { Theme } from "../lang/vocab.js";
 import { lerp, lerpAngle, snapshot, type Snapshot } from "./interpolate.js";
 
@@ -119,6 +120,14 @@ export class ArenaRenderer {
    */
   private terrainField: TerrainField | null = null;
   private terrainKey = "";
+  /**
+   * The walls of the current match, and a cheap identity for them.
+   *
+   * Held for the same reason as the terrain field: they never change while a
+   * match runs, so they are drawn once and only redrawn when the map really is
+   * a different one.
+   */
+  private walls: readonly Wall[] = [];
 
   constructor(options: ArenaOptions) {
     this.options = options;
@@ -278,6 +287,16 @@ export class ArenaRenderer {
       this.drawTerrain();
     }
 
+    // Same idea for the walls, but on array IDENTITY rather than on a digest of
+    // the contents. `world.walls` is built once in `createWorld` and never
+    // reassigned, so this is exact — and unlike a string key it does not rebuild
+    // a few hundred segments' worth of text thirty times a second for a list
+    // that cannot change.
+    if (world.walls !== this.walls) {
+      this.walls = world.walls;
+      this.drawBackdrop();
+    }
+
     this.prev = this.curr;
     this.curr = snapshot(world);
     for (const e of world.effects) {
@@ -346,6 +365,13 @@ export class ArenaRenderer {
       width: 2,
       color: this.theme.wallColor,
     });
+
+    // Placed walls go in this layer rather than a new one because that is what
+    // they are: the same furniture as the boundary, just somewhere else. Above
+    // the terrain, so the map reads as ground with things standing on it.
+    for (const w of this.walls) {
+      this.theme.drawWall(g, w.x1, w.y1, w.x2, w.y2, WALL.halfThickness);
+    }
   }
 
   /**

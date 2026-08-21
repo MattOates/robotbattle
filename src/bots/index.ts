@@ -718,6 +718,237 @@ on hit wall
 end
 `;
 
+const MOUSE = `-- Mouse does not fight for the room. It works out the shape of it.
+--
+-- The rule is the oldest one there is for a maze: keep your left hand on the
+-- wall and walk. Never take your hand off, and you will trace the whole of it
+-- and come back to where you started — no map, no memory, no idea where you
+-- are. A wall is enough.
+--
+-- Turning that into a robot needs two things the others never do.
+--
+-- The first is something that looks SIDEWAYS. The sense cone only faces front,
+-- so the radar is used here as a whisker rather than as a way to find people —
+-- aimed at -90, hard left, and pinged over and over. \`on ping wall\` comes back
+-- with how much room is out that way, and that one number is the hand on the
+-- wall.
+--
+-- The second is knowing how big a square of the maze is. A robot that walks
+-- too far overshoots the openings; one that walks too little never reaches
+-- them. So the first thing Mouse does is stand still and MEASURE: one ping
+-- right, one ping left, plus its own width, is the width of the passage it is
+-- standing in — and in a maze built on a grid, that is one square. Everything
+-- afterwards is a fraction of that measurement rather than a number somebody
+-- guessed, which is why it works in a maze you drew as well as one the game
+-- made.
+--
+-- It stops before every decision. That looks slow, and it is, but a ping can
+-- only be sent so often and a reading taken mid-corner is a reading of
+-- somewhere the robot no longer is. Standing still to look is what makes the
+-- readings mean anything. Given long enough it gets round the whole labyrinth;
+-- a single match is not long enough, so what you watch is an honest robot
+-- part-way through a patient job.
+name "Mouse"
+chassis tank
+color #f5f0e6
+
+-- Which way it means to face: 0, 90, 180 or -90, and nothing in between. A
+-- maze is built out of right angles, so a robot that only ever holds one of
+-- four headings can never end up askew in a corridor.
+var dir = 0
+
+-- 9 measuring, 0 stopped and thinking, 1 turning, 2 walking.
+var mode = 9
+var timer = 40
+
+-- The last things it was told, kept because an event is a moment and a
+-- decision needs the moment to still be there when it is taken.
+var leftGap = 0
+var rightGap = 0
+var frontGap = 999
+
+-- Whether it has ever actually had a wall under its hand.
+--
+-- You cannot follow a wall you have not found yet. Without this, Mouse turned
+-- left on every decision in an open arena — which is what the rule literally
+-- says to do when the left is clear, and which walks a robot round and round a
+-- box one stride wide. Made to find a wall first, it drives straight out until
+-- it meets one and then goes round the outside.
+var onWall = 0
+
+-- Where the current walk began, so how far it has come is measured on the
+-- ground rather than counted in ticks. Ticks were what this used to use, and
+-- they are a lie the moment anything changes the speed — a hill, a low tank,
+-- a scrape along a wall — because the same count of them covers a different
+-- distance every time.
+var markX = 0
+var markY = 0
+var gone = 0
+
+-- How long it has been asking to move and not moving.
+--
+-- The same two numbers again, read a different way: if the throttle is open and
+-- the ground is not going past, the robot is wedged on a corner rather than
+-- walking. Without this it could sit there grinding for eight seconds at a
+-- time, which is most of what "Mouse gets stuck" looked like from the outside.
+var wedged = 0
+
+-- One square of the maze, and how far to walk in one go.
+var square = 74
+var stride = 62
+
+on start
+  set dir = 0
+  set mode = 9
+  set timer = 40
+end
+
+on tick
+  -- Measuring the passage, once, before anything else happens. Right first,
+  -- then left, giving the radar time to come round between the two.
+  if mode is 9 then
+    stop
+    set timer = timer - 1
+    if timer > 20 then
+      radar.aim at 90
+      if me.pingHeat is 0 and timer < 36 then
+        ping
+      end
+    else
+      radar.aim at -90
+      if me.pingHeat is 0 and timer < 16 then
+        ping
+      end
+    end
+    if timer < 1 then
+      -- The gap either side, plus the robot in the middle of it. Held between
+      -- sane bounds: at a junction a ping can run away down a corridor and
+      -- report a room far bigger than the square really is.
+      set square = max(46, min(160, leftGap + rightGap + 36))
+      set stride = square * 0.85
+      set mode = 0
+      set timer = 14
+    end
+  else
+    radar.aim at -90
+    if me.pingHeat is 0 then
+      ping
+    end
+    set gone = sqrt((me.x - markX) * (me.x - markX) + (me.y - markY) * (me.y - markY))
+  end
+
+  -- Stopped, and deciding. Left first, always: that IS the left-hand rule, and
+  -- checking the wall ahead first instead would mean never taking a left turn
+  -- at the exact place where every left turn is — a gap on the left with
+  -- something in front of you.
+  if mode is 0 then
+    stop
+    set timer = timer - 1
+    if timer < 1 then
+      if leftGap > 45 and onWall is 1 then
+        set dir = dir - 90
+        set mode = 1
+        set timer = 26
+      else
+        if frontGap > 45 then
+          set markX = me.x
+          set markY = me.y
+          set gone = 0
+          set mode = 2
+        else
+          set dir = dir + 90
+          set mode = 1
+          set timer = 26
+        end
+      end
+      -- Kept inside a half turn either way so it stays a compass bearing
+      -- rather than a running total of every corner ever taken.
+      if dir > 180 then
+        set dir = dir - 360
+      end
+      if dir < -180 then
+        set dir = dir + 360
+      end
+    end
+  end
+
+  -- Turning, on the spot. Only a tank can do this, which is why Mouse is one:
+  -- a car would need a corridor wider than the corner it is trying to take.
+  if mode is 1 then
+    stop
+    turn body to dir
+    set timer = timer - 1
+    if timer < 1 then
+      set markX = me.x
+      set markY = me.y
+      set gone = 0
+      set mode = 2
+    end
+  end
+
+  -- Walking, one square. It ends either when that square has been covered or
+  -- when a wall turns up early, whichever comes first.
+  if mode is 2 then
+    drive forward 100
+    if abs(me.speed) < 6 then
+      set wedged = wedged + 1
+    else
+      set wedged = 0
+    end
+    if wedged > 18 then
+      -- Caught on something the whisker never saw. Turn away and carry on:
+      -- being somewhere slightly wrong beats being nowhere at all.
+      set wedged = 0
+      set dir = dir + 90
+      set mode = 1
+      set timer = 26
+      if dir > 180 then
+        set dir = dir - 360
+      end
+    else
+      if frontGap < 25 then
+        set mode = 0
+        set timer = 14
+      else
+        if gone > stride then
+          set mode = 0
+          set timer = 14
+        end
+      end
+    end
+  end
+end
+
+on ping wall
+  -- While measuring, the two readings are kept apart; afterwards every ping is
+  -- the left whisker.
+  if mode is 9 then
+    if timer > 20 then
+      set rightGap = event.distance
+    else
+      set leftGap = event.distance
+    end
+  else
+    set leftGap = event.distance
+    if event.distance < 45 then
+      set onWall = 1
+    end
+  end
+end
+
+on sense wall
+  set frontGap = event.distance
+end
+
+-- The radar is busy being a whisker, so anything Mouse shoots at is something
+-- that wandered into the cone in front of it. It does not go looking, and it
+-- does not stop walking to take the shot.
+on sense robot
+  turret.aim at event.bearing
+  fire 2
+end
+`;
+
 export const SAMPLE_BOTS: SampleBot[] = [
   {
     id: "sitting-duck",
@@ -780,6 +1011,12 @@ export const SAMPLE_BOTS: SampleBot[] = [
     source: APEX,
   },
   {
+    id: "mouse",
+    title: "Mouse",
+    teaches: "following a wall: the radar as a whisker, and solving a labyrinth",
+    source: MOUSE,
+  },
+  {
     id: "hunter-bio",
     title: "Hunter (biology words)",
     teaches: "the same robot written in the biological vocabulary",
@@ -803,4 +1040,5 @@ export {
   HUNGRY_HIPPO,
   GOAT,
   APEX,
+  MOUSE,
 };

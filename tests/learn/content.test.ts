@@ -17,6 +17,8 @@ import { findBareVocab } from "../../src/learn/lint.js";
 import {
   CODE_LANGS,
   extractCode,
+  lessonTeaches,
+  lessonTitle,
   loadLessons,
   selectWorld,
   SECTION_ORDER,
@@ -110,6 +112,32 @@ describe("every example compiles, in both worlds", () => {
         expect(known, `${block.id} names an unknown opponent`).toContain(id);
       }
     }
+  });
+});
+
+describe("the contents page", () => {
+  it("fills in placeholders rather than showing the braces", () => {
+    // The one place a reader meets a lesson before opening it, so a raw
+    // `{robot}` here is the worst place for one.
+    for (const lesson of lessons) {
+      for (const theme of ["mechanical", "biological"] as const) {
+        expect(lessonTitle(lesson, theme), lesson.id).not.toMatch(/[{}]/);
+        expect(lessonTeaches(lesson, theme), lesson.id).not.toMatch(/[{}]/);
+      }
+    }
+  });
+
+  it("substitutes rather than merely stripping the braces", () => {
+    // `{robot}` has to become a word, not vanish. Every lesson that uses a
+    // placeholder here also carries a `teachesBio:` line, so this is the
+    // mechanical side — which is exactly where the raw braces were showing.
+    const remembering = lessons.find((l) => l.id === "remembering");
+    expect(remembering, "the remembering lesson").toBeDefined();
+    expect(lessonTeaches(remembering!, "mechanical")).toBe(
+      "variables, and watching what your robot is thinking",
+    );
+    // And a lesson that supplies its own biological wording keeps it.
+    expect(lessonTeaches(remembering!, "biological")).toContain("cell");
   });
 });
 

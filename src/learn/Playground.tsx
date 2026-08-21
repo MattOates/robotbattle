@@ -14,6 +14,7 @@ import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { CodeEditor } from "../ui/CodeEditor.js";
 import { MatchCanvas, type MatchStatus } from "../ui/MatchCanvas.js";
 import { checkScript, makeManifest, type MatchManifest } from "../sim/world.js";
+import { drivableMazeGrid, generateFittingMaze } from "../sim/maze.js";
 import { FUEL_PRESETS, TERRAIN_PRESETS } from "../sim/types.js";
 import { SAMPLE_BOTS } from "../bots/index.js";
 import type { Theme } from "../lang/vocab.js";
@@ -48,6 +49,17 @@ interface Props {
    * nobody has explained yet.
    */
   terrain?: boolean;
+  /**
+   * Put a labyrinth in the playground.
+   *
+   * Its own option rather than something the arena always has, for the same
+   * reason as fuel and terrain: a lesson should show only as much world as it
+   * is teaching. The maze is generated from a fixed seed so that the picture is
+   * the same every time the lesson is opened — a chapter about finding your way
+   * through *this* maze is easier to follow than one about a different maze
+   * each visit.
+   */
+  maze?: boolean;
 }
 
 const ARENA = { width: 460, height: 320 } as const;
@@ -59,6 +71,7 @@ export function Playground({
   cones = false,
   fuel = false,
   terrain = false,
+  maze = false,
 }: Props) {
   const [code, setCode] = useState(source);
   const [seed, setSeed] = useState(1);
@@ -82,6 +95,14 @@ export function Playground({
   // Only built when the script compiles: `createWorld` parses, so handing it a
   // broken script would throw inside the renderer rather than showing the
   // error the editor has already underlined.
+  // Fixed seed, and built once: the playground arena is small, so this is the
+  // finest maze a robot can still get down inside it.
+  const walls = useMemo(() => {
+    if (!maze) return [];
+    const grid = drivableMazeGrid(ARENA.width, ARENA.height);
+    return generateFittingMaze(20260820, grid.cols, grid.rows, ARENA.width, ARENA.height);
+  }, [maze]);
+
   const manifest = useMemo<MatchManifest | null>(() => {
     if (!check.ok) return null;
     return makeManifest(
@@ -93,10 +114,11 @@ export function Playground({
         maxTicks: 30 * 45,
         fuel: fuel ? FUEL_PRESETS.arena : FUEL_PRESETS.off,
         terrain: terrain ? TERRAIN_PRESETS.arena : TERRAIN_PRESETS.off,
+        walls,
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seed, others, fuel, terrain]);
+  }, [seed, others, fuel, terrain, walls]);
 
   const play = () => {
     if (!check.ok) return;
