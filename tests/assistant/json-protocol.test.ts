@@ -209,3 +209,35 @@ describe("retelling a tool exchange as conversation", () => {
     for (const m of flattenToolTurns(history)) expect(typeof m.content).toBe("string");
   });
 });
+
+describe("a model that must not write code", () => {
+  /**
+   * The small rung explains and quotes; it does not compose. Asked to, models
+   * this size invent commands and write one-line `if` blocks — so the field is
+   * taken away rather than the behaviour discouraged. A field it cannot emit
+   * is a rule it cannot break.
+   */
+  it("is not offered a code field at all", () => {
+    const schema = protocolSchema(ESSENTIAL_TOOL_DEFS, false);
+    expect(schema.properties).not.toHaveProperty("code");
+    expect(schema.properties).toHaveProperty("say");
+  });
+
+  it("keeps the field for a model that may compose", () => {
+    expect(protocolSchema(ESSENTIAL_TOOL_DEFS, true).properties).toHaveProperty("code");
+  });
+
+  it("is told an example will be shown for it, rather than to write one", () => {
+    const text = protocolInstructions(ESSENTIAL_TOOL_DEFS, false);
+    expect(text).toContain("Do not write RoboScript");
+    expect(text).not.toContain('"code"');
+  });
+
+  it("still carries a code field through if one somehow arrives", () => {
+    // The grammar should make this unreachable; if it is not, the compiler
+    // check downstream is what catches it, not silence here.
+    const calls = callsFromReply({ say: "ok", code: "swerve left", op: NO_OP }, []);
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0]!.function.arguments).code).toBe("swerve left");
+  });
+});

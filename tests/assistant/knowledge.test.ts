@@ -10,8 +10,19 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { briefCard, languageCard, retrieve, systemPrompt } from "../../src/assistant/knowledge.js";
-import { ESSENTIAL_TOOL_DEFS, EXPLAINER_TOOL_DEFS, TOOL_DEFS } from "../../src/assistant/tools.js";
+import {
+  briefCard,
+  languageCard,
+  retrieve,
+  retrieveExample,
+  systemPrompt,
+} from "../../src/assistant/knowledge.js";
+import {
+  ESSENTIAL_TOOL_DEFS,
+  EXPLAINER_TOOL_DEFS,
+  exampleCompiles,
+  TOOL_DEFS,
+} from "../../src/assistant/tools.js";
 import { tokenize } from "../../src/lang/lexer.js";
 import { healthPropertyFor, THEMES, type Theme } from "../../src/lang/vocab.js";
 import { EVENT_NAMES } from "../../src/lang/ast.js";
@@ -161,5 +172,54 @@ describe("lesson retrieval", () => {
       expect(snippet).not.toContain(":::bot");
       expect(snippet).not.toContain(":::bio");
     }
+  });
+});
+
+describe("quoting an example instead of writing one", () => {
+  /**
+   * The reason this is worth doing at all: every example in every lesson is
+   * compiled by tests/learn/content.test.ts, in both worlds, on every run. So
+   * a quotation cannot be the invented command or one-line `if` a small model
+   * produces when asked to compose. It is somebody else's answer to a
+   * neighbouring question, which beats a confident wrong one.
+   */
+  it.each(themes)("finds a real %s example and says where it came from", (theme) => {
+    const quote = retrieveExample("how do I turn", theme);
+    expect(quote).not.toBeNull();
+    expect(quote!.code).toContain("turn");
+    expect(quote!.from.length).toBeGreaterThan(0);
+  });
+
+  it.each(themes)("quotes %s code that actually compiles", (theme) => {
+    for (const q of ["how do I turn", "fire at a robot", "sweep the radar"]) {
+      const quote = retrieveExample(q, theme);
+      if (quote) expect(exampleCompiles(quote.code).ok, `${q}: ${quote.code}`).toBe(true);
+    }
+  });
+
+  /**
+   * The chapter counts as well as the code. Nobody asking how to "shoot" will
+   * find that word in an example that says `fire` — but the lesson it sits in
+   * is called "Shooting", and that is the connection being made.
+   */
+  it("finds an example through the name of its lesson", () => {
+    expect(retrieveExample("how do I shoot at an enemy?", "mechanical")?.from).toBe("Shooting");
+  });
+
+  /**
+   * People ask about bullets and hills; the lessons say bullet and hill. One
+   * trailing `s` was the whole difference between finding the right chapter
+   * and finding nothing at all.
+   */
+  it.each([
+    ["dodge bullets", "Reacting"],
+    ["avoid hills", "There and back again"],
+    ["walls", "Walls and edges"],
+  ])("matches %s despite the plural", (question, lesson) => {
+    expect(retrieveExample(question, "mechanical")?.from).toBe(lesson);
+  });
+
+  it("has nothing to quote for a question with no subject", () => {
+    expect(retrieveExample("what about it?", "mechanical")).toBeNull();
   });
 });

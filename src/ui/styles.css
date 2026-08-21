@@ -1910,6 +1910,22 @@ button {
   border-color: var(--alert);
 }
 
+/*
+ * Where a quoted example came from.
+ *
+ * Under the block rather than over it, and phrased as a citation, because the
+ * whole point is that this is the lessons' code and not the assistant's.
+ */
+.chat-code-from {
+  display: block;
+  padding: 3px 8px;
+  border-top: 1px solid var(--bezel);
+  color: var(--ink-muted);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
 .chat-code-warn {
   position: absolute;
   top: 4px;

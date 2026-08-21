@@ -20,7 +20,14 @@ import { describeCall, runTool, SPEECH_TOOLS, type ToolContext } from "./tools.j
 /** One line in the panel's transcript. */
 export type Entry =
   | { kind: "player"; text: string }
-  | { kind: "assistant"; text: string; code?: string; codeError?: string }
+  | {
+      kind: "assistant";
+      text: string;
+      code?: string;
+      codeError?: string;
+      /** Set when the code was quoted from a lesson rather than written. */
+      codeFrom?: string;
+    }
   | { kind: "action"; text: string }
   | { kind: "error"; text: string };
 

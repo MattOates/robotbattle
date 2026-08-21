@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Agent, type Entry } from "./agent.js";
-import { hasSubject, systemPrompt, retrieve } from "./knowledge.js";
+import { hasSubject, systemPrompt, retrieve, retrieveExample } from "./knowledge.js";
 import { triage } from "./triage.js";
 import {
   EXPLAINER_TOOL_DEFS,
@@ -208,6 +208,8 @@ export function AssistantPanel({
       // Sort the question before answering it. Looking up a lesson for every
       // question is how "can you see my script?" got answered with a chapter
       // about sense cones — see `triage.ts`.
+      const composes = runtime?.models.find((m) => m.id === modelId)?.composes ?? true;
+
       const routed = await triage(provider, question, lastQuestion.current ?? undefined);
       lastQuestion.current = question;
 
@@ -262,8 +264,28 @@ export function AssistantPanel({
       if (lessons.length) parts.push(lessons.join("\n\n"));
       const material = parts.join("\n\n");
 
+      // A model that does not compose gets an example anyway — quoted from a
+      // lesson, attributed, and known to compile because every lesson example
+      // is built on every test run. Attached after the answer rather than
+      // inside it, so it is plainly somebody else's code and not a claim.
+      const quotation =
+        !composes && routed.kind !== "assistant"
+          ? retrieveExample(topic || question, theme)
+          : null;
+
       try {
         await agentRef.current.ask(question, controller.signal, tools, material || undefined);
+        if (quotation && !controller.signal.aborted) {
+          setEntries((prev) => [
+            ...prev,
+            {
+              kind: "assistant",
+              text: "",
+              code: quotation.code,
+              codeFrom: quotation.from,
+            },
+          ]);
+        }
 
       } finally {
         setThinking(false);
@@ -384,6 +406,9 @@ export function AssistantPanel({
                           // friction for an example known to be wrong.
                           copyable={!entry.codeError}
                         />
+                        {entry.codeFrom ? (
+                          <span className="chat-code-from">from “{entry.codeFrom}”</span>
+                        ) : null}
                         {entry.codeError ? (
                           <span className="chat-code-warn" title={entry.codeError}>
                             ⚠ will not compile

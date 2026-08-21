@@ -47,7 +47,7 @@ type JsonSchema = {
  * anyway. Flattening means every field the model might need is named and typed
  * at the top level, and the ones that do not apply are simply left out.
  */
-export function protocolSchema(tools: readonly ToolDef[]): JsonSchema {
+export function protocolSchema(tools: readonly ToolDef[], composes = true): JsonSchema {
   const ops = tools.map((t) => t.function.name).filter((n) => !SPEECH.has(n));
 
   const properties: Record<string, unknown> = {
@@ -55,11 +55,19 @@ export function protocolSchema(tools: readonly ToolDef[]): JsonSchema {
       type: "string",
       description: "What to tell the player. Always fill this in.",
     },
-    code: {
-      type: "string",
-      description:
-        "RoboScript to show them, when an example would help. Empty otherwise.",
-    },
+    // Absent entirely for a model that must not compose. A field it cannot
+    // emit is a rule it cannot break, which is worth more than any amount of
+    // instruction not to — the example it would be shown instead is quoted
+    // from a lesson and is known to compile.
+    ...(composes
+      ? {
+          code: {
+            type: "string",
+            description:
+              "RoboScript to show them, when an example would help. Empty otherwise.",
+          },
+        }
+      : {}),
     op: {
       type: "string",
       // The whole point. A name outside this list cannot be generated.
@@ -90,7 +98,7 @@ export function protocolSchema(tools: readonly ToolDef[]): JsonSchema {
  * options mean. Both are needed — a grammar will happily let it pick a valid op
  * for entirely the wrong reason.
  */
-export function protocolInstructions(tools: readonly ToolDef[]): string {
+export function protocolInstructions(tools: readonly ToolDef[], composes = true): string {
   const lines = tools
     .filter((t) => !SPEECH.has(t.function.name))
     .map((t) => {
@@ -106,12 +114,29 @@ export function protocolInstructions(tools: readonly ToolDef[]): string {
     // not mention is a field the model does not fill in: with `code` in the
     // schema and absent from these lines, every example came back as a
     // sentence inside `say` and the block never appeared.
-    '  "code" — RoboScript to show them, whenever the answer involves writing',
-    "           any. Put it here and NOT inside `say`. Empty if there is none.",
+    ...(composes
+      ? [
+          '  "code" — RoboScript to show them, whenever the answer involves writing',
+          "           any. Put it here and NOT inside `say`. Empty if there is none.",
+        ]
+      : []),
     '  "op"   — the ONE thing to do this turn, or "none" to just talk.',
     "",
-    'Example: {"say":"Sweep the radar as you start.","code":"on start\\n  radar.sweep 60\\nend","op":"none"}',
+    // The worked example has to match the shape being asked for. Left as-is it
+    // demonstrated a `code` field to a model that has no `code` field, which is
+    // an invitation to go looking for one.
+    composes
+      ? 'Example: {"say":"Sweep the radar as you start.","code":"on start\\n  radar.sweep 60\\nend","op":"none"}'
+      : 'Example: {"say":"A tank turns on the spot.","op":"none"}',
     "",
+    ...(composes
+      ? []
+      : [
+          "Do not write RoboScript of your own. Where an example would help,",
+          "one from the lessons is shown beside your answer already — say what",
+          "it does and which part of it matters.",
+          "",
+        ]),
     "The ops are:",
     ...lines,
     "",

@@ -36,13 +36,29 @@ import {
  * 3B got a paragraph about real-world military vehicles from the 1B. An extra
  * gigabyte is worth that; it is most of the feature.
  */
+/**
+ * Two rungs, both Gemma 2, because the difference between them is stark enough
+ * to be worth a real choice and a third option would only be a worse version of
+ * one of them.
+ *
+ * The small one does not write code. It explains, it reads the player's script,
+ * and where an example would help it quotes one out of the lessons — code that
+ * is compiled on every test run and therefore cannot be wrong. The large one
+ * composes, and is good enough at it to be worth six gigabytes.
+ */
 export const ASSISTANT_MODELS: readonly AssistantModel[] = [
-  { id: "Llama-3.2-1B-Instruct-q4f32_1-MLC", label: "Llama 3.2 (1B) — quickest", vramMB: 1128.82 },
-  { id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 (1.5B)", vramMB: 1629.75 },
-  { id: "gemma-2-2b-it-q4f16_1-MLC", label: "Gemma 2 (2B)", vramMB: 1895.13 },
-  { id: "Llama-3.2-3B-Instruct-q4f16_1-MLC", label: "Llama 3.2 (3B)", vramMB: 2263.69 },
-  { id: "Qwen2.5-3B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 (3B)", vramMB: 2504.76 },
-  { id: "gemma-2-9b-it-q4f16_1-MLC", label: "Gemma 2 (9B) — best answers", vramMB: 6422.01 },
+  {
+    id: "gemma-2-2b-it-q4f16_1-MLC",
+    label: "Gemma 2 (2B) — explains, quotes the lessons",
+    vramMB: 1895.13,
+    composes: false,
+  },
+  {
+    id: "gemma-2-9b-it-q4f16_1-MLC",
+    label: "Gemma 2 (9B) — writes examples of its own",
+    vramMB: 6422.01,
+    composes: true,
+  },
 ];
 
 /**
@@ -250,6 +266,11 @@ export class WebLLMJsonProvider implements ChatProvider {
     return new WebLLMJsonProvider(modelId, engine as unknown as Engine, worker);
   }
 
+  /** Whether the loaded model is allowed to write RoboScript of its own. */
+  get composes(): boolean {
+    return ASSISTANT_MODELS.find((m) => m.id === this.id)?.composes ?? true;
+  }
+
   async chat(req: ChatRequest): Promise<ChatResponse> {
     if (this.broken) {
       throw new Error("The assistant was stopped. Start it again to keep going.");
@@ -267,7 +288,7 @@ export class WebLLMJsonProvider implements ChatProvider {
     // no tool vocabulary, because the answer is not a turn of conversation.
     const messages = req.json
       ? flattenToolTurns(req.messages)
-      : flattenToolTurns(withProtocol(req.messages, req.tools));
+      : flattenToolTurns(withProtocol(req.messages, req.tools, this.composes));
     const deadline = deadlineWhileVisible(REPLY_TIMEOUT_MS);
 
     let reply: Reply | null;
@@ -278,7 +299,9 @@ export class WebLLMJsonProvider implements ChatProvider {
           // No `tools`. That is the whole point — see the file header.
           response_format: {
             type: "json_object",
-            schema: JSON.stringify(req.json ? req.json.schema : protocolSchema(req.tools)),
+            schema: JSON.stringify(
+              req.json ? req.json.schema : protocolSchema(req.tools, this.composes),
+            ),
           },
           // Low, because there is exactly one right shape for this answer and
           // no reason to go looking for a different one.
@@ -338,8 +361,9 @@ export class WebLLMJsonProvider implements ChatProvider {
 export function withProtocol(
   messages: ChatRequest["messages"],
   tools: readonly { function: { name: string } }[] & ChatRequest["tools"],
+  composes = true,
 ): ChatRequest["messages"] {
-  const protocol = protocolInstructions(tools);
+  const protocol = protocolInstructions(tools, composes);
   const index = messages.findIndex((m) => m.role === "system");
   if (index === -1) {
     return [{ role: "system", content: protocol }, ...messages];

@@ -35,6 +35,17 @@ export interface AssistantModel {
    * correctly gets no warning.
    */
   vramMB: number;
+  /**
+   * May this model write RoboScript of its own?
+   *
+   * False for the small ones, and not out of caution — measured. Asked to
+   * compose, they invent commands, write one-line `if` blocks, and produce
+   * confident nonsense that has to be caught by the compiler and flagged. They
+   * are perfectly good at reading and explaining, so below this line the
+   * assistant quotes a known-good example out of the lessons instead of
+   * writing one, and says which lesson it came from.
+   */
+  composes: boolean;
 }
 
 /** Progress while a model is being fetched and made ready. */

@@ -21,7 +21,14 @@ import { EVENT_NAMES } from "../lang/ast.js";
 import { EVENT_DOCS, eventFields, renderDoc } from "../lang/events.js";
 import { wordFor, type Theme } from "../lang/vocab.js";
 import type { PromptBudget } from "./runtime.js";
-import { fillVocab, loadLessons, selectWorld, type Lesson } from "../learn/markdown.js";
+import {
+  CODE_LANGS,
+  extractCode,
+  fillVocab,
+  loadLessons,
+  selectWorld,
+  type Lesson,
+} from "../learn/markdown.js";
 
 /** Strip a `Suggestion` down to one line the model can skim. */
 function line(label: string, detail?: string): string {
@@ -276,6 +283,20 @@ export function hasSubject(question: string): boolean {
   return keywords(question).length > 0;
 }
 
+/**
+ * Does this text mention the word, allowing for a plural?
+ *
+ * Substring matching on the raw word misses more than it has any right to.
+ * "Dodge bullets" found nothing, because the lessons say `bullet`; "avoid
+ * hills" found nothing, because they say `hill`. Trimming one trailing `s` is
+ * not stemming and does not want to be — it is the one ending that separates
+ * how people ask questions from how documentation is written.
+ */
+function mentions(haystack: string, word: string): boolean {
+  if (haystack.includes(word)) return true;
+  return word.endsWith("s") && word.length > 3 && haystack.includes(word.slice(0, -1));
+}
+
 function keywords(question: string): string[] {
   return question
     .toLowerCase()
@@ -338,6 +359,53 @@ function bestWindow(text: string, words: readonly string[], budget: number): str
   return `${prefix}${window}${suffix}`.slice(0, budget);
 }
 
+export interface Quotation {
+  code: string;
+  /** The lesson it came out of, so it can be attributed rather than claimed. */
+  from: string;
+}
+
+/**
+ * A real example out of the lessons, for a model that should not write its own.
+ *
+ * The point is that this code is *known good*. Every example in every lesson is
+ * compiled by `tests/learn/content.test.ts`, in both worlds, on every run — so
+ * quoting one cannot produce the invented commands and one-line `if` blocks a
+ * small model writes when asked to compose. It is somebody else's answer to a
+ * neighbouring question rather than an answer to this one, which is a fair
+ * trade when the alternative is a confident wrong one.
+ */
+export function retrieveExample(question: string, theme: Theme): Quotation | null {
+  const words = keywords(question);
+  if (words.length === 0) return null;
+
+  let best: { quote: Quotation; score: number } | null = null;
+  for (const lesson of loadLessons()) {
+    const body = readable(lesson, theme);
+    const title = renderDoc(lesson.title, theme);
+    // The chapter counts as well as the code. Someone asking how to "shoot"
+    // will not find the word anywhere in an example that says `fire` — but the
+    // lesson it sits in is called "Shooting", and that is the connection they
+    // are making. Code hits still count double: an example about turning is
+    // one that actually turns.
+    const around = `${title} ${lesson.teaches}`.toLowerCase();
+    for (const { info, code } of extractCode(body)) {
+      if (!CODE_LANGS.has(info.lang)) continue;
+      const trimmed = code.trim();
+      if (!trimmed) continue;
+      const haystack = trimmed.toLowerCase();
+      const score = words.reduce(
+        (n, word) => n + (mentions(haystack, word) ? 2 : 0) + (mentions(around, word) ? 1 : 0),
+        0,
+      );
+      if (score > 0 && (!best || score > best.score)) {
+        best = { quote: { code: trimmed, from: title }, score };
+      }
+    }
+  }
+  return best?.quote ?? null;
+}
+
 /**
  * The lessons that bear on what was asked.
  *
@@ -370,9 +438,9 @@ export function retrieve(question: string, theme: Theme, limit = 2): string[] {
       // A hit in the title is worth far more than a hit buried in prose: the
       // chapter called "Turning" is about turning, whereas half the chapters
       // mention it.
-      if (title.includes(word)) score += 10;
-      if (teaches.includes(word)) score += 4;
-      if (body.includes(word)) score += 1;
+      if (mentions(title, word)) score += 10;
+      if (mentions(teaches, word)) score += 4;
+      if (mentions(body, word)) score += 1;
     }
     return { lesson, rendered, score };
   });
