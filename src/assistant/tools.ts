@@ -418,13 +418,29 @@ function runTrialsInWorker(request: TrialWorkerIn["request"]): Promise<TrialRepo
 export function exampleCompiles(code: string): { ok: boolean; error?: string } {
   const snippet = code.replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/, "").trim();
   if (!snippet) return { ok: true };
+
   const head = 'name "x"\nchassis tank\n\n';
-  const looksWhole = /^(on|can|name|chassis|color|var)\b/.test(snippet);
-  const wrapped = looksWhole
-    ? snippet
-    : `on tick\n${snippet.split("\n").map((l) => `  ${l}`).join("\n")}\nend`;
-  const check = checkScript(head + wrapped);
-  if (check.ok) return { ok: true };
+  const asIs = head + snippet;
+  const inHandler =
+    head + `on tick\n${snippet.split("\n").map((l) => `  ${l}`).join("\n")}\nend`;
+
+  // Both readings are tried, and the snippet is sound if either works.
+  //
+  // Guessing which one to try was a quiet source of false alarms: the guess
+  // looked at the first line, and a perfectly good handler with `-- avoid
+  // hills` written above it was read as loose statements, wrapped in a handler
+  // of its own, and reported as broken because it then had two `on` blocks
+  // inside each other. The model writes comments above its examples constantly,
+  // so a fair number of the examples marked "will not compile" compiled fine.
+  if (checkScript(asIs).ok || checkScript(inHandler).ok) return { ok: true };
+
+  // Neither worked, so report the reading the snippet was actually reaching
+  // for — otherwise loose statements are complained about for not being a
+  // program, which is not the mistake anybody made.
+  const opensSomething = /^\s*(on|can|name|chassis|color|var)\b/m.test(
+    snippet.split("\n").find((l) => l.trim() && !l.trim().startsWith("--")) ?? "",
+  );
+  const check = checkScript(opensSomething ? asIs : inHandler);
   return { ok: false, error: `Line ${check.error?.line}: ${check.error?.message}` };
 }
 

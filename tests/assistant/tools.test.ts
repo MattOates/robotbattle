@@ -310,6 +310,38 @@ describe("checking an example against the real compiler", () => {
     expect(exampleCompiles("drive forward 80").ok).toBe(true);
   });
 
+  /**
+   * The reported symptom was "a lot of the failures look like `end` being
+   * indented", which sounded like a parser limitation and was not one — the
+   * parser is perfectly happy with indented, tab-indented and trailing-space
+   * `end`. The false alarms came from here: a complete handler with a comment
+   * written above it was read as loose statements, wrapped in a handler of its
+   * own, and rejected for having two `on` blocks inside each other. The model
+   * writes comments above its examples constantly.
+   */
+  it("accepts a whole handler introduced by a comment", () => {
+    expect(exampleCompiles("-- avoid hills\non tick\n  stop\nend").ok).toBe(true);
+  });
+
+  it("accepts loose statements introduced by a comment", () => {
+    expect(exampleCompiles("-- go\ndrive forward 80").ok).toBe(true);
+  });
+
+  it("accepts several handlers at once", () => {
+    expect(exampleCompiles("on start\n  stop\nend\n\non tick\n  stop\nend").ok).toBe(true);
+  });
+
+  it("accepts a bare if block", () => {
+    expect(exampleCompiles("if me.slope > 12 then\n  stop\nend").ok).toBe(true);
+  });
+
+  it("complains about the reading the snippet was reaching for", () => {
+    // Loose statements must not be told off for failing to be a program.
+    const verdict = exampleCompiles("swerve left 90");
+    expect(verdict.ok).toBe(false);
+    expect(verdict.error).toContain("swerve");
+  });
+
   it("sees through a fence the model added", () => {
     expect(exampleCompiles("```\non tick\n  drive forward 80\nend\n```").ok).toBe(true);
   });
