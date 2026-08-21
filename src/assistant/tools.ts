@@ -413,22 +413,33 @@ export const ESSENTIAL_TOOL_NAMES = ["say", "read_script", "replace_document", "
 export const ESSENTIAL_TOOL_DEFS: ToolDef[] = ESSENTIAL_TOOL_NAMES.map((n) => TOOLS[n]!.def);
 
 /**
- * The set for a model that has already been shown the script.
+ * The set for a model that may look and talk, and may not touch.
  *
- * `read_script` is missing on purpose, and removing it fixed a real failure
- * rather than saving a few tokens. A small model given a tool for fetching the
- * script will fetch the script, read the answer, and fetch it again — six times
- * over, changing nothing, until the round cap stops it. It is not stupidity so
- * much as the absence of a plan: every turn looks like the first one.
+ * This is not caution, it is measurement. Both models that were tried could
+ * describe RoboScript from a lesson perfectly well and neither could write a
+ * line of it: given the ability to edit, each replaced the player's whole
+ * script with something that did not compile, was told exactly what was wrong,
+ * and did the same thing again until the round cap stopped it. One wrote the
+ * compile error into the script as the new program.
  *
- * A script is a few hundred bytes and the round trip to ask for it costs more
- * than including it did. So the caller pastes it into the question with
- * `numberedScript`, and the shortest path from question to edit is the only
- * path there is.
+ * The boundary is not model size. "Explain this language from a lesson in front
+ * of you" is comfortably within reach; "write valid text in an unfamiliar
+ * language and debug it from an error message" is not, and a few more billion
+ * parameters moves you along that gradient without crossing it.
+ *
+ * So the tools that write are simply absent, rather than discouraged in a
+ * prompt. A model cannot misuse an op that is not in the enum. `check_script`
+ * stays because reading a compile error is exactly the kind of help wanted
+ * here, and it changes nothing.
+ *
+ * `read_script` is absent for a different reason: a small model given a tool
+ * for fetching the script fetches it, reads the answer, and fetches it again
+ * until the cap, because every turn looks like the first one to it. The caller
+ * pastes the script in with `numberedScript` instead.
  */
-export const SIGHTED_TOOL_NAMES = ["say", "replace_document", "check_script"];
+export const EXPLAINER_TOOL_NAMES = ["say", "check_script"];
 
-export const SIGHTED_TOOL_DEFS: ToolDef[] = SIGHTED_TOOL_NAMES.map((n) => TOOLS[n]!.def);
+export const EXPLAINER_TOOL_DEFS: ToolDef[] = EXPLAINER_TOOL_NAMES.map((n) => TOOLS[n]!.def);
 
 /** Names the panel should render as speech rather than as an action. */
 export const SPEECH_TOOLS = new Set(["say"]);

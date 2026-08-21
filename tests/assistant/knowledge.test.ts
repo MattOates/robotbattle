@@ -115,6 +115,36 @@ describe("lesson retrieval", () => {
     expect(retrieve("what about it?", "mechanical")).toEqual([]);
   });
 
+  it("stays inside its budget, which is the only reason it fits", () => {
+    for (const q of ["how do I turn", "radar ping wall", "fuel terrain slope"]) {
+      for (const snippet of retrieve(q, "mechanical")) {
+        expect(snippet.length).toBeLessThan(2600);
+      }
+    }
+  });
+
+  /**
+   * Taking the opening of a chapter was the obvious thing and quietly the
+   * wrong one — lessons open with scene-setting, so a narrow question got four
+   * paragraphs about what a robot is. With no ability to look anything up for
+   * itself, what the assistant can say is almost entirely what it was handed.
+   */
+  it("quotes the part of the lesson that is about the question", () => {
+    const [snippet] = retrieve("what does gunHeat mean and when can I fire?", "mechanical");
+    expect(snippet).toBeDefined();
+    expect(snippet!.toLowerCase()).toMatch(/gunheat|cool/);
+  });
+
+  it("offers a second opinion as well as a first", () => {
+    // Cheap insurance: the top match is a guess, and there is budget for two.
+    expect(retrieve("radar ping wall", "mechanical").length).toBeGreaterThan(1);
+  });
+
+  it("marks a quote that starts mid-lesson, so it does not read as the whole", () => {
+    const snippets = retrieve("what does gunHeat mean and when can I fire?", "mechanical");
+    expect(snippets.some((s) => s.includes("…"))).toBe(true);
+  });
+
   it("leaves no live-editor fences in what it hands the model", () => {
     for (const snippet of retrieve("radar ping wall", "mechanical", 3)) {
       expect(snippet).not.toContain("```try");

@@ -25,23 +25,25 @@ import {
 /**
  * Small instruct models, none over 3 GB.
  *
- * The default is the one WebLLM uses in its own chat example, which makes it
- * the best-travelled path through this stack — worth more here than a couple of
- * points of raw ability, given how much of the difficulty has been in the
- * plumbing rather than the model.
+ * Ordinary instruct models rather than anything tuned for function calling,
+ * because the schema does the constraining now: what is wanted is a model that
+ * follows an instruction and writes valid JSON, which is all of these.
  *
- * Nothing here is tuned for function calling, and after the last attempt that
- * is a feature: the schema does the constraining, so what is wanted is a model
- * that follows instructions and writes valid JSON, which is every one of these.
+ * Ordered smallest first, and the default is deliberately not the smallest.
+ * The job is explaining a language from a lesson quoted in the prompt, and on
+ * that the 3B is plainly better than the 1B — the same question that got
+ * "Sparky will run on tracks, which are slower but can spin in place" from the
+ * 3B got a paragraph about real-world military vehicles from the 1B. An extra
+ * gigabyte is worth that; it is most of the feature.
  */
 export const ASSISTANT_MODELS: readonly AssistantModel[] = [
-  { id: "Llama-3.2-1B-Instruct-q4f32_1-MLC", label: "Llama 3.2 (1B)", vramMB: 1128.82 },
+  { id: "Llama-3.2-1B-Instruct-q4f32_1-MLC", label: "Llama 3.2 (1B) — quickest", vramMB: 1128.82 },
   { id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 (1.5B)", vramMB: 1629.75 },
-  { id: "Llama-3.2-3B-Instruct-q4f16_1-MLC", label: "Llama 3.2 (3B)", vramMB: 2263.69 },
+  { id: "Llama-3.2-3B-Instruct-q4f16_1-MLC", label: "Llama 3.2 (3B) — best answers", vramMB: 2263.69 },
   { id: "Qwen2.5-3B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 (3B)", vramMB: 2504.76 },
 ];
 
-export const DEFAULT_MODEL_ID = ASSISTANT_MODELS[0]!.id;
+export const DEFAULT_MODEL_ID = "Llama-3.2-3B-Instruct-q4f16_1-MLC";
 
 export function isSupportedModel(id: string): boolean {
   return ASSISTANT_MODELS.some((m) => m.id === id);

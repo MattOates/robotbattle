@@ -13,6 +13,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { EditorState, type TransactionSpec } from "@codemirror/state";
 import {
+  EXPLAINER_TOOL_DEFS,
+  EXPLAINER_TOOL_NAMES,
   runTool,
   TOOL_DEFS,
   type EditorHandle,
@@ -233,5 +235,59 @@ describe("misbehaviour", () => {
     const result = await call("say", { text: "Try a wider sweep." }, ctx);
     expect(result.ok).toBe(true);
     expect(said).toEqual(["Try a wider sweep."]);
+  });
+});
+
+describe("the explainer set", () => {
+  /**
+   * The load-bearing test on this branch.
+   *
+   * A local model of this size explains RoboScript well and cannot write it:
+   * given editing tools it replaced the whole script with something that did
+   * not compile, was told exactly what was wrong, and did it again until the
+   * round cap. So write access is removed rather than discouraged — and the
+   * check is behavioural, not a list of names, because the promise being made
+   * to the player is about the document and not about our naming.
+   */
+  it("cannot change the document, whatever it is asked to do", async () => {
+    for (const def of EXPLAINER_TOOL_DEFS) {
+      const { ctx } = context();
+      const before = ctx.view!.state.doc.toString();
+      // Every argument shape a model might produce for any tool we define,
+      // aimed at a tool that should ignore all of them.
+      for (const args of [
+        {},
+        { text: "DESTROYED" },
+        { start_line: 1, end_line: 99, text: "DESTROYED" },
+        { trials: 1 },
+      ]) {
+        await call(def.function.name, args, ctx);
+      }
+      expect(ctx.view!.state.doc.toString(), `${def.function.name} left the script alone`).toBe(
+        before,
+      );
+    }
+  });
+
+  it("offers no tool that any writing tool shares a name with", () => {
+    const writes = ["insert_at_cursor", "replace_lines", "replace_document"];
+    for (const name of EXPLAINER_TOOL_NAMES) expect(writes).not.toContain(name);
+  });
+
+  /**
+   * Reading a compile error is the single most useful thing it can do — "why
+   * will this not work" is half the questions — and it changes nothing.
+   */
+  it("can still read a compile error", async () => {
+    const { ctx } = context("on start\n  drive sideways 10\nend\n");
+    const result = await call("check_script", {}, ctx);
+    expect(result["compiles"]).toBe(false);
+    expect(result["message"]).toBeTypeOf("string");
+  });
+
+  it("can still speak", async () => {
+    const { ctx, said } = context();
+    await call("say", { text: "A tank turns on the spot." }, ctx);
+    expect(said).toEqual(["A tank turns on the spot."]);
   });
 });

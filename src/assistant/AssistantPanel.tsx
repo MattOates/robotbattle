@@ -16,12 +16,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Agent, type Entry } from "./agent.js";
 import { systemPrompt, retrieve } from "./knowledge.js";
 import {
+  EXPLAINER_TOOL_DEFS,
   numberedScript,
-  SIGHTED_TOOL_DEFS,
   TOOL_DEFS,
   type EditorHandle,
   type ToolContext,
 } from "./tools.js";
+import { checkScript } from "../sim/world.js";
 import { assistantRuntime, downloadSizeGB, type LoadProgress } from "./runtime.js";
 import type { ChatProvider } from "./provider.js";
 import type { Contender } from "../workshop/trials.js";
@@ -67,11 +68,13 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
   const supported = useMemo(() => runtime?.available() ?? false, [runtime]);
   const size = downloadSizeGB(modelId);
 
-  // What this runtime can actually carry. A tight budget gets the short card
-  // and a tool set that assumes the script has already been handed over; see
-  // `PromptBudget` and `SIGHTED_TOOL_NAMES`.
+  // What this runtime can actually carry, and what it can be trusted with. A
+  // tight budget gets the short card and the tools that cannot write — a local
+  // model of this size explains RoboScript well and cannot compose it at all,
+  // so the editing tools are absent rather than merely discouraged. See
+  // `PromptBudget` and `EXPLAINER_TOOL_NAMES`.
   const budget = runtime?.promptBudget ?? "roomy";
-  const tools = budget === "tight" ? SIGHTED_TOOL_DEFS : TOOL_DEFS;
+  const tools = budget === "tight" ? EXPLAINER_TOOL_DEFS : TOOL_DEFS;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
@@ -142,16 +145,29 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       // The lesson that bears on this question, if there is one. Retrieved per
       // question rather than kept in the prompt, because the context window
       // cannot hold seventeen chapters and only one of them is ever relevant.
-      const lessons = retrieve(question, theme);
       const parts = [question];
+
       // On a tight budget the script is given rather than fetched. A small
       // model handed a tool for reading it will read it, and read it again,
-      // until the round cap stops it — see `SIGHTED_TOOL_NAMES`.
-      const script = budget === "tight" && editorRef.current
-        ? numberedScript(editorRef.current)
-        : null;
-      if (script) parts.push(`My script right now:\n${script}`);
-      if (lessons.length) parts.push(`This may help:\n${lessons.join("\n\n")}`);
+      // until the round cap stops it — see `EXPLAINER_TOOL_NAMES`.
+      const view = editorRef.current;
+      if (budget === "tight" && view) {
+        parts.push(`My script right now:\n${numberedScript(view)}`);
+        // Volunteered rather than waited for. "Why will this not work?" is one
+        // of the two questions people actually ask, and the answer is usually
+        // sitting in the compiler already — a model that has to remember to go
+        // and look for it will often not bother.
+        const check = checkScript(view.state.doc.toString());
+        if (!check.ok) {
+          parts.push(
+            `It does not compile. Line ${check.error?.line}: ${check.error?.message}` +
+              (check.error?.hint ? ` (${check.error.hint})` : ""),
+          );
+        }
+      }
+
+      const lessons = retrieve(question, theme);
+      if (lessons.length) parts.push(lessons.join("\n\n"));
       const asked = parts.join("\n\n");
 
       try {
@@ -206,7 +222,8 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       {status === "cold" || status === "failed" ? (
         <div className="panel-body">
           <p className="empty small">
-            A helper that can read your script and change it for you.
+            Someone to ask about RoboScript. It can read your script and explain
+            it, but it will not change anything — that is still yours to type.
             {/* Only claimed when it is true. A runtime with nothing to download
                 is one doing its thinking somewhere else, and promising privacy
                 on its behalf would be a lie. */}

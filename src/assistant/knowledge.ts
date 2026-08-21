@@ -173,10 +173,21 @@ export function briefCard(theme: Theme): string {
  */
 export function systemPrompt(theme: Theme, budget: PromptBudget = "roomy"): string {
   if (budget === "tight") {
+    // Written for a model that can explain and cannot edit. It is told to
+    // answer in words and to quote rather than compose, because the one thing
+    // it reliably gets wrong is writing RoboScript of its own — see
+    // `EXPLAINER_TOOL_NAMES`.
     return [
-      "You help a player write a robot in RoboScript. Be brief and kind.",
-      "You can only speak by calling `say`. Read with `read_script` before you",
-      "edit, and call `check_script` after. Change as little as possible.",
+      "You help someone understand RoboScript, the language their robot is",
+      "written in. Many of them are children, and some have never programmed.",
+      "",
+      "Answer in plain words, in a sentence or two. Be kind and concrete.",
+      "If a lesson is quoted below, answer from it and prefer its wording to",
+      "your own. If you are not sure, say so and say which lesson to read.",
+      "",
+      "You cannot change their script — say what to write and where, and let",
+      "them type it. Only ever show RoboScript that appears in the reference or",
+      "the lesson below; never invent a command, and never guess at spelling.",
       "",
       briefCard(theme),
     ].join("\n");
@@ -232,18 +243,67 @@ function readable(lesson: Lesson, theme: Theme): string {
   return body.replace(/```try[^\n]*\n/g, "```\n");
 }
 
-const CHARS_PER_SNIPPET = 1400;
+/**
+ * How much lesson to quote.
+ *
+ * Generous, because the assistant cannot edit anything and so has no tool
+ * schemas worth speaking of to pay for — that budget goes here instead. What
+ * the model can say is now almost entirely a function of what it was handed,
+ * which makes this the most valuable text in the prompt.
+ */
+const CHARS_PER_SNIPPET = 2200;
 
 /**
- * The one or two lessons that bear on what was asked.
+ * The part of a lesson that is actually about the question.
+ *
+ * Taking the opening of the chapter was the obvious thing and quietly the wrong
+ * one: lessons open with scene-setting, so a question about `me.gunHeat` would
+ * be answered from four paragraphs about what a robot is. This slides a window
+ * over the paragraphs and keeps the densest run of them instead, which is
+ * usually the passage that actually explains the thing.
+ */
+function bestWindow(text: string, words: readonly string[], budget: number): string {
+  const paragraphs = text.split(/\n{2,}/);
+  const hits = paragraphs.map((p) => {
+    const lower = p.toLowerCase();
+    return words.reduce((n, word) => n + (lower.includes(word) ? 1 : 0), 0);
+  });
+
+  let best = { start: 0, end: 0, score: -1 };
+  for (let start = 0; start < paragraphs.length; start++) {
+    let length = 0;
+    let score = 0;
+    for (let end = start; end < paragraphs.length; end++) {
+      length += paragraphs[end]!.length + 2;
+      if (length > budget && end > start) break;
+      score += hits[end]!;
+      // Ties go to the earlier, shorter window: lessons are written in order,
+      // so the first good explanation is usually the introductory one.
+      if (score > best.score) best = { start, end, score };
+      if (length > budget) break;
+    }
+  }
+
+  const window = paragraphs.slice(best.start, best.end + 1).join("\n\n");
+  const prefix = best.start > 0 ? "…" : "";
+  const suffix = best.end < paragraphs.length - 1 ? "…" : "";
+  return `${prefix}${window}${suffix}`.slice(0, budget);
+}
+
+/**
+ * The lessons that bear on what was asked.
  *
  * Scoring is deliberately crude — word overlap against the title, the one-line
  * summary and the body. An embedding model would score better, but it would be
  * a second model to download, and at this corpus size (seventeen lessons) the
  * crude version picks the right chapter for the kind of question people
  * actually ask: "how do I turn", "what is a bearing", "why is my radar empty".
+ *
+ * Two by default rather than one. The assistant has nothing else to go on now
+ * that it cannot look at anything for itself, and a second chapter is cheap
+ * insurance against the first one having been the wrong guess.
  */
-export function retrieve(question: string, theme: Theme, limit = 1): string[] {
+export function retrieve(question: string, theme: Theme, limit = 2): string[] {
   const words = keywords(question);
   if (words.length === 0) return [];
 
@@ -263,12 +323,15 @@ export function retrieve(question: string, theme: Theme, limit = 1): string[] {
     return { lesson, score };
   });
 
-  return scored
+  const chosen = scored
     .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map(({ lesson }) => {
-      const text = readable(lesson, theme).slice(0, CHARS_PER_SNIPPET);
-      return `From the lesson "${renderDoc(lesson.title, theme)}":\n\n${text}`;
-    });
+    .slice(0, limit);
+
+  // The best match gets the whole budget; a second opinion gets half of it.
+  return chosen.map(({ lesson }, i) => {
+    const budget = i === 0 ? CHARS_PER_SNIPPET : Math.round(CHARS_PER_SNIPPET / 2);
+    const text = bestWindow(readable(lesson, theme), words, budget);
+    return `From the lesson "${renderDoc(lesson.title, theme)}":\n\n${text}`;
+  });
 }
