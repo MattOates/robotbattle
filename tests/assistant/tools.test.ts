@@ -354,18 +354,17 @@ describe("refusing an example that does not compile", () => {
    * nothing. Refused here, the compiler error is an ordinary tool result the
    * model can act on, and only working RoboScript reaches the transcript.
    */
-  it("does not say it, and hands back what the compiler said", async () => {
+  it("never shows a snippet the compiler rejects", async () => {
     const said: [string, string | undefined][] = [];
     const { ctx } = context();
     ctx.onSay = (text, code) => said.push([text, code]);
-    const result = await call(
+    await call(
       "say",
       { text: "Try this.", code: "if me.slope > 12 then turn chassis to me.downhill end" },
       ctx,
     );
-    expect(result.ok).toBe(false);
-    expect(String(result["error"])).toContain("does not compile");
-    expect(said).toEqual([]);
+    // The words may still be said; the broken example must not be shown.
+    expect(said.map(([, code]) => code)).toEqual([undefined]);
   });
 
   it("says it when the example is sound", async () => {
@@ -380,5 +379,37 @@ describe("refusing an example that does not compile", () => {
   it("never blocks plain speech, which has nothing to compile", async () => {
     const { ctx } = context();
     expect((await call("say", { text: "A tank turns on the spot." }, ctx)).ok).toBe(true);
+  });
+});
+
+describe("when only the example is broken", () => {
+  /**
+   * Refusing the whole turn threw the sentence away with the snippet, and the
+   * model then spent every round failing to fix the code until the cap — six
+   * generations of a hot GPU to deliver nothing. An answer with no example
+   * beats an example with no answer.
+   */
+  it("keeps the words and drops the snippet", async () => {
+    const said: [string, string | undefined][] = [];
+    const { ctx } = context();
+    ctx.onSay = (text, code) => said.push([text, code]);
+    const result = await call(
+      "say",
+      { text: "Turn across the slope.", code: "if me.slope > 12 then turn end" },
+      ctx,
+    );
+    expect(result.ok).toBe(true);
+    expect(said).toEqual([["Turn across the slope.", undefined]]);
+    // Told why, in case it wants another go at the example.
+    expect(String(result["note"])).toContain("does not compile");
+  });
+
+  it("refuses only when dropping the snippet would leave nothing", async () => {
+    const said: string[] = [];
+    const { ctx } = context();
+    ctx.onSay = (text) => said.push(text);
+    const result = await call("say", { code: "if me.slope > 12 then turn end" }, ctx);
+    expect(result.ok).toBe(false);
+    expect(said).toEqual([]);
   });
 });

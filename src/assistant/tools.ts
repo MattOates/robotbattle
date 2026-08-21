@@ -155,18 +155,30 @@ const TOOLS: Record<string, Tool> = {
       const code = asString(args["code"])?.trim();
       if (!text && !code) return { ok: false, error: "say needs a `text` string." };
 
-      // Checked before it is spoken, not after. Validating afterwards meant
-      // the player was shown a broken example, then a second attempt at the
-      // same broken example, then a note saying not to trust either — three
-      // messages to deliver nothing. Refusing here turns the compiler error
-      // into an ordinary tool result and the model simply tries again, and
-      // only working RoboScript ever reaches the transcript.
+      // Checked before it is spoken, so a broken example is never shown.
+      //
+      // What happens next matters more than the check. Refusing the whole turn
+      // threw the SENTENCE away with the snippet, and the model would spend
+      // every round failing to fix the code until the cap — six generations of
+      // a hot GPU to deliver nothing at all. An answer with no example beats
+      // an example with no answer.
+      //
+      // So a bad snippet is dropped and the words are kept, and the model is
+      // told why in case it wants to try again. Only a turn with nothing left
+      // in it once the snippet is gone is refused outright.
       if (code) {
         const verdict = exampleCompiles(code);
         if (!verdict.ok) {
+          if (!text) {
+            return {
+              ok: false,
+              error: `That RoboScript does not compile — ${verdict.error}. Fix it, using only words from the reference.`,
+            };
+          }
+          ctx.onSay(text);
           return {
-            ok: false,
-            error: `That RoboScript does not compile — ${verdict.error}. Fix it and say it again, using only words from the reference.`,
+            ok: true,
+            note: `Your example was not shown: it does not compile — ${verdict.error}.`,
           };
         }
       }

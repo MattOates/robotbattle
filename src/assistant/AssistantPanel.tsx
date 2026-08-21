@@ -182,6 +182,9 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
           tools,
           ctx,
           onEntry: (entry) => setEntries((prev) => [...prev, entry]),
+          // Nothing to work through when it can only talk, so a turn that has
+          // not landed in three goes will not land in six.
+          ...(budget === "tight" ? { maxRounds: 3 } : {}),
         });
       }
 

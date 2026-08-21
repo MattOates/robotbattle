@@ -48,6 +48,15 @@ export interface AgentOptions {
   ctx: ToolContext;
   /** Reported as they happen, so the panel can show work in progress. */
   onEntry: (entry: Entry) => void;
+  /**
+   * How many times round before giving up, when the default is too generous.
+   *
+   * An assistant that can only talk has no sequence to work through, so a
+   * turn that has not finished in two or three goes is not going to. Each one
+   * is a full generation on somebody's GPU, and six of them to deliver nothing
+   * is how a laptop gets hot for no reason.
+   */
+  maxRounds?: number;
 }
 
 /**
@@ -130,7 +139,8 @@ export class Agent {
     this.history.push({ role: "user", content: question });
 
     let spoke = false;
-    for (let round = 0; round < MAX_ROUNDS; round++) {
+    const rounds = this.options.maxRounds ?? MAX_ROUNDS;
+    for (let round = 0; round < rounds; round++) {
       if (signal?.aborted) return;
 
       let reply;
