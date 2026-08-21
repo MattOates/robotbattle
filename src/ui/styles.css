@@ -1194,6 +1194,12 @@ button {
 
 /* The Workshop sidebar holds only the robot list, so it stays narrow and the
    editor and arena get the room they actually need. */
+/* The closed tray leaves its handle sticking out over the page, so the
+   workspace gives that strip back rather than running underneath it. */
+.workshop {
+  padding-right: 34px;
+}
+
 .workshop-body {
   display: grid;
   grid-template-columns: minmax(240px, 300px) 1fr;
@@ -1760,7 +1766,10 @@ button {
 
 .assistant-tray {
   position: fixed;
-  top: 0;
+  /* Below the screen header, so the settings cog in the corner stays reachable
+     while the tray is open. Covering it looked like a bug — the cog sits at a
+     higher layer and was drawn straight through the tray. */
+  top: 56px;
   right: 0;
   bottom: 0;
   z-index: 40;
@@ -1809,6 +1818,7 @@ button {
 
 .assistant-tray-body {
   flex: 1;
+  border-top-left-radius: 6px;
   min-width: 0;
   display: flex;
   flex-direction: column;
