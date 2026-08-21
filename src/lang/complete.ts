@@ -18,6 +18,7 @@
 
 import { EVENT_NAMES, type EventName } from "./ast.js";
 import { BUILTIN_SIGNATURES } from "./bytecode.js";
+import { ARENA_PROP_NAMES, ME_PROP_NAMES } from "./compiler.js";
 import { EVENT_DOCS, eventFields, renderDoc } from "./events.js";
 import { scanLine } from "./scan.js";
 import { healthPropertyFor, phraseFor, wordFor, type Theme } from "./vocab.js";
@@ -212,54 +213,65 @@ interface PropDoc {
   themed?: string;
 }
 
-const ME_PROPS: readonly PropDoc[] = [
-  { name: "x", detail: "Where you are across the arena." },
-  { name: "y", detail: "Where you are down the arena." },
-  { name: "heading", detail: "The direction your body is facing, in degrees." },
-  { name: "speed", detail: "How fast you are going right now." },
-  { name: "health", detail: "How much {health} you have left, out of 100." },
-  { name: "turret", detail: "Where the {turret} points, compared to straight ahead." },
-  { name: "gunHeat", detail: "Above 0 means the gun is still cooling and cannot fire." },
-  { name: "radar", detail: "Where the {radar} points, compared to straight ahead." },
-  { name: "pingHeat", detail: "Ticks left before you can {ping} again. 0 means ready." },
-  {
-    name: "fuel",
+/**
+ * What each property is for, keyed by the compiler's list of them.
+ *
+ * The names live in `compiler.ts`, which is the code that accepts or refuses
+ * them; only the prose lives here. Keying the record on that list means a
+ * property added to the language and not described here is a type error rather
+ * than a property nobody is ever offered.
+ */
+type PropDocs<K extends string> = Readonly<Record<K, Omit<PropDoc, "name">>>;
+
+const ME_PROP_DOCS: PropDocs<(typeof ME_PROP_NAMES)[number]> = {
+  x: { detail: "Where you are across the arena." },
+  y: { detail: "Where you are down the arena." },
+  heading: { detail: "The direction your body is facing, in degrees." },
+  speed: { detail: "How fast you are going right now." },
+  health: { detail: "How much {health} you have left, out of 100." },
+  turret: { detail: "Where the {turret} points, compared to straight ahead." },
+  gunHeat: { detail: "Above 0 means the gun is still cooling and cannot fire." },
+  radar: { detail: "Where the {radar} points, compared to straight ahead." },
+  pingHeat: { detail: "Ticks left before you can {ping} again. 0 means ready." },
+  fuel: {
     detail:
       "How much {fuel} is in your tank, out of 100. Moving, turning, {fire} and {ping} spend it; driving over {fuel} refills it. At empty you are slow, not dead.",
   },
-  {
-    name: "aiming",
+  aiming: {
     detail:
       "1 while a shot is waiting for the {turret} to come round to where you aimed it. Aiming again now only moves the goal and makes it wait longer.",
   },
-  {
-    name: "slope",
+  slope: {
     themed: "slope",
     detail:
       "How hard the {ground} is right where you are, 0 flat to 100 as bad as it gets. Costs nothing to check \u2014 you can always feel what you are standing on.",
   },
-  {
-    name: "uphill",
+  uphill: {
     themed: "uphill",
     detail:
       "Which way the {ground} gets harder, compared to straight ahead. Going that way is slow and expensive.",
   },
-  {
-    name: "downhill",
+  downhill: {
     themed: "downhill",
     detail:
       "Which way the {ground} gets easier, compared to straight ahead. Going that way is quick and nearly free.",
   },
-  { name: "ammo", detail: "1 when you are ready to fire, 0 when you are not." },
-  { name: "score", detail: "How many robots you have destroyed." },
-];
+  ammo: { detail: "1 when you are ready to fire, 0 when you are not." },
+  score: { detail: "How many robots you have destroyed." },
+};
 
-const ARENA_PROPS: readonly PropDoc[] = [
-  { name: "width", detail: "How wide the arena is." },
-  { name: "height", detail: "How tall the arena is." },
-  { name: "time", detail: "How many ticks the match has been running." },
-  { name: "robots", detail: "How many {robots} are still alive, including you." },
-];
+const ARENA_PROP_DOCS: PropDocs<(typeof ARENA_PROP_NAMES)[number]> = {
+  width: { detail: "How wide the arena is." },
+  height: { detail: "How tall the arena is." },
+  time: { detail: "How many ticks the match has been running." },
+  robots: { detail: "How many {robots} are still alive, including you." },
+};
+
+const ME_PROPS: readonly PropDoc[] = ME_PROP_NAMES.map((name) => ({ name, ...ME_PROP_DOCS[name] }));
+const ARENA_PROPS: readonly PropDoc[] = ARENA_PROP_NAMES.map((name) => ({
+  name,
+  ...ARENA_PROP_DOCS[name],
+}));
 
 const BUILTIN_DOCS: Readonly<Record<string, string>> = {
   abs: "Makes a number positive. abs(-5) is 5.",

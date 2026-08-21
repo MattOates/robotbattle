@@ -57,7 +57,14 @@ const ACTION_ARITY: Readonly<Record<ActionKind, number>> = {
  * `gunHeat`, the lessons write `gunHeat`, and only this one error said
  * otherwise.
  */
-const ME_PROP_NAMES = [
+/**
+ * The properties `me.` and `arena.` offer, in the order they are suggested.
+ *
+ * Exported because the completion popup used to keep its own copy with the
+ * prose attached, and a property that existed in one list and not the other
+ * either never got suggested or got suggested and then refused.
+ */
+export const ME_PROP_NAMES = [
   "x",
   "y",
   "heading",
@@ -75,7 +82,7 @@ const ME_PROP_NAMES = [
   "uphill",
   "downhill",
 ] as const;
-const ARENA_PROP_NAMES = ["width", "height", "time", "robots"] as const;
+export const ARENA_PROP_NAMES = ["width", "height", "time", "robots"] as const;
 
 const ME_PROPS = new Set<string>(ME_PROP_NAMES.map((n) => n.toLowerCase()));
 const ARENA_PROPS = new Set<string>(ARENA_PROP_NAMES.map((n) => n.toLowerCase()));
