@@ -15,7 +15,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Agent, type Entry } from "./agent.js";
 import { systemPrompt, retrieve } from "./knowledge.js";
-import { TOOL_DEFS, type EditorHandle, type ToolContext } from "./tools.js";
+import {
+  numberedScript,
+  SIGHTED_TOOL_DEFS,
+  TOOL_DEFS,
+  type EditorHandle,
+  type ToolContext,
+} from "./tools.js";
 import { assistantRuntime, downloadSizeGB, type LoadProgress } from "./runtime.js";
 import type { ChatProvider } from "./provider.js";
 import type { Contender } from "../workshop/trials.js";
@@ -60,6 +66,12 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
   const runtime = useMemo(() => assistantRuntime(), []);
   const supported = useMemo(() => runtime?.available() ?? false, [runtime]);
   const size = downloadSizeGB(modelId);
+
+  // What this runtime can actually carry. A tight budget gets the short card
+  // and a tool set that assumes the script has already been handed over; see
+  // `PromptBudget` and `SIGHTED_TOOL_NAMES`.
+  const budget = runtime?.promptBudget ?? "roomy";
+  const tools = budget === "tight" ? SIGHTED_TOOL_DEFS : TOOL_DEFS;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
@@ -119,9 +131,9 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
 
       // Built once and kept, so the conversation has a memory across questions.
       if (!agentRef.current) {
-        agentRef.current = new Agent(systemPrompt(theme), {
+        agentRef.current = new Agent(systemPrompt(theme, budget), {
           provider,
-          tools: TOOL_DEFS,
+          tools,
           ctx,
           onEntry: (entry) => setEntries((prev) => [...prev, entry]),
         });
@@ -131,9 +143,16 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       // question rather than kept in the prompt, because the context window
       // cannot hold seventeen chapters and only one of them is ever relevant.
       const lessons = retrieve(question, theme);
-      const asked = lessons.length
-        ? `${question}\n\nThis may help:\n${lessons.join("\n\n")}`
-        : question;
+      const parts = [question];
+      // On a tight budget the script is given rather than fetched. A small
+      // model handed a tool for reading it will read it, and read it again,
+      // until the round cap stops it — see `SIGHTED_TOOL_NAMES`.
+      const script = budget === "tight" && editorRef.current
+        ? numberedScript(editorRef.current)
+        : null;
+      if (script) parts.push(`My script right now:\n${script}`);
+      if (lessons.length) parts.push(`This may help:\n${lessons.join("\n\n")}`);
+      const asked = parts.join("\n\n");
 
       try {
         await agentRef.current.ask(asked, controller.signal);
@@ -142,7 +161,7 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
         abortRef.current = null;
       }
     },
-    [arena, editorRef, opponents, theme],
+    [budget, editorRef, theme, tools],
   );
 
   // No runtime compiled in, or one that has looked and decided this machine

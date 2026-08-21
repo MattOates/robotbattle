@@ -13,13 +13,15 @@
  * and one that posts to a URL with an API key both fit here, and the panel
  * cannot tell which it has.
  *
- * There is no runtime on this branch. `assistantRuntime()` returning null is a
- * real state with a real rendering — "the assistant is not available here" —
- * and not a placeholder to be tidied away: it is also exactly what a browser
- * with no WebGPU and no API key will see once there are implementations.
+ * This branch runs a small model in the browser over WebGPU, and asks it for
+ * structured JSON rather than tool calls. `assistantRuntime()` can still return
+ * null, and that is a real state with a real rendering rather than a
+ * placeholder — it is what a build with no engine compiled in looks like, just
+ * as `available()` returning false is what a machine without WebGPU looks like.
  */
 
 import type { ChatProvider } from "./provider.js";
+import { webllmJsonRuntime } from "./webllm-json-provider.js";
 
 export interface AssistantModel {
   id: string;
@@ -42,9 +44,19 @@ export interface LoadProgress {
   text: string;
 }
 
+/**
+ * How much prompt a runtime can be given before it stops coping.
+ *
+ * Not a preference — a property of the engine behind it. A one-billion
+ * parameter model in a browser, sharing a 4096 token window with the protocol
+ * and the player's script, has very little room. A hosted model has plenty.
+ */
+export type PromptBudget = "tight" | "roomy";
+
 export interface AssistantRuntime {
   readonly models: readonly AssistantModel[];
   readonly defaultModelId: string;
+  readonly promptBudget: PromptBudget;
   /** Whether this browser could run one of these at all. */
   available(): boolean;
   create(modelId: string, onProgress: (progress: LoadProgress) => void): Promise<ChatProvider>;
@@ -58,7 +70,7 @@ export interface AssistantRuntime {
  * can only find out by looking.
  */
 export function assistantRuntime(): AssistantRuntime | null {
-  return null;
+  return webllmJsonRuntime;
 }
 
 /** The chosen model, or the default when the stored one is no longer offered. */

@@ -20,6 +20,7 @@ import { referenceTables } from "../lang/complete.js";
 import { EVENT_NAMES } from "../lang/ast.js";
 import { EVENT_DOCS, eventFields, renderDoc } from "../lang/events.js";
 import { wordFor, type Theme } from "../lang/vocab.js";
+import type { PromptBudget } from "./runtime.js";
 import { fillVocab, loadLessons, selectWorld, type Lesson } from "../learn/markdown.js";
 
 /** Strip a `Suggestion` down to one line the model can skim. */
@@ -116,10 +117,71 @@ export function languageCard(theme: Theme): string {
 }
 
 /**
+ * The same language, for a runtime that cannot afford the full card.
+ *
+ * Roughly a quarter of the size: no per-event summaries, no per-property
+ * explanations, no worked descriptions — names, shapes and one example. It
+ * teaches far less, and the retrieval step has to carry more of the weight.
+ *
+ * The cut is by *detail* and never by *coverage*. Dropping half the events
+ * would leave the model confidently writing `on sense enemy`, whereas dropping
+ * the sentence that explains an event still leaves it with the correct name to
+ * copy. A short list of true things beats a long list with holes in it.
+ */
+export function briefCard(theme: Theme): string {
+  const t = referenceTables(theme);
+  const names = (list: { label: string }[]) => list.map((s) => s.label).join(", ");
+  const turret = wordFor("turret", theme);
+
+  return [
+    "# RoboScript",
+    "",
+    "Line-based. No semicolons, no braces, no brackets round conditions.",
+    "Blocks end with `end`. Comments start with `--`.",
+    "",
+    "```",
+    'name "Sparky"',
+    "chassis tank",
+    "",
+    "on sense robot",
+    `  ${turret}.aim at event.bearing`,
+    `  ${wordFor("fire", theme)} 2`,
+    "end",
+    "```",
+    "",
+    `Top level: ${names(t.keywords)}`,
+    `Statements: ${names(t.statements)}`,
+    `Actions: ${names(t.actions)}`,
+    `Turret: ${t.turret.map((s) => `${turret}.${s.label}`).join(", ")}`,
+    `Events: ${EVENT_NAMES.map((n) => `on ${n}`).join(", ")}`,
+    `Your state: ${t.me.map((s) => `me.${s.label}`).join(", ")}`,
+    `The arena: ${t.arena.map((s) => `arena.${s.label}`).join(", ")}`,
+    `Functions: ${t.builtins.map((s) => `${s.label}()`).join(", ")}`,
+    `Values: ${names(t.literals)}`,
+    "",
+    "Inside a handler, `event.` carries what happened — usually `event.bearing`",
+    "and `event.distance`. Use only the words above.",
+  ].join("\n");
+}
+
+/**
  * The permanent instructions, kept apart from the language so each can be
  * changed without disturbing the other.
+ *
+ * `budget` is the runtime's answer to how much prompt it can take, not a
+ * quality dial. See `PromptBudget`.
  */
-export function systemPrompt(theme: Theme): string {
+export function systemPrompt(theme: Theme, budget: PromptBudget = "roomy"): string {
+  if (budget === "tight") {
+    return [
+      "You help a player write a robot in RoboScript. Be brief and kind.",
+      "You can only speak by calling `say`. Read with `read_script` before you",
+      "edit, and call `check_script` after. Change as little as possible.",
+      "",
+      briefCard(theme),
+    ].join("\n");
+  }
+
   return [
     "You are the workshop assistant in RoboBattle, a game where people learn to",
     "program by writing robots. Many of your players are children, and for some",

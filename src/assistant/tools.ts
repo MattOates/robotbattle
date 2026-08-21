@@ -168,9 +168,7 @@ const TOOLS: Record<string, Tool> = {
     run(_args, ctx) {
       if (!ctx.view) return { ok: false, error: "There is no script open." };
       const doc = ctx.view.state.doc;
-      const numbered: string[] = [];
-      for (let n = 1; n <= doc.lines; n++) numbered.push(`${n}: ${doc.line(n).text}`);
-      return { ok: true, lines: doc.lines, script: numbered.join("\n") };
+      return { ok: true, lines: doc.lines, script: numberedScript(ctx.view) };
     },
   },
 
@@ -382,8 +380,55 @@ function runTrialsInWorker(request: TrialWorkerIn["request"]): Promise<TrialRepo
   });
 }
 
+/**
+ * The script with a line number on every line.
+ *
+ * Shared by `read_script` and by callers that would rather hand the script over
+ * than be asked for it — see `SIGHTED_TOOL_NAMES`.
+ */
+export function numberedScript(view: EditorHandle): string {
+  const doc = view.state.doc;
+  const lines: string[] = [];
+  for (let n = 1; n <= doc.lines; n++) lines.push(`${n}: ${doc.line(n).text}`);
+  return lines.join("\n");
+}
+
 /** The definitions to show the model. */
 export const TOOL_DEFS: ToolDef[] = Object.values(TOOLS).map((t) => t.def);
+
+/**
+ * The smallest set that can still do the job, for a tight prompt budget.
+ *
+ * The schemas are not free — all eight cost something like six hundred tokens
+ * before the conversation has started, which is a large slice of a small
+ * window. These four keep the loop whole: speak, look, change, verify.
+ *
+ * What goes is what can be done another way. `read_cursor` and `replace_lines`
+ * are precision that `read_script` plus `replace_document` can reach less
+ * elegantly, and `run_trials` is a luxury for a model that is struggling to
+ * write a valid line at all.
+ */
+export const ESSENTIAL_TOOL_NAMES = ["say", "read_script", "replace_document", "check_script"];
+
+export const ESSENTIAL_TOOL_DEFS: ToolDef[] = ESSENTIAL_TOOL_NAMES.map((n) => TOOLS[n]!.def);
+
+/**
+ * The set for a model that has already been shown the script.
+ *
+ * `read_script` is missing on purpose, and removing it fixed a real failure
+ * rather than saving a few tokens. A small model given a tool for fetching the
+ * script will fetch the script, read the answer, and fetch it again — six times
+ * over, changing nothing, until the round cap stops it. It is not stupidity so
+ * much as the absence of a plan: every turn looks like the first one.
+ *
+ * A script is a few hundred bytes and the round trip to ask for it costs more
+ * than including it did. So the caller pastes it into the question with
+ * `numberedScript`, and the shortest path from question to edit is the only
+ * path there is.
+ */
+export const SIGHTED_TOOL_NAMES = ["say", "replace_document", "check_script"];
+
+export const SIGHTED_TOOL_DEFS: ToolDef[] = SIGHTED_TOOL_NAMES.map((n) => TOOLS[n]!.def);
 
 /** Names the panel should render as speech rather than as an action. */
 export const SPEECH_TOOLS = new Set(["say"]);

@@ -10,9 +10,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { languageCard, retrieve, systemPrompt } from "../../src/assistant/knowledge.js";
+import { briefCard, languageCard, retrieve, systemPrompt } from "../../src/assistant/knowledge.js";
+import { ESSENTIAL_TOOL_DEFS, TOOL_DEFS } from "../../src/assistant/tools.js";
 import { tokenize } from "../../src/lang/lexer.js";
 import { healthPropertyFor, THEMES, type Theme } from "../../src/lang/vocab.js";
+import { EVENT_NAMES } from "../../src/lang/ast.js";
 
 const themes = Object.keys(THEMES) as Theme[];
 
@@ -59,6 +61,45 @@ describe("the language card", () => {
         if (!word) continue;
         expect(() => tokenize(word), `card names \`${word}\``).not.toThrow();
       }
+    }
+  });
+});
+
+describe("the brief card, for a tight budget", () => {
+  /**
+   * The reason this exists. An in-browser 7B has a 4096 token window that also
+   * has to hold the tool schemas, the player's script and the conversation.
+   * The full card and all eight schemas come to about 2150 tokens of that
+   * before the player has asked anything, and this class of model has a loose
+   * enough grip on the tool schema without being crowded further.
+   */
+  it.each(themes)("keeps the whole %s turn well under the cliff", (theme) => {
+    const total =
+      (systemPrompt(theme, "tight").length + JSON.stringify(ESSENTIAL_TOOL_DEFS).length) / 4;
+    expect(total).toBeLessThan(800);
+  });
+
+  it.each(themes)("is a large cut on the roomy %s prompt, not a trim", (theme) => {
+    const roomy = systemPrompt(theme, "roomy").length + JSON.stringify(TOOL_DEFS).length;
+    const tight = systemPrompt(theme, "tight").length + JSON.stringify(ESSENTIAL_TOOL_DEFS).length;
+    expect(tight * 2).toBeLessThan(roomy);
+  });
+
+  /**
+   * The cut is by detail, never by coverage. A model missing an event name
+   * invents one; a model missing the sentence explaining an event still copies
+   * the name correctly.
+   */
+  it.each(themes)("still names every %s event and property", (theme) => {
+    const brief = briefCard(theme);
+    for (const name of EVENT_NAMES) expect(brief).toContain(`on ${name}`);
+    const full = languageCard(theme);
+    for (const prop of full.match(/\bme\.\w+/g) ?? []) expect(brief).toContain(prop);
+  });
+
+  it.each(themes)("only names words the lexer accepts in the %s world", (theme) => {
+    for (const word of briefCard(theme).match(/\b[a-z]+\.[a-z]+\b/gi) ?? []) {
+      expect(() => tokenize(word), `brief card names \`${word}\``).not.toThrow();
     }
   });
 });
