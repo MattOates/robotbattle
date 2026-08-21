@@ -52,8 +52,15 @@ export interface ToolContext {
   /** Robots to fight when the assistant asks for a trial run. */
   opponents: Contender[];
   arena: ArenaSpec | undefined;
-  /** Called with anything the assistant says, so the panel can show it. */
-  onSay: (text: string, code?: string) => void;
+  /**
+   * Called with anything the assistant says, so the panel can show it.
+   *
+   * `codeError` is the compiler's complaint when the snippet does not build.
+   * The snippet still comes through: a wrong example that can be seen is worth
+   * more than no example at all, as long as nobody can mistake it for a
+   * working one.
+   */
+  onSay: (text: string, code?: string, codeError?: string) => void;
 }
 
 /** What a tool gives back. `ok: false` is a refusal the model should read and adapt to. */
@@ -155,36 +162,23 @@ const TOOLS: Record<string, Tool> = {
       const code = asString(args["code"])?.trim();
       if (!text && !code) return { ok: false, error: "say needs a `text` string." };
 
-      // Checked before it is spoken, so a broken example is never shown.
+      // The compiler is consulted, and its verdict travels with the snippet
+      // rather than deciding its fate.
       //
-      // What happens next matters more than the check. Refusing the whole turn
-      // threw the SENTENCE away with the snippet, and the model would spend
-      // every round failing to fix the code until the cap — six generations of
-      // a hot GPU to deliver nothing at all. An answer with no example beats
-      // an example with no answer.
+      // Refusing a bad example threw the sentence away with it and had the
+      // model burn every round trying again, to deliver nothing. Dropping it
+      // silently was not much better: a learner asking how to do something is
+      // owed the attempt, even a wrong one — a wrong example you can look at
+      // teaches more than a paragraph about not having one.
       //
-      // So a bad snippet is dropped and the words are kept, and the model is
-      // told why in case it wants to try again. Only a turn with nothing left
-      // in it once the snippet is gone is refused outright.
-      if (code) {
-        const verdict = exampleCompiles(code);
-        if (!verdict.ok) {
-          if (!text) {
-            return {
-              ok: false,
-              error: `That RoboScript does not compile — ${verdict.error}. Fix it, using only words from the reference.`,
-            };
-          }
-          ctx.onSay(text);
-          return {
-            ok: true,
-            note: `Your example was not shown: it does not compile — ${verdict.error}.`,
-          };
-        }
-      }
-
-      ctx.onSay(text ?? "", code || undefined);
-      return { ok: true };
+      // So it is shown, flagged, and not copyable. Wrong is fine. Wrong and
+      // indistinguishable from right is not.
+      const verdict = code ? exampleCompiles(code) : { ok: true as const };
+      ctx.onSay(text ?? "", code || undefined, verdict.ok ? undefined : verdict.error);
+      return {
+        ok: true,
+        ...(verdict.ok ? {} : { note: `That example does not compile — ${verdict.error}.` }),
+      };
     },
   },
 

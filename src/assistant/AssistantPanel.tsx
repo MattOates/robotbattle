@@ -346,24 +346,34 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
                         colours as the script it is talking about, and no second
                         implementation to drift from the language. */}
                     {entry.kind === "assistant" && entry.code ? (
-                      <div className="chat-code">
+                      <div className={`chat-code${entry.codeError ? " suspect" : ""}`}>
                         <CodeEditor
                           source={entry.code}
                           theme={theme}
                           onChange={() => {}}
                           preview
-                          copyable
+                          // Copyable only when it builds. Something you cannot
+                          // lift out is something you have to read as you
+                          // retype, which is exactly the right amount of
+                          // friction for an example known to be wrong.
+                          copyable={!entry.codeError}
                         />
-                        {/* Selecting inside an editor is fiddly with a mouse and
-                            worse on a laptop trackpad, and this is the one
-                            thing the player has to get out of the panel. */}
-                        <button
-                          type="button"
-                          className="chat-code-copy"
-                          onClick={() => void navigator.clipboard?.writeText(entry.code ?? "")}
-                        >
-                          Copy
-                        </button>
+                        {entry.codeError ? (
+                          <span className="chat-code-warn" title={entry.codeError}>
+                            ⚠ will not compile
+                          </span>
+                        ) : (
+                          /* Selecting inside an editor is fiddly with a mouse
+                             and worse on a trackpad, and this is the one thing
+                             the player has to get out of the panel. */
+                          <button
+                            type="button"
+                            className="chat-code-copy"
+                            onClick={() => void navigator.clipboard?.writeText(entry.code ?? "")}
+                          >
+                            Copy
+                          </button>
+                        )}
                       </div>
                     ) : null}
                   </>

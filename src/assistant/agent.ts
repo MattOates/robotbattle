@@ -20,7 +20,7 @@ import { describeCall, runTool, SPEECH_TOOLS, type ToolContext } from "./tools.j
 /** One line in the panel's transcript. */
 export type Entry =
   | { kind: "player"; text: string }
-  | { kind: "assistant"; text: string; code?: string }
+  | { kind: "assistant"; text: string; code?: string; codeError?: string }
   | { kind: "action"; text: string }
   | { kind: "error"; text: string };
 
@@ -101,9 +101,14 @@ export class Agent {
       // else. Two channels would leave the panel guessing whether "rewrote
       // lines 3–5" happened before or after "I have made that faster", which is
       // the one thing the transcript exists to make obvious.
-      onSay: (text, code) => {
-        options.onEntry({ kind: "assistant", text, ...(code ? { code } : {}) });
-        options.ctx.onSay(text, code);
+      onSay: (text, code, codeError) => {
+        options.onEntry({
+          kind: "assistant",
+          text,
+          ...(code ? { code } : {}),
+          ...(codeError ? { codeError } : {}),
+        });
+        options.ctx.onSay(text, code, codeError);
       },
     };
   }

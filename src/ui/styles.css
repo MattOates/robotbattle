@@ -1899,8 +1899,35 @@ button {
   color: var(--ink);
 }
 
+/*
+ * An example the compiler has already rejected.
+ *
+ * Still shown, because a wrong example you can look at teaches more than a
+ * paragraph about not having one — but marked, and with no Copy button, so it
+ * cannot be lifted out and pasted in without being read first.
+ */
+.chat-code.suspect {
+  border-color: var(--alert);
+}
+
+.chat-code-warn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--alert);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* The compiler's own words are on the title, for anyone who wants them. */
+  cursor: help;
+}
+
 .chat-code .code-editor {
-  padding-right: 52px;
+  padding-right: 118px;
   max-height: 220px;
   overflow: auto;
   font-size: 12px;

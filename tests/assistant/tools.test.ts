@@ -354,17 +354,17 @@ describe("refusing an example that does not compile", () => {
    * nothing. Refused here, the compiler error is an ordinary tool result the
    * model can act on, and only working RoboScript reaches the transcript.
    */
-  it("never shows a snippet the compiler rejects", async () => {
-    const said: [string, string | undefined][] = [];
+  it("shows a snippet the compiler rejects, and says so", async () => {
+    const said: [string, string | undefined, string | undefined][] = [];
     const { ctx } = context();
-    ctx.onSay = (text, code) => said.push([text, code]);
-    await call(
-      "say",
-      { text: "Try this.", code: "if me.slope > 12 then turn chassis to me.downhill end" },
-      ctx,
-    );
-    // The words may still be said; the broken example must not be shown.
-    expect(said.map(([, code]) => code)).toEqual([undefined]);
+    ctx.onSay = (text, code, codeError) => said.push([text, code, codeError]);
+    const bad = "if me.slope > 12 then turn chassis to me.downhill end";
+    await call("say", { text: "Try this.", code: bad }, ctx);
+    const [, code, codeError] = said[0]!;
+    // Shown — a wrong example you can look at teaches more than a paragraph
+    // about not having one — but never without the verdict attached.
+    expect(code).toBe(bad);
+    expect(codeError).toMatch(/^Line \d+:/);
   });
 
   it("says it when the example is sound", async () => {
@@ -384,32 +384,28 @@ describe("refusing an example that does not compile", () => {
 
 describe("when only the example is broken", () => {
   /**
-   * Refusing the whole turn threw the sentence away with the snippet, and the
-   * model then spent every round failing to fix the code until the cap — six
-   * generations of a hot GPU to deliver nothing. An answer with no example
-   * beats an example with no answer.
+   * The turn must still finish. Refusing it threw the sentence away with the
+   * snippet and had the model burn every round trying again to deliver
+   * nothing at all — six generations on a hot GPU for an apology.
    */
-  it("keeps the words and drops the snippet", async () => {
-    const said: [string, string | undefined][] = [];
+  it("finishes the turn rather than sending the model round again", async () => {
     const { ctx } = context();
-    ctx.onSay = (text, code) => said.push([text, code]);
     const result = await call(
       "say",
       { text: "Turn across the slope.", code: "if me.slope > 12 then turn end" },
       ctx,
     );
     expect(result.ok).toBe(true);
-    expect(said).toEqual([["Turn across the slope.", undefined]]);
-    // Told why, in case it wants another go at the example.
+    // Told plainly, in case it wants another go of its own accord.
     expect(String(result["note"])).toContain("does not compile");
   });
 
-  it("refuses only when dropping the snippet would leave nothing", async () => {
-    const said: string[] = [];
+  it("says a good example without complaint", async () => {
+    const said: (string | undefined)[] = [];
     const { ctx } = context();
-    ctx.onSay = (text) => said.push(text);
-    const result = await call("say", { code: "if me.slope > 12 then turn end" }, ctx);
-    expect(result.ok).toBe(false);
-    expect(said).toEqual([]);
+    ctx.onSay = (_text, _code, codeError) => said.push(codeError);
+    const result = await call("say", { text: "ok", code: "on tick\n  fire 2\nend" }, ctx);
+    expect(result["note"]).toBeUndefined();
+    expect(said).toEqual([undefined]);
   });
 });
