@@ -63,6 +63,10 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
   // was true when it was built. The editor in particular is remounted whenever
   // the player switches robot, and an agent holding the previous view would be
   // typing into a document nobody is looking at.
+  /** The question before this one, and the last thing worth looking up. */
+  const lastQuestion = useRef<string | null>(null);
+  const lastTopic = useRef<string | null>(null);
+
   const latest = useRef({ opponents, arena });
   latest.current = { opponents, arena };
 
@@ -160,7 +164,14 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       // Sort the question before answering it. Looking up a lesson for every
       // question is how "can you see my script?" got answered with a chapter
       // about sense cones — see `triage.ts`.
-      const routed = await triage(provider, question);
+      const routed = await triage(provider, question, lastQuestion.current ?? undefined);
+      lastQuestion.current = question;
+
+      // A follow-up often names no subject of its own — "can you give an
+      // example?" — so it keeps the one before it rather than looking up
+      // nothing at all.
+      const topic = routed.topic || lastTopic.current || question;
+      if (routed.kind === "language") lastTopic.current = topic;
 
       const parts = [question];
 
@@ -187,7 +198,7 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       // by the topic the sorting call named rather than by the whole sentence,
       // so "can you see my script" cannot match on the word "see".
       const lessons =
-        routed.kind === "language" ? retrieve(routed.topic || question, theme) : [];
+        routed.kind === "language" ? retrieve(topic, theme) : [];
       if (lessons.length) parts.push(lessons.join("\n\n"));
       const asked = parts.join("\n\n");
 
@@ -232,6 +243,8 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
             className="btn small"
             onClick={() => {
               agentRef.current?.reset();
+              lastQuestion.current = null;
+              lastTopic.current = null;
               setEntries([]);
             }}
           >

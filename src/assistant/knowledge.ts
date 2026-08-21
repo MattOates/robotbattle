@@ -149,6 +149,19 @@ export function briefCard(theme: Theme): string {
     "end",
     "```",
     "",
+    // The one shape worth spelling out. Given only the word `if` in a list, a
+    // small model writes `if x then ... else ... end` on a single line, which
+    // is how the language it learned elsewhere looks. RoboScript is
+    // line-based, so that does not parse.
+    "Every block is over several lines, `if` included:",
+    "```",
+    "if me.slope > 12 then",
+    "  turn chassis to me.downhill",
+    "else",
+    `  ${wordFor("drive", theme)} forward 80`,
+    "end",
+    "```",
+    "",
     `Top level: ${names(t.keywords)}`,
     `Statements: ${names(t.statements)}`,
     `Actions: ${names(t.actions)}`,
@@ -191,6 +204,10 @@ export function systemPrompt(theme: Theme, budget: PromptBudget = "roomy"): stri
       "If a lesson is quoted below and it answers the question, use it, and",
       "prefer its words to your own. If it plainly does not, ignore it and",
       "answer from what you know. If you do not know, say so.",
+      "",
+      "When they ask how to change something, put the actual lines in `code`",
+      "and keep `say` to one sentence about them. An example beats a",
+      "description — \"turn left\" helps nobody who cannot spell it.",
       "",
       "You can read their script. You CANNOT change it, and you have no way to",
       "add anything to it. Never say you have added, changed, fixed or built",
@@ -319,7 +336,13 @@ export function retrieve(question: string, theme: Theme, limit = 2): string[] {
   const scored = loadLessons().map((lesson) => {
     const title = (theme === "biological" ? (lesson.titleBio ?? lesson.title) : lesson.title).toLowerCase();
     const teaches = (theme === "biological" ? (lesson.teachesBio ?? lesson.teaches) : lesson.teaches).toLowerCase();
-    const body = lesson.body.toLowerCase();
+    // The rendered text, not the source. A lesson is written with `{ground}`
+    // placeholders and world blocks in it, so the words a player actually reads
+    // — hill, goop, ground — are not in the file. Scoring the source meant
+    // "avoiding hills" and "terrain" matched the terrain chapter no better than
+    // anything else did, which is exactly the complaint that found this.
+    const rendered = readable(lesson, theme);
+    const body = rendered.toLowerCase();
     let score = 0;
     for (const word of words) {
       // A hit in the title is worth far more than a hit buried in prose: the
@@ -329,7 +352,7 @@ export function retrieve(question: string, theme: Theme, limit = 2): string[] {
       if (teaches.includes(word)) score += 4;
       if (body.includes(word)) score += 1;
     }
-    return { lesson, score };
+    return { lesson, rendered, score };
   });
 
   // Scoring stays generous on purpose. Deciding whether a question wants a
@@ -342,9 +365,9 @@ export function retrieve(question: string, theme: Theme, limit = 2): string[] {
     .slice(0, limit);
 
   // The best match gets the whole budget; a second opinion gets half of it.
-  return chosen.map(({ lesson }, i) => {
+  return chosen.map(({ lesson, rendered }, i) => {
     const budget = i === 0 ? CHARS_PER_SNIPPET : Math.round(CHARS_PER_SNIPPET / 2);
-    const text = bestWindow(readable(lesson, theme), words, budget);
+    const text = bestWindow(rendered, words, budget);
     return `From the lesson "${renderDoc(lesson.title, theme)}":\n\n${text}`;
   });
 }

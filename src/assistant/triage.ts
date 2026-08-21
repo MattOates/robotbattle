@@ -57,7 +57,7 @@ export const TRIAGE_SCHEMA: Record<string, unknown> = {
  * the question and not its subject, and the language card would only give a
  * small model more to be distracted by.
  */
-export function triageMessages(question: string): ChatMessage[] {
+export function triageMessages(question: string, previous?: string): ChatMessage[] {
   return [
     {
       role: "system",
@@ -86,7 +86,20 @@ export function triageMessages(question: string): ChatMessage[] {
         'Q: "what is wrong with line 4?" -> {"kind":"script","topic":""}',
         'Q: "can you see my script?" -> {"kind":"assistant","topic":""}',
         'Q: "can you edit this for me?" -> {"kind":"assistant","topic":""}',
+        'Q: "what do I need to change to avoid hills?" -> {"kind":"language","topic":"hills ground"}',
+        'Q: "how do I make it dodge bullets?" -> {"kind":"language","topic":"dodging bullets"}',
         'Q: "thanks!" -> {"kind":"other","topic":""}',
+        // Carried as context rather than as a turn to be sorted. Fed in as a
+        // previous message, the sorter sorted THAT one instead — a follow-up to
+        // "can you see my script?" came back as another question about the
+        // assistant.
+        ...(previous
+          ? [
+              "",
+              `The question before this one was: "${previous}"`,
+              "Sort the new question, using that only to fill in what it leaves out.",
+            ]
+          : []),
       ].join("\n"),
     },
     { role: "user", content: question },
@@ -121,10 +134,14 @@ export function parseTriage(text: string | null): Triage | null {
  * whereas failing to look one up for a question that did need it is a wrong
  * answer. A misroute should cost the cheaper mistake.
  */
-export async function triage(provider: ChatProvider, question: string): Promise<Triage> {
+export async function triage(
+  provider: ChatProvider,
+  question: string,
+  previous?: string,
+): Promise<Triage> {
   try {
     const reply = await provider.chat({
-      messages: triageMessages(question),
+      messages: triageMessages(question, previous),
       tools: [],
       json: { schema: TRIAGE_SCHEMA },
       // Sorting has one right answer; there is nothing to be gained by looking

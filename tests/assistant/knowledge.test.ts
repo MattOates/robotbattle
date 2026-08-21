@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 import { briefCard, languageCard, retrieve, systemPrompt } from "../../src/assistant/knowledge.js";
-import { ESSENTIAL_TOOL_DEFS, TOOL_DEFS } from "../../src/assistant/tools.js";
+import { ESSENTIAL_TOOL_DEFS, EXPLAINER_TOOL_DEFS, TOOL_DEFS } from "../../src/assistant/tools.js";
 import { tokenize } from "../../src/lang/lexer.js";
 import { healthPropertyFor, THEMES, type Theme } from "../../src/lang/vocab.js";
 import { EVENT_NAMES } from "../../src/lang/ast.js";
@@ -73,10 +73,15 @@ describe("the brief card, for a tight budget", () => {
    * before the player has asked anything, and this class of model has a loose
    * enough grip on the tool schema without being crowded further.
    */
-  it.each(themes)("keeps the whole %s turn well under the cliff", (theme) => {
+  it.each(themes)("keeps the whole %s turn small enough to leave room", (theme) => {
+    // Measured against the set the explainer actually sends, which is speech
+    // alone on a script that compiles. The ceiling is a budget rather than a
+    // cliff — the earlier "it hangs past 1500 tokens" turned out to be Chrome
+    // throttling a hidden tab — but the window is 4096 and it still has to
+    // hold two quoted lessons and the player's script.
     const total =
-      (systemPrompt(theme, "tight").length + JSON.stringify(ESSENTIAL_TOOL_DEFS).length) / 4;
-    expect(total).toBeLessThan(800);
+      (systemPrompt(theme, "tight").length + JSON.stringify(EXPLAINER_TOOL_DEFS).length) / 4;
+    expect(total).toBeLessThan(950);
   });
 
   it.each(themes)("is a large cut on the roomy %s prompt, not a trim", (theme) => {

@@ -55,6 +55,11 @@ export function protocolSchema(tools: readonly ToolDef[]): JsonSchema {
       type: "string",
       description: "What to tell the player. Always fill this in.",
     },
+    code: {
+      type: "string",
+      description:
+        "RoboScript to show them, when an example would help. Empty otherwise.",
+    },
     op: {
       type: "string",
       // The whole point. A name outside this list cannot be generated.
@@ -124,11 +129,17 @@ export function callsFromReply(reply: unknown, tools: readonly ToolDef[]): ToolC
   const calls: ToolCall[] = [];
 
   const say = typeof body["say"] === "string" ? body["say"].trim() : "";
-  if (say) {
+  // A field of its own rather than a convention about prose. Asked for an
+  // example of a change, a small model would describe one — "turn left to
+  // avoid the hill" — and never write a line of RoboScript, because nothing in
+  // a sentence obliges it to. A named, empty box does.
+  const code = typeof body["code"] === "string" ? body["code"].trim() : "";
+  const spoken = code ? `${say}\n\n${fence(code)}` : say;
+  if (say || code) {
     calls.push({
       id: `say-${calls.length}`,
       type: "function",
-      function: { name: "say", arguments: JSON.stringify({ text: say }) },
+      function: { name: "say", arguments: JSON.stringify({ text: spoken || code }) },
     });
   }
 
@@ -151,6 +162,12 @@ export function callsFromReply(reply: unknown, tools: readonly ToolDef[]): ToolC
   }
 
   return calls;
+}
+
+/** Show a snippet as a code block, however the model fenced it (or did not). */
+function fence(code: string): string {
+  const bare = code.replace(/^```[a-z]*\n?/i, "").replace(/```$/, "").trim();
+  return "```\n" + bare + "\n```";
 }
 
 /**
