@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { BRANDING } from "./branding.js";
 import { openBugReport } from "./bugReport.js";
 import { THEMES, type Theme } from "../lang/vocab.js";
+import { assistantRuntime, downloadSizeGB } from "../assistant/runtime.js";
 import type { LibraryApi } from "./useLibrary.js";
 import type { Profile } from "./useLibrary.js";
 
@@ -18,10 +19,11 @@ interface Props {
   profile: Profile;
   onName: (name: string) => void;
   onTheme: (theme: Theme) => void;
+  onAssistantModel: (id: string) => void;
   lib: LibraryApi;
 }
 
-export function Settings({ profile, onName, onTheme, lib }: Props) {
+export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Props) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -49,6 +51,7 @@ export function Settings({ profile, onName, onTheme, lib }: Props) {
     };
   }, [open]);
 
+  const runtime = assistantRuntime();
   const usedKb = Math.round((lib.storage.used / 1024) * 10) / 10;
   const percent = Math.min(100, (lib.storage.used / lib.storage.budget) * 100);
   const words = THEMES[profile.theme];
@@ -111,6 +114,32 @@ export function Settings({ profile, onName, onTheme, lib }: Props) {
                 a {words.robot}, and it fights in {words.arena}.
               </span>
             </div>
+
+            {/* Only worth showing to a machine that could run one, and only
+                when there is more than one to choose between. Otherwise it is
+                a dropdown of things that will not happen. */}
+            {runtime?.available() && runtime.models.length > 1 ? (
+              <div className="field">
+                <span className="silkscreen">Assistant</span>
+                <select
+                  className="text-input"
+                  value={profile.assistantModel}
+                  onChange={(e) => onAssistantModel(e.target.value)}
+                >
+                  {runtime.models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label}
+                      {model.vramMB > 0 ? ` — ${downloadSizeGB(model.id)} GB` : ""}
+                    </option>
+                  ))}
+                </select>
+                <span className="roster-meta">
+                  Bigger models write better {words.robotPlural} and take longer to start. Nothing
+                  is downloaded until you ask for it, and a change here applies next time you open
+                  the Workshop.
+                </span>
+              </div>
+            ) : null}
 
             <div className="field">
               <span className="silkscreen">Stored on this device</span>

@@ -35,7 +35,7 @@ const ROOM_SCREENS: ReadonlySet<ScreenName> = new Set<ScreenName>([
 
 export function App() {
   const route = useRoute();
-  const { profile, setName, setTheme, complete } = useProfile();
+  const { profile, setName, setTheme, setAssistantModel, complete } = useProfile();
   const lib = useLibrary();
   const brand = branding(profile.onboarded ? profile.theme : null);
 
@@ -57,7 +57,13 @@ export function App() {
 
   return (
     <>
-      <Settings profile={profile} onName={setName} onTheme={setTheme} lib={lib} />
+      <Settings
+        profile={profile}
+        onName={setName}
+        onTheme={setTheme}
+        onAssistantModel={setAssistantModel}
+        lib={lib}
+      />
       <Suspense fallback={<div className="splash">Loading…</div>}>
       {route.screen === "menu" ? (
         <Menu theme={profile.theme} robotCount={lib.robots.length} />
@@ -69,6 +75,7 @@ export function App() {
           lib={lib}
           playerName={profile.name}
           initialRoom={route.room}
+          assistantModel={profile.assistantModel}
         />
       ) : null}
 

@@ -10,6 +10,7 @@ import { Library } from "../store/library.js";
 import { ArenaLibrary } from "../store/arenas.js";
 import { BattleLog } from "../store/battles.js";
 import { ChatLog } from "../store/chat.js";
+import { assistantRuntime, resolveModelId } from "../assistant/runtime.js";
 import {
   defaultStore,
   isOurKey,
@@ -155,12 +156,22 @@ export function useLibrary(): LibraryApi {
 const THEME_KEY = "theme";
 const NAME_KEY = "playerName";
 const ONBOARDED_KEY = "onboarded";
+const ASSISTANT_MODEL_KEY = "assistantModel";
 
 export interface Profile {
   name: string;
   theme: Theme;
   /** False on a first visit, when nothing has been chosen yet. */
   onboarded: boolean;
+  /**
+   * Which model the assistant should download when it is first asked to.
+   *
+   * A preference rather than a state: storing it does not mean anything has
+   * been downloaded. Changing it after a model is loaded takes effect the next
+   * time the Workshop is opened, which is the honest behaviour when the
+   * alternative is silently starting a second multi-gigabyte fetch.
+   */
+  assistantModel: string;
 }
 
 /**
@@ -171,9 +182,15 @@ export function useProfile(): {
   profile: Profile;
   setName: (name: string) => void;
   setTheme: (theme: Theme) => void;
+  setAssistantModel: (id: string) => void;
   complete: (name: string, theme: Theme) => void;
 } {
   const store = useMemo(() => defaultStore(), []);
+
+  // A stored id the current runtime no longer offers would fail at the moment
+  // the player pressed the button, so an unknown one falls back rather than
+  // being trusted. Empty when this build has no assistant at all.
+  const readModel = useCallback(() => resolveModelId(store.get(ASSISTANT_MODEL_KEY)), [store]);
 
   const [profile, setProfile] = useState<Profile>(() => {
     const name = store.get(NAME_KEY) ?? "";
@@ -181,7 +198,7 @@ export function useProfile(): {
     // Anyone who already has a name predates the welcome screen; do not make
     // them sit through it.
     const onboarded = store.get(ONBOARDED_KEY) === "yes" || name.trim() !== "";
-    return { name, theme, onboarded };
+    return { name, theme, onboarded, assistantModel: readModel() };
   });
 
   useEffect(() => {
@@ -194,14 +211,20 @@ export function useProfile(): {
       const name = store.get(NAME_KEY) ?? "";
       const theme: Theme = store.get(THEME_KEY) === "biological" ? "biological" : "mechanical";
       const onboarded = store.get(ONBOARDED_KEY) === "yes" || name.trim() !== "";
-      if (name === current.name && theme === current.theme && onboarded === current.onboarded) {
+      const assistantModel = readModel();
+      if (
+        name === current.name &&
+        theme === current.theme &&
+        onboarded === current.onboarded &&
+        assistantModel === current.assistantModel
+      ) {
         // Returning the same object avoids a pointless re-render on every
         // focus event.
         return current;
       }
-      return { name, theme, onboarded };
+      return { name, theme, onboarded, assistantModel };
     });
-  }, [store]);
+  }, [readModel, store]);
   useCrossTabSync(reread);
 
   const setName = useCallback(
@@ -221,17 +244,26 @@ export function useProfile(): {
     [store],
   );
 
+  const setAssistantModel = useCallback(
+    (id: string) => {
+      if (!assistantRuntime()?.models.some((m) => m.id === id)) return;
+      store.set(ASSISTANT_MODEL_KEY, id);
+      setProfile((p) => ({ ...p, assistantModel: id }));
+    },
+    [store],
+  );
+
   const complete = useCallback(
     (name: string, theme: Theme) => {
       const trimmed = name.trim().slice(0, 24) || "Player";
       store.set(NAME_KEY, trimmed);
       store.set(THEME_KEY, theme);
       store.set(ONBOARDED_KEY, "yes");
-      setProfile({ name: trimmed, theme, onboarded: true });
+      setProfile((p) => ({ ...p, name: trimmed, theme, onboarded: true }));
     },
     [store],
   );
 
-  return { profile, setName, setTheme, complete };
+  return { profile, setName, setTheme, setAssistantModel, complete };
 }
 

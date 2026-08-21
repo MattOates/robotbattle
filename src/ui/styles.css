@@ -1739,6 +1739,43 @@ button {
   padding: 6px 8px;
 }
 
+/* ---- the assistant ------------------------------------------------------
+ *
+ * Borrows the chat panel wholesale, because a conversation is a conversation
+ * and the player already knows how that one works. Only two things are new:
+ * a line for each action it took on the script, and a progress bar for the
+ * download.
+ */
+
+.assistant-panel {
+  /* Taller than chat: an answer plus the actions behind it needs more room
+     than a one-line message does. */
+  min-height: 260px;
+}
+
+/*
+ * What it did, as against what it said.
+ *
+ * Deliberately quieter than speech. These lines are a receipt — they exist so
+ * that "it changed something and I do not know what" cannot happen — and a
+ * receipt should be readable without competing with the answer.
+ */
+.chat-line.action .chat-text {
+  color: var(--ink-muted);
+  font-size: 11.5px;
+  font-style: italic;
+}
+
+.chat-line.bad .chat-text {
+  color: var(--alert);
+}
+
+.assistant-progress {
+  width: 100%;
+  height: 6px;
+  margin-top: 8px;
+}
+
 /* Remote cursors and selections, drawn by y-codemirror.next. */
 .cm-ySelection {
   opacity: 0.28;

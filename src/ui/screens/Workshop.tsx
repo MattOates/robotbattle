@@ -61,12 +61,15 @@ import { drivableMazeGrid, generateFittingMaze } from "../../sim/maze.js";
 import { blankArena } from "../../store/arenas.js";
 import { MapEditor } from "../MapEditor.js";
 import { ARENA_SIZE } from "../../net/matchsetup.js";
+import { AssistantPanel } from "../../assistant/AssistantPanel.js";
 
 interface Props {
   theme: Theme;
   lib: LibraryApi;
   playerName: string;
   initialRoom: string | null;
+  /** Which model the assistant downloads when it is first asked to. */
+  assistantModel: string;
 }
 
 type Pane = "editor" | "map" | "trial" | "bench" | "history";
@@ -110,7 +113,7 @@ interface ViewedRobot {
   source: string;
 }
 
-export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
+export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }: Props) {
   const { library, robots, refresh, chat } = lib;
   const [selectedId, setSelectedId] = useState<string | null>(robots[0]?.id ?? null);
   /**
@@ -442,6 +445,20 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
   // and bringing one into a shared script is one of the better reasons to be in
   // a session at all.
   const editorViewRef = useRef<EditorView | null>(null);
+
+  /**
+   * Who the assistant fights when it wants to know whether a change helped.
+   *
+   * The sample robots only. The test bench proper offers your own library and
+   * your snapshots too, but the assistant is answering "is this any better",
+   * and the samples are the one set of opponents that means the same thing
+   * from one week to the next.
+   */
+  const assistantOpponents = useMemo(
+    () => buildContenders([], selected?.id ?? null),
+    [selected?.id],
+  );
+
   const shelf = useMemo(() => libraryBlocks(robots), [robots]);
   const shelfGroups = useMemo(() => groupBlocks(shelf), [shelf]);
 
@@ -558,6 +575,18 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
               setPane("editor");
               setPendingBlock(block);
             }}
+          />
+
+          {/* Under the shelf, because it is the other way to get code into the
+              editor — and the one you reach for when the shelf has not got what
+              you need. */}
+          <AssistantPanel
+            theme={theme}
+            modelId={assistantModel}
+            editorRef={editorViewRef}
+            opponents={assistantOpponents}
+            arena={benchArena ?? undefined}
+            editable={editable}
           />
 
           {/* Last of the three shelves. Places are the thing you reach for
