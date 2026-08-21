@@ -13,13 +13,14 @@
  * lives next to the thing it describes with a test that notices its absence.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { navigate } from "../router.js";
 import { translate } from "../../learn/translate.js";
 import { EVENT_DOCS, renderDoc } from "../../lang/events.js";
 import { EVENT_NAMES } from "../../lang/ast.js";
 import { BUILTIN_SIGNATURES } from "../../lang/bytecode.js";
 import {
+  ruleDoc,
   rulesIn,
   SECTIONS,
   simulationFacts,
@@ -64,9 +65,61 @@ const TABS: readonly { id: Tab; label: string }[] = [
   { id: "world", label: "The world" },
 ];
 
+/** Which tab a rule's section is shown on. */
+function tabFor(section: string): Tab {
+  if (section === "events") return "events";
+  if (section === "values") return "values";
+  return "syntax";
+}
+
 export function Reference({ theme }: Props) {
   const [tab, setTab] = useState<Tab>("syntax");
+  const [wanted, setWanted] = useState<string | null>(null);
   const doc = (text: string) => renderDoc(text, theme);
+
+  /**
+   * Following a rule from a diagram to its own entry.
+   *
+   * The rule may live on another tab, so the tab changes first and the scroll
+   * waits for the entry to exist — which is why the target is held in state
+   * rather than scrolled to here.
+   */
+  const goToRule = useCallback((name: string) => {
+    const doc = ruleDoc(name);
+    if (!doc) return;
+    setTab(tabFor(doc.section));
+    setWanted(name);
+  }, []);
+
+  useEffect(() => {
+    if (!wanted) return;
+    const target = document.getElementById(`rule-${wanted}`);
+    setWanted(null);
+    if (!target) return;
+    // Deliberately not a smooth scroll. Following a rule is a jump to a
+    // definition, and a browser with smooth scrolling turned off — by the
+    // user's motion preference or by policy — treats `behavior: "smooth"` as
+    // "do not scroll at all" rather than as "scroll instantly", which would
+    // make the link silently do nothing. The mark below says where you landed.
+    target.scrollIntoView({ block: "start" });
+    // A brief mark, because a smooth scroll landing on a page of similar boxes
+    // leaves you unsure which one you asked for.
+    target.classList.add("found");
+    setTimeout(() => target.classList.remove("found"), 1600);
+  }, [wanted, tab]);
+
+  /**
+   * One listener for every diagram on the page. The boxes are plain SVG with
+   * the rule name on them, so this finds the nearest one to whatever was hit.
+   */
+  const onClick = useCallback(
+    (event: React.MouseEvent) => {
+      const box = (event.target as Element).closest?.("[data-rule]");
+      const name = box?.getAttribute("data-rule");
+      if (name) goToRule(name);
+    },
+    [goToRule],
+  );
 
   return (
     <div className="learn reference">
@@ -93,7 +146,7 @@ export function Reference({ theme }: Props) {
         ))}
       </nav>
 
-      <div className="learn-body prose">
+      <div className="learn-body prose" onClick={onClick}>
         {tab === "syntax" ? <Syntax theme={theme} /> : null}
         {tab === "events" ? <Events theme={theme} doc={doc} /> : null}
         {tab === "values" ? <Values theme={theme} doc={doc} /> : null}

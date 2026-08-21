@@ -3514,3 +3514,23 @@ button {
   text-anchor: middle;
   dominant-baseline: central;
 }
+
+/* A rule box in a diagram is a way in to that rule. */
+.rr-link {
+  cursor: pointer;
+}
+
+.rr-link:hover .rr-rule {
+  fill: var(--panel-raised);
+  stroke: var(--signal);
+}
+
+.rr-link:hover .rr-text {
+  fill: var(--ink-strong);
+}
+
+/* Marked briefly after following a link, so it is clear which entry answered. */
+.ref-rule.found {
+  border-color: var(--signal);
+  transition: border-color 0.2s;
+}

@@ -468,8 +468,20 @@ export interface RuleDoc extends Annotation {
   syntax: Syntax;
 }
 
+/**
+ * Worked out once. The grammar is fixed at startup — `performSelfAnalysis` has
+ * already run by the time anything can ask — so rebuilding this per render only
+ * re-serialised the same grammar and handed back objects that looked new to
+ * every `useMemo` downstream, rebuilding every diagram on the page.
+ */
+let cached: RuleDoc[] | null = null;
+
 /** Every rule the parser has, with its shape read and its meaning looked up. */
 export function ruleDocs(): RuleDoc[] {
+  return (cached ??= readRules());
+}
+
+function readRules(): RuleDoc[] {
   // `serializeGrammar` rather than the live objects: the GAst classes carry
   // their kind in their constructor, and only the serialised form states it as
   // a `type` field that can be switched on.
@@ -486,6 +498,11 @@ export function ruleDocs(): RuleDoc[] {
       ...annotation,
     };
   });
+}
+
+/** Which rule, if any, a name belongs to. */
+export function ruleDoc(name: string): RuleDoc | undefined {
+  return ruleDocs().find((r) => r.name === name);
 }
 
 /** The rules of one section, in the order the grammar declares them. */

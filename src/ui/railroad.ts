@@ -139,11 +139,17 @@ function box(out: Bits, m: Measured, x: number, y: number): void {
   const rounded = node.kind !== "rule";
   const cls =
     node.kind === "word" ? "rr-word" : node.kind === "placeholder" ? "rr-placeholder" : "rr-rule";
+  // A rule box is a way in to that rule. The name rides on the group so one
+  // listener on the page can act on any of them, rather than a listener per
+  // box on a diagram that never changes.
+  const link = node.kind === "rule" ? ` data-rule="${esc(node.name)}"` : "";
   out.push(
+    `<g${link}${node.kind === "rule" ? ' class="rr-link"' : ""}>`,
     `<rect class="${cls}" x="${x}" y="${y}" width="${m.width}" height="${BOX}" rx="${
       rounded ? BOX / 2 : 3
     }"/>`,
     `<text class="rr-text" x="${x + m.width / 2}" y="${y + BOX / 2}">${esc(text)}</text>`,
+    "</g>",
   );
 }
 
