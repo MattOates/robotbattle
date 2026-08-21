@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { BRANDING } from "./branding.js";
 import { openBugReport } from "./bugReport.js";
 import { THEMES, type Theme } from "../lang/vocab.js";
-import { assistantRuntime, downloadSizeGB } from "../assistant/runtime.js";
+import { assistantRuntime, downloadSizeGB, type AssistantModel } from "../assistant/runtime.js";
 import type { LibraryApi } from "./useLibrary.js";
 import type { Profile } from "./useLibrary.js";
 
@@ -52,6 +52,25 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
   }, [open]);
 
   const runtime = assistantRuntime();
+
+  /**
+   * Which models are actually on the disk.
+   *
+   * Looked up when the panel opens rather than kept, because it changes
+   * whenever somebody starts the assistant in another tab — and because the
+   * only thing it drives is a line of text and a button.
+   */
+  const [downloaded, setDownloaded] = useState<AssistantModel[] | null>(null);
+  useEffect(() => {
+    if (!open || !runtime) return;
+    let cancelled = false;
+    void runtime.cached().then((models) => {
+      if (!cancelled) setDownloaded(models);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, runtime]);
   const usedKb = Math.round((lib.storage.used / 1024) * 10) / 10;
   const percent = Math.min(100, (lib.storage.used / lib.storage.budget) * 100);
   const words = THEMES[profile.theme];
@@ -137,6 +156,34 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
                   Bigger models write better {words.robotPlural} and take longer to start. Nothing
                   is downloaded until you ask for it, and a change here applies next time you open
                   the Workshop.
+                </span>
+              </div>
+            ) : null}
+
+            {/* Separate from the storage meter below on purpose. Model weights
+                live in the browser's cache rather than in local storage, so
+                they do not show up there at all — which meant the settings
+                screen could report "77 kB used" with six gigabytes of model
+                sitting next to it, invisible and with no way to remove it. */}
+            {downloaded && downloaded.length > 0 ? (
+              <div className="field">
+                <span className="silkscreen">Assistant downloads</span>
+                <span className="roster-meta">
+                  {downloaded.map((m) => m.label.split(" —")[0]).join(", ")} ·{" "}
+                  {Math.round(downloaded.reduce((n, m) => n + m.vramMB, 0) / 102.4) / 10} GB kept in
+                  this browser
+                </span>
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => {
+                    void runtime?.forget().then(() => setDownloaded([]));
+                  }}
+                >
+                  Delete downloaded models
+                </button>
+                <span className="roster-meta">
+                  Frees the space. The assistant will offer to download again next time you open it.
                 </span>
               </div>
             ) : null}

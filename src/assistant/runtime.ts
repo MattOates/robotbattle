@@ -68,6 +68,10 @@ export interface AssistantRuntime {
    * A false positive would start a multi-gigabyte fetch nobody agreed to.
    */
   isCached(modelId: string): Promise<boolean>;
+  /** Which models are downloaded, for a settings screen that tells the truth. */
+  cached(): Promise<AssistantModel[]>;
+  /** Throw the downloaded weights away. */
+  forget(): Promise<void>;
   create(modelId: string, onProgress: (progress: LoadProgress) => void): Promise<ChatProvider>;
 }
 

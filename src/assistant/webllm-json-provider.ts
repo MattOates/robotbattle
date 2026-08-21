@@ -72,6 +72,8 @@ export const webllmJsonRuntime: AssistantRuntime = {
   promptBudget: "tight",
   available: webGpuAvailable,
   isCached: modelIsCached,
+  cached: cachedModels,
+  forget: forgetDownloads,
   create: (modelId, onProgress) => WebLLMJsonProvider.create(modelId, onProgress),
 };
 
@@ -102,8 +104,40 @@ export async function modelIsCached(modelId: string): Promise<boolean> {
   }
 }
 
-/** WebLLM's own bucket for model weights. */
+/**
+ * WebLLM's own buckets.
+ *
+ * Cache API, not localStorage — which matters, because the settings screen
+ * reports localStorage and would cheerfully say "77 kB used" while six
+ * gigabytes of weights sat next to it, invisible and undeletable.
+ */
 const WEBLLM_CACHE = "webllm/model";
+const WEBLLM_CACHES = ["webllm/model", "webllm/wasm", "webllm/config"];
+
+/** Which of the offered models are downloaded, and roughly how much they take. */
+export async function cachedModels(): Promise<AssistantModel[]> {
+  const found: AssistantModel[] = [];
+  for (const model of ASSISTANT_MODELS) {
+    if (await modelIsCached(model.id)) found.push(model);
+  }
+  return found;
+}
+
+/**
+ * Throw the downloaded weights away.
+ *
+ * Whole buckets rather than picked-over entries: they belong to WebLLM alone,
+ * a half-deleted model is worse than either keeping or losing it, and anything
+ * still wanted is re-fetched on the next start. The point is that somebody who
+ * gave up six gigabytes of disk can take it back without hunting through
+ * browser settings for it.
+ */
+export async function forgetDownloads(): Promise<void> {
+  if (typeof caches === "undefined") return;
+  await Promise.all(
+    WEBLLM_CACHES.map((name) => caches.delete(name).catch(() => false)),
+  );
+}
 
 /**
  * How long to let one reply take before giving up on it.
