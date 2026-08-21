@@ -18,6 +18,7 @@
 import type { CstNode, IToken } from "chevrotain";
 import { parser } from "./grammar.js";
 import { toTokens, type RoboToken } from "./tokens.js";
+import { checkCounts, checkNotRepeated } from "./counts.js";
 import { RoboScriptError, type SourcePos } from "./errors.js";
 import { hintFor } from "./diagnostics.js";
 import {
@@ -44,8 +45,6 @@ const tok = (c: Children, key: string): IToken => one(c, key) as IToken;
 const node = (c: Children, key: string): CstNode => one(c, key) as CstNode;
 
 /** Every token in a rule's children, back in the order they were written. */
-const COUNT_RANK = { every: 0, after: 1, before: 2, at: 3 } as const;
-
 function ordered(c: Children, keys: string[]): IToken[] {
   return keys
     .flatMap((k) => all(c, k) as IToken[])
@@ -107,10 +106,11 @@ class AstBuilder extends Base {
 
   handler(c: Children) {
     const on = tok(c, "On");
+    const event = this.visit(node(c, "eventName"), on) as EventName;
     return {
-      event: this.visit(node(c, "eventName"), on) as EventName,
+      event,
       body: this.visit(node(c, "block")) as Stmt[],
-      counts: this.visit(node(c, "countClauses")) as CountClause[],
+      counts: this.visit(node(c, "countClauses"), `on ${event}`) as CountClause[],
       pos: at(on),
     };
   }
@@ -118,11 +118,12 @@ class AstBuilder extends Base {
   routine(c: Children): Routine {
     const can = tok(c, "Can");
     const events = all(c, "eventName") as CstNode[];
+    const name = tok(c, "Ident").image;
     return {
-      name: tok(c, "Ident").image,
+      name,
       params: has(c, "params") ? (this.visit(node(c, "params")) as Param[]) : [],
       given: events.length > 0 ? (this.visit(events[0]!, can) as EventName) : null,
-      counts: this.visit(node(c, "countClauses")) as CountClause[],
+      counts: this.visit(node(c, "countClauses"), `can ${name}`) as CountClause[],
       body: this.visit(node(c, "block")) as Stmt[],
       pos: at(can),
     };
@@ -141,20 +142,19 @@ class AstBuilder extends Base {
     };
   }
 
-  countClauses(c: Children): CountClause[] {
+  countClauses(c: Children, what: string): CountClause[] {
     const words = ordered(c, ["Every", "After", "Before", "At"]);
     const values = all(c, "countValue") as CstNode[];
-    const clauses = words.map((word, i) => ({
-      kind: word.image as CountClause["kind"],
-      value: this.visit(values[i]!, word) as number,
-      pos: at(word),
-    }));
-    // Paired in the order they were written, then sorted into the one canonical
-    // order. The clauses are independent tests on the same count, so
-    // `every 10 after 25` and `after 25 every 10` are not merely equivalent but
-    // the identical program — which is what everything comparing two scripts,
-    // the golden hash included, relies on.
-    return clauses.sort((a, b) => COUNT_RANK[a.kind] - COUNT_RANK[b.kind]);
+    const counts: CountClause[] = [];
+    for (const [i, word] of words.entries()) {
+      const kind = word.image as CountClause["kind"];
+      const pos = at(word);
+      // Asked before the number is read, so `every 2 every nope` complains
+      // about the repetition it can see rather than the number it cannot.
+      checkNotRepeated(counts, kind, pos, what);
+      counts.push({ kind, value: this.visit(values[i]!, word) as number, pos });
+    }
+    return checkCounts(counts);
   }
 
   countValue(c: Children, word: IToken): number {

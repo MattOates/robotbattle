@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { parse as handWritten } from "../../src/lang/parser.js";
 import { parseWithChevrotain } from "../../src/lang/build-ast.js";
 import { compile } from "../../src/lang/compiler.js";
+import type { RoboScriptError } from "../../src/lang/errors.js";
 import { programIdentity } from "../../src/lang/bytecode.js";
 import { SAMPLE_BOTS } from "../../src/bots/index.js";
 import { extractCode, loadLessons, selectWorld, fillVocab, CODE_LANGS } from "../../src/learn/markdown.js";
@@ -82,4 +83,51 @@ describe("the corners a corpus might miss", () => {
     ["the radar's four members", `${H}on tick\n  radar.aim at 0\n  radar.turn by 5\n  radar.sweep 60\n  radar.ping\nend\n`],
     ["turret.fire, which takes nothing", `${H}on tick\n  turret.fire\nend\n`],
   ])("%s", (_what, source) => identical(source));
+});
+
+describe("and refuses the same programs, in the same words", () => {
+  /**
+   * Agreeing on what compiles is only half of it. The reason `parser.ts` was
+   * hand-written in the first place was the quality of its refusals, so the new
+   * front end has to reproduce them to the letter — and the cadence rules in
+   * particular, which are checked after parsing and so are the easiest thing to
+   * leave behind when the parsing moves.
+   */
+  const H = 'name "x"\nchassis tank\n';
+  const message = (e: unknown) => (e as RoboScriptError).message;
+  const hint = (e: unknown) => (e as RoboScriptError).hint;
+
+  it.each([
+    ["the same clause twice", `${H}on tick every 2 every 3\n  stop\nend\n`],
+    ["a clause that is not a number", `${H}on tick every me\n  stop\nend\n`],
+    ["a fractional count", `${H}on tick every 2.5\n  stop\nend\n`],
+    ["a count of zero", `${H}on tick every 0\n  stop\nend\n`],
+    ["`at` beside anything else", `${H}on tick at 3 every 2\n  stop\nend\n`],
+    ["no room between after and before", `${H}on tick after 9 before 10\n  stop\nend\n`],
+    ["a cadence that never comes round", `${H}on tick every 20 before 10\n  stop\nend\n`],
+    ["the same, counting from `after`", `${H}on tick after 5 every 20 before 10\n  stop\nend\n`],
+    ["a routine repeating a clause", `${H}can go after 1 after 2\n  stop\nend\n`],
+  ])("%s", (_what, source) => {
+    let expected: unknown;
+    expect(() => {
+      try {
+        handWritten(source);
+      } catch (e) {
+        expected = e;
+        throw e;
+      }
+    }).toThrow();
+
+    let actual: unknown;
+    expect(() => {
+      try {
+        parseWithChevrotain(source);
+      } catch (e) {
+        actual = e;
+        throw e;
+      }
+    }).toThrow();
+
+    expect([message(actual), hint(actual)]).toEqual([message(expected), hint(expected)]);
+  });
 });

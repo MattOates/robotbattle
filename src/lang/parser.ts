@@ -6,6 +6,7 @@
  * unclosed `on sense robot` can say so by name and line.
  */
 
+import { checkCounts, checkNotRepeated } from "./counts.js";
 import { RoboScriptError, type SourcePos } from "./errors.js";
 import type { Token } from "./lexer.js";
 import { tokenize } from "./lexer.js";
@@ -359,14 +360,7 @@ class Parser {
       }
       if (kind === null) break;
 
-      const already = counts.find((c) => c.kind === kind);
-      if (already) {
-        throw new RoboScriptError(
-          `\`${what}\` already says \`${kind} ${already.value}\``,
-          pos,
-          "one `every`, one `after`, one `before` — saying it twice would only contradict itself",
-        );
-      }
+      checkNotRepeated(counts, kind, pos, what);
 
       const t = this.peek();
       if (t.kind !== "number") {
@@ -388,52 +382,7 @@ class Parser {
       counts.push({ kind, value, pos });
     }
 
-    // `at 2` is already "the count is exactly 2", so nothing else has anything
-    // left to narrow — a second clause beside it can only be a misunderstanding.
-    const at = counts.find((c) => c.kind === "at");
-    if (at && counts.length > 1) {
-      const other = counts.find((c) => c.kind !== "at")!;
-      throw new RoboScriptError(
-        `\`at ${at.value}\` and \`${other.kind} ${other.value}\` cannot both be true`,
-        other.pos,
-        "`at` pins the count exactly, so it goes on its own — use `every`, `after` and `before` together instead",
-      );
-    }
-
-    const every = counts.find((c) => c.kind === "every");
-    const after = counts.find((c) => c.kind === "after");
-    const before = counts.find((c) => c.kind === "before");
-    if (after && before && after.value >= before.value - 1) {
-      throw new RoboScriptError(
-        `\`after ${after.value} before ${before.value}\` leaves no times in between`,
-        before.pos,
-        "`after` and `before` are both exclusive, so there has to be room between them",
-      );
-    }
-    // `after` starts the cadence counting, so the first run is that many on
-    // from there — which is what decides whether `before` leaves room for it.
-    if (every && before) {
-      const first = (after?.value ?? 0) + every.value;
-      if (first >= before.value) {
-        throw new RoboScriptError(
-          `\`every ${every.value}\` never comes round before ${before.value}`,
-          every.pos,
-          after
-            ? `counting starts again after ${after.value}, so the first run would be number ${first}`
-            : `the first run would be number ${first}`,
-        );
-      }
-    }
-
-    // Sorted into one canonical order before they leave here. The clauses are
-    // independent tests on the same count, so the order they were written in
-    // carries no meaning — and this way `every 10 after 25` and
-    // `after 25 every 10` are not merely equivalent but the identical program,
-    // which matters to everything downstream that compares two scripts.
-    const RANK = { every: 0, after: 1, before: 2, at: 3 } as const;
-    counts.sort((a, b) => RANK[a.kind] - RANK[b.kind]);
-
-    return counts;
+    return checkCounts(counts);
   }
 
   private parseEventName(): EventName {
