@@ -99,22 +99,6 @@ export const RESERVED = new Set([
   "before",
 ]);
 
-/** Builtin functions callable from expressions. */
-const BUILTINS = new Set([
-  "abs",
-  "min",
-  "max",
-  "random",
-  "randomint",
-  "sin",
-  "cos",
-  "sqrt",
-  "round",
-  "floor",
-  "ceil",
-  "distance",
-  "bearing",
-]);
 
 /** Event phrases sorted longest-first so `hit by bullet` wins over `hit`. */
 const EVENT_PHRASES: readonly string[][] = [...EVENT_NAMES]
@@ -954,7 +938,14 @@ class Parser {
       }
       // Function call or plain variable.
       const lower = t.text.toLowerCase();
-      if (this.isOp("(", 1) && BUILTINS.has(lower)) {
+      // Anything followed by `(` is a call. Which calls exist is the
+      // compiler's business, not the parser's — it keeps the list, and it can
+      // say "I don't know a function called `wobble`" and name the ones that
+      // do exist. Gating here on a second copy of that list meant an unknown
+      // call fell through to being a variable, and the `(` after it became a
+      // stray bracket: "I found `(` after the value, and I don't know what it
+      // means". The good message was written and unreachable.
+      if (this.isOp("(", 1)) {
         this.advance();
         this.advance();
         const args: Expr[] = [];

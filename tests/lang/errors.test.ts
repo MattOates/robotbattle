@@ -340,7 +340,13 @@ const COMPILER: Case[] = [
     what: "reads a property that does not exist",
     source: `${H}var x = 0\non tick\n  set x = me.wobble\nend\n`,
     message: "`me` doesn't have anything called `wobble`",
-    hint: "me has: x, y, heading, speed, health, turret, gunheat, ammo, score, radar, pingheat, fuel, aiming, slope, uphill, downhill",
+    hint: "me has: x, y, heading, speed, health, turret, gunHeat, ammo, score, radar, pingHeat, fuel, aiming, slope, uphill, downhill",
+  },
+  {
+    what: "calls a function that does not exist",
+    source: `${H}var x = 0\non tick\n  set x = wobble(1)\nend\n`,
+    message: "I don't know a function called `wobble`",
+    hint: "you can use: abs, min, max, random, randomint, sin, cos, sqrt, round, floor, ceil, distance, bearing",
   },
   {
     what: "gives a function the wrong number of values",
@@ -376,18 +382,16 @@ describe.each([
  * unreachable because of a duplicated list. See the test below.
  */
 describe("errors that cannot be reached", () => {
-  it("gives a poor message for an unknown function, not the good one that exists", () => {
-    // `compiler.ts` would say "I don't know a function called `wobble`" and
-    // list the ones that exist. The parser's duplicate `BUILTINS` set gets
-    // there first and talks about brackets instead. Frozen as-is so that
-    // deleting the duplicate is a deliberate, visible improvement.
-    const result = checkScript(`${H}var x = 0\non tick\n  set x = wobble(1)\nend\n`);
-    expect(result.error?.message).toBe("I found `(` after the value, and I don't know what it means");
-  });
-
+  /**
+   * Not dead code exactly — the belt to somebody else's braces — but nothing a
+   * player can type gets to them, so they are recorded here rather than left
+   * looking untested. If a refactor makes one reachable, its message becomes a
+   * case above and this list shrinks.
+   *
+   * It has already shrunk once: "I don't know a function called ..." lived here
+   * until the parser stopped keeping its own copy of the builtin list.
+   */
   it("catches `break` outside a loop while parsing, never while compiling", () => {
-    // `compiler.ts` has its own guard for this; the parser's `loopDepth` means
-    // it never fires.
     const result = checkScript(`${H}can f\n  break\nend\n`);
     expect(result.error?.message).toBe("`break` only works inside a loop");
     expect(result.error?.hint).toBe("put it inside a `loop`, `for` or `repeat` block");
