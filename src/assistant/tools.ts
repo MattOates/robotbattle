@@ -441,6 +441,17 @@ export const EXPLAINER_TOOL_NAMES = ["say", "check_script"];
 
 export const EXPLAINER_TOOL_DEFS: ToolDef[] = EXPLAINER_TOOL_NAMES.map((n) => TOOLS[n]!.def);
 
+/**
+ * Speech and nothing else, for when there is nothing to look at.
+ *
+ * `check_script` is worth offering only while the script is broken. Left
+ * available on a script that already compiles, a small model reaches for it
+ * every turn — it is the only op there is — learns nothing, says the same
+ * sentence again, and burns the whole round cap doing it. With no op to reach
+ * for, the turn is speech, and speech ends the turn.
+ */
+export const SAY_ONLY_TOOL_DEFS: ToolDef[] = [TOOLS["say"]!.def];
+
 /** Names the panel should render as speech rather than as an action. */
 export const SPEECH_TOOLS = new Set(["say"]);
 

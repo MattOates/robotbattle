@@ -41,8 +41,25 @@ describe("the sorting question", () => {
   it("asks about the question, not about the language", () => {
     const [system] = triageMessages("how do I turn?");
     expect(system!.role).toBe("system");
-    expect(system!.content).not.toContain("chassis");
-    expect(system!.content).not.toContain("turret");
+    // No language card: none of the reference sections, and short enough that
+    // it cannot be smuggling one in. Worked examples do name a few RoboScript
+    // words, which is the point of them.
+    expect(system!.content).not.toContain("## Actions");
+    expect(system!.content).not.toContain("me.health");
+    expect(system!.content!.length).toBeLessThan(1600);
+  });
+
+  /**
+   * Descriptions alone sent almost everything to "assistant": a small model
+   * reads four paragraphs about itself and concludes the question is about
+   * itself. Examples are what it actually follows, so there must be one of
+   * each kind.
+   */
+  it("shows a worked example of every kind", () => {
+    const [system] = triageMessages("how do I turn?");
+    for (const kind of ["language", "script", "assistant", "other"]) {
+      expect(system!.content).toContain(`"kind":"${kind}"`);
+    }
   });
 
   it("puts the question itself in a user turn", () => {

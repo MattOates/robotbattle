@@ -90,12 +90,16 @@ export class Agent {
   }
 
   /**
-   * The signal belongs to the question, not to the agent: the agent is built
-   * once and answers many, so a signal captured at construction would only ever
-   * cancel the first one.
+   * The signal, like the tool set, belongs to the question rather than to the
+   * agent: the agent is built once and answers many, so anything captured at
+   * construction would only ever apply to the first one.
    */
-  async ask(question: string, signal?: AbortSignal): Promise<void> {
-    const { provider, tools, onEntry } = this.options;
+  async ask(question: string, signal?: AbortSignal, forTurn?: ToolDef[]): Promise<void> {
+    const { provider, onEntry } = this.options;
+    // The set can change between questions — there is nothing worth offering
+    // to check on a script that already compiles — and the agent is built once
+    // and kept, so it cannot be settled at construction.
+    const tools = forTurn ?? this.options.tools;
     const ctx = this.ctx;
 
     this.history.push({ role: "user", content: question });

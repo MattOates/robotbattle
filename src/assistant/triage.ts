@@ -74,6 +74,19 @@ export function triageMessages(question: string): ChatMessage[] {
         "",
         'topic is the two or three words worth looking up in a manual, when kind',
         '  is "language". Otherwise topic is an empty string.',
+        "",
+        // Descriptions alone sent almost everything to "assistant" — a small
+        // model reads four paragraphs about itself and concludes the question
+        // is about itself. Examples are what it actually follows.
+        "Examples:",
+        'Q: "what does chassis tank mean?" -> {"kind":"language","topic":"chassis tank"}',
+        'Q: "how do I turn?" -> {"kind":"language","topic":"turning"}',
+        'Q: "what is event.bearing?" -> {"kind":"language","topic":"bearing"}',
+        'Q: "why does my robot never shoot?" -> {"kind":"script","topic":""}',
+        'Q: "what is wrong with line 4?" -> {"kind":"script","topic":""}',
+        'Q: "can you see my script?" -> {"kind":"assistant","topic":""}',
+        'Q: "can you edit this for me?" -> {"kind":"assistant","topic":""}',
+        'Q: "thanks!" -> {"kind":"other","topic":""}',
       ].join("\n"),
     },
     { role: "user", content: question },
