@@ -1195,9 +1195,15 @@ button {
 /* The Workshop sidebar holds only the robot list, so it stays narrow and the
    editor and arena get the room they actually need. */
 /* The closed tray leaves its handle sticking out over the page, so the
-   workspace gives that strip back rather than running underneath it. */
+   workspace gives that strip back rather than running underneath it. On a
+   machine with no assistant there is no handle, and `:has` hands the space
+   back rather than leaving a gap nobody can explain. */
 .workshop {
   padding-right: 34px;
+}
+
+.workshop:not(:has(.assistant-tray)) {
+  padding-right: 0;
 }
 
 .workshop-body {

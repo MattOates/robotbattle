@@ -62,6 +62,7 @@ import { blankArena } from "../../store/arenas.js";
 import { MapEditor } from "../MapEditor.js";
 import { ARENA_SIZE } from "../../net/matchsetup.js";
 import { AssistantPanel } from "../../assistant/AssistantPanel.js";
+import { useAssistantUsable } from "../../assistant/useAssistant.js";
 
 interface Props {
   theme: Theme;
@@ -135,6 +136,15 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
    * right one to land in.
    */
   const [assistantOpen, setAssistantOpen] = useState(false);
+
+  /**
+   * Whether this machine can run an assistant at all.
+   *
+   * Null while the graphics adapter is being asked. Nothing is drawn until the
+   * answer arrives, and nothing ever if it is no — there is no point offering
+   * a handle that opens onto an explanation of why it cannot work.
+   */
+  const assistantUsable = useAssistantUsable();
 
   const room = useRoom(playerName || "Player", null);
   useAutoJoin(room, initialRoom);
@@ -552,6 +562,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
           wants more width than a 300px column while it is open — so it lives
           off the right edge and slides out over the workspace, rather than
           permanently taking room from the editor. */}
+      {assistantUsable === true ? (
       <div className={`assistant-tray${assistantOpen ? " open" : ""}`}>
         <button
           type="button"
@@ -578,6 +589,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
           ) : null}
         </div>
       </div>
+      ) : null}
 
       <div className="workshop-body">
         <aside className="column sidebar">

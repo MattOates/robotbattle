@@ -27,6 +27,7 @@ import {
 import { checkScript } from "../sim/world.js";
 import { CodeEditor } from "../ui/CodeEditor.js";
 import { assistantRuntime, downloadSizeGB, type LoadProgress } from "./runtime.js";
+import { useAssistantUsable } from "./useAssistant.js";
 import type { ChatProvider } from "./provider.js";
 import type { Contender } from "../workshop/trials.js";
 import type { ArenaSpec } from "../sim/types.js";
@@ -93,7 +94,7 @@ export function AssistantPanel({
   latest.current = { opponents, arena };
 
   const runtime = useMemo(() => assistantRuntime(), []);
-  const supported = useMemo(() => runtime?.available() ?? false, [runtime]);
+  const supported = useAssistantUsable();
   const size = downloadSizeGB(modelId);
 
   // What this runtime can actually carry, and what it can be trusted with. A
@@ -123,10 +124,7 @@ export function AssistantPanel({
   // second visit goes straight to loading and then to a chat box, which is
   // what was wanted both times.
   useEffect(() => {
-    if (!runtime?.available()) {
-      setStatus("cold");
-      return;
-    }
+    if (!runtime || supported !== true) return;
     let cancelled = false;
     void runtime.isCached(modelId).then((cached) => {
       if (cancelled) return;
@@ -137,7 +135,7 @@ export function AssistantPanel({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, runtime]);
+  }, [modelId, runtime, supported]);
 
   const load = useCallback(async () => {
     if (!runtime) return;
@@ -295,25 +293,10 @@ export function AssistantPanel({
     [budget, editorRef, script, theme]
   );
 
-  // No runtime compiled in, or one that has looked and decided this machine
-  // cannot run it. Shown rather than hidden, because a panel that silently
-  // vanishes reads as a bug.
-  if (!supported) {
-    return (
-      <section className="panel chat-panel assistant-panel">
-        <div className="panel-head">
-          <span className="silkscreen">Assistant</span>
-        </div>
-        <div className="panel-body">
-          <p className="empty small">
-            {runtime
-              ? "This browser cannot run the assistant. Chrome or Edge on a desktop machine will."
-              : "This build has no assistant in it."}
-          </p>
-        </div>
-      </section>
-    );
-  }
+  // Nothing at all until we know, and nothing ever if the answer is no. The
+  // Workshop does not offer the tray in that case either, so this is only
+  // reached by a machine that changed its mind mid-session.
+  if (supported !== true) return null;
 
   return (
     <section className="panel chat-panel assistant-panel">

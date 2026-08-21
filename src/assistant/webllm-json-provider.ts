@@ -13,7 +13,12 @@
  */
 
 import type { ChatProvider, ChatRequest, ChatResponse } from "./provider.js";
-import type { AssistantModel, AssistantRuntime, LoadProgress } from "./runtime.js";
+import type {
+  AssistantCapability,
+  AssistantModel,
+  AssistantRuntime,
+  LoadProgress,
+} from "./runtime.js";
 import {
   callsFromReply,
   flattenToolTurns,
@@ -49,13 +54,15 @@ import {
 export const ASSISTANT_MODELS: readonly AssistantModel[] = [
   {
     id: "gemma-2-2b-it-q4f16_1-MLC",
-    label: "Gemma 2 (2B) — explains, quotes the lessons",
+    label: "Guide",
+    blurb: "Answers questions about RoboScript and finds the right example in the lessons.",
     vramMB: 1895.13,
     composes: false,
   },
   {
     id: "gemma-2-9b-it-q4f16_1-MLC",
-    label: "Gemma 2 (9B) — writes examples of its own",
+    label: "Tutor",
+    blurb: "Everything the Guide does, and writes examples for your own robot. Slower to answer.",
     vramMB: 6422.01,
     composes: true,
   },
@@ -81,12 +88,63 @@ export function webGpuAvailable(): boolean {
   return typeof navigator !== "undefined" && "gpu" in navigator;
 }
 
+/**
+ * The smallest thing on offer, so the gate is "can it run anything at all".
+ */
+const SMALLEST_MB = 1895.13;
+
+/**
+ * Can this machine actually run a model?
+ *
+ * `"gpu" in navigator` is not the question, though it was what we were asking.
+ * A browser can have the WebGPU API and no adapter behind it — a virtual
+ * machine, a blocklisted driver, a laptop on its integrated chip with hardware
+ * acceleration switched off — and the failure then arrives after somebody has
+ * agreed to a two gigabyte download, which is the worst possible moment.
+ *
+ * WebLLM has this check inside it, in `detectGPUDevice`, and does not export
+ * it; reaching it would mean importing the whole inference engine before we
+ * know whether we can use it. The adapter answers the same question directly.
+ *
+ * Deliberately conservative about saying no. Every test here rules out
+ * something definitely broken rather than guessing at whether a machine is
+ * fast enough, because "too slow" is a judgement the player can make for
+ * themselves and "no GPU" is not.
+ */
+export async function probeCapability(): Promise<AssistantCapability> {
+  if (typeof navigator === "undefined" || !("gpu" in navigator)) {
+    return { ok: false, reason: "this browser has no WebGPU" };
+  }
+  try {
+    const adapter = await (navigator as Navigator & { gpu: GPU }).gpu.requestAdapter();
+    if (!adapter) return { ok: false, reason: "no graphics adapter is available to the browser" };
+
+    // A binding limit this small means a software or heavily restricted
+    // adapter; the weights are uploaded in chunks and would never fit.
+    const limit = adapter.limits.maxStorageBufferBindingSize;
+    if (limit < 128 * 1024 * 1024) {
+      return { ok: false, reason: "the graphics adapter is too limited" };
+    }
+
+    // Reported by Chrome only, rounded, and capped at 8 — so it is useful for
+    // ruling out a genuinely small machine and useless for anything else.
+    const ram = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+    if (typeof ram === "number" && ram > 0 && ram * 1024 < SMALLEST_MB * 2) {
+      return { ok: false, reason: "there is not enough memory for the smallest model" };
+    }
+
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "the graphics adapter could not be reached" };
+  }
+}
+
 export const webllmJsonRuntime: AssistantRuntime = {
   models: ASSISTANT_MODELS,
   defaultModelId: DEFAULT_MODEL_ID,
   // A 1B sharing a 4096 token window with the protocol and the player's script.
   promptBudget: "tight",
-  available: webGpuAvailable,
+  capability: probeCapability,
   isCached: modelIsCached,
   cached: cachedModels,
   forget: forgetDownloads,

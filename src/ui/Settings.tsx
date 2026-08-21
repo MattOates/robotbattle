@@ -12,6 +12,7 @@ import { BRANDING } from "./branding.js";
 import { openBugReport } from "./bugReport.js";
 import { THEMES, type Theme } from "../lang/vocab.js";
 import { assistantRuntime, downloadSizeGB, type AssistantModel } from "../assistant/runtime.js";
+import { useAssistantUsable } from "../assistant/useAssistant.js";
 import type { LibraryApi } from "./useLibrary.js";
 import type { Profile } from "./useLibrary.js";
 
@@ -52,6 +53,9 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
   }, [open]);
 
   const runtime = assistantRuntime();
+  // Nothing about the assistant appears on a machine that cannot run one. An
+  // option you can read but never use is worse than no option.
+  const assistantUsable = useAssistantUsable() === true;
 
   /**
    * Which models are actually on the disk.
@@ -62,7 +66,7 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
    */
   const [downloaded, setDownloaded] = useState<AssistantModel[] | null>(null);
   useEffect(() => {
-    if (!open || !runtime) return;
+    if (!open || !runtime || !assistantUsable) return;
     let cancelled = false;
     void runtime.cached().then((models) => {
       if (!cancelled) setDownloaded(models);
@@ -70,7 +74,7 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
     return () => {
       cancelled = true;
     };
-  }, [open, runtime]);
+  }, [assistantUsable, open, runtime]);
   const usedKb = Math.round((lib.storage.used / 1024) * 10) / 10;
   const percent = Math.min(100, (lib.storage.used / lib.storage.budget) * 100);
   const words = THEMES[profile.theme];
@@ -137,7 +141,7 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
             {/* Only worth showing to a machine that could run one, and only
                 when there is more than one to choose between. Otherwise it is
                 a dropdown of things that will not happen. */}
-            {runtime?.available() && runtime.models.length > 1 ? (
+            {assistantUsable && runtime && runtime.models.length > 1 ? (
               <div className="field">
                 <span className="silkscreen">Assistant</span>
                 <select
@@ -153,9 +157,12 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
                   ))}
                 </select>
                 <span className="roster-meta">
-                  Bigger models write better {words.robotPlural} and take longer to start. Nothing
-                  is downloaded until you ask for it, and a change here applies next time you open
-                  the Workshop.
+                  {/* The chosen one described in full, since a dropdown can only
+                      show a line and the difference between them is the whole
+                      decision. */}
+                  {runtime.models.find((m) => m.id === profile.assistantModel)?.blurb}{" "}
+                  Nothing is downloaded until you ask for it, and a change here applies next time
+                  you open the Workshop.
                 </span>
               </div>
             ) : null}
@@ -169,7 +176,7 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
               <div className="field">
                 <span className="silkscreen">Assistant downloads</span>
                 <span className="roster-meta">
-                  {downloaded.map((m) => m.label.split(" —")[0]).join(", ")} ·{" "}
+                  {downloaded.map((m) => m.label).join(", ")} ·{" "}
                   {Math.round(downloaded.reduce((n, m) => n + m.vramMB, 0) / 102.4) / 10} GB kept in
                   this browser
                 </span>

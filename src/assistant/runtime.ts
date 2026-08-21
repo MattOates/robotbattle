@@ -24,9 +24,19 @@ import type { ChatProvider } from "./provider.js";
 import { webllmJsonRuntime } from "./webllm-json-provider.js";
 
 export interface AssistantModel {
+  /** The engine's own name for it, which nobody outside this folder needs. */
   id: string;
-  /** Shown in the settings dropdown. */
+  /**
+   * What it is called on screen.
+   *
+   * A name for what it does, not for what it is. Which model and how many
+   * billion parameters are our problem, and knowing them helps nobody choose:
+   * the only two things a player can act on are what it will do for them and
+   * what it will cost their machine.
+   */
   label: string;
+  /** One line under the picker saying what choosing it means. */
+  blurb: string;
   /**
    * What the machine must find room for, in megabytes.
    *
@@ -64,12 +74,31 @@ export interface LoadProgress {
  */
 export type PromptBudget = "tight" | "roomy";
 
+/**
+ * What this machine can do, and why not when it cannot.
+ *
+ * The reason is for us rather than for the player — everything about the
+ * assistant is hidden when it cannot run, rather than offered and then
+ * explained away. A door that opens onto a wall is worse than no door.
+ */
+export interface AssistantCapability {
+  ok: boolean;
+  reason?: string;
+}
+
 export interface AssistantRuntime {
   readonly models: readonly AssistantModel[];
   readonly defaultModelId: string;
   readonly promptBudget: PromptBudget;
-  /** Whether this browser could run one of these at all. */
-  available(): boolean;
+  /**
+   * Whether this machine can actually run the smallest of them.
+   *
+   * Asynchronous because the honest answer needs the GPU adapter, and getting
+   * one is a promise. Worth the wait: the cheap synchronous test — does
+   * `navigator.gpu` exist — says yes on plenty of machines that then fail at
+   * the point somebody has committed to a two gigabyte download.
+   */
+  capability(): Promise<AssistantCapability>;
   /**
    * Whether this model is already here, so starting it costs seconds rather
    * than gigabytes.
