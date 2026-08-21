@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { EditorState, type TransactionSpec } from "@codemirror/state";
 import {
   EXPLAINER_TOOL_DEFS,
+  exampleCompiles,
   EXPLAINER_TOOL_NAMES,
   runTool,
   TOOL_DEFS,
@@ -289,5 +290,58 @@ describe("the explainer set", () => {
     const { ctx, said } = context();
     await call("say", { text: "A tank turns on the spot." }, ctx);
     expect(said).toEqual(["A tank turns on the spot."]);
+  });
+});
+
+describe("checking an example against the real compiler", () => {
+  /**
+   * The one mistake catchable without a person. The model cannot reliably
+   * write RoboScript, and the thing that decides what RoboScript is happens to
+   * be sitting right here.
+   */
+  it("accepts a whole handler", () => {
+    expect(exampleCompiles("on tick\n  drive forward 80\nend").ok).toBe(true);
+  });
+
+  it("accepts loose statements by giving them a handler of their own", () => {
+    // A snippet is not a program, so it gets the smallest one that holds it.
+    expect(exampleCompiles("drive forward 80").ok).toBe(true);
+  });
+
+  it("sees through a fence the model added", () => {
+    expect(exampleCompiles("```\non tick\n  drive forward 80\nend\n```").ok).toBe(true);
+  });
+
+  it("catches a one-line if, which is how it gets `if` wrong", () => {
+    const verdict = exampleCompiles("if me.slope > 12 then turn chassis to me.downhill end");
+    expect(verdict.ok).toBe(false);
+    expect(verdict.error).toMatch(/^Line \d+:/);
+  });
+
+  it("catches an invented word", () => {
+    expect(exampleCompiles("on tick\n  swerve left 90\nend").ok).toBe(false);
+  });
+
+  it("treats nothing as nothing to complain about", () => {
+    expect(exampleCompiles("   ").ok).toBe(true);
+  });
+});
+
+describe("saying something with code in it", () => {
+  it("hands the code over separately, so it can be shown as code", async () => {
+    const said: [string, string | undefined][] = [];
+    const { ctx } = context();
+    ctx.onSay = (text, code) => said.push([text, code]);
+    await call("say", { text: "Try this.", code: "on tick\n  fire 2\nend" }, ctx);
+    expect(said).toEqual([["Try this.", "on tick\n  fire 2\nend"]]);
+  });
+
+  it("accepts code with no sentence, rather than losing the example", async () => {
+    const said: [string, string | undefined][] = [];
+    const { ctx } = context();
+    ctx.onSay = (text, code) => said.push([text, code]);
+    const result = await call("say", { code: "fire 2" }, ctx);
+    expect(result.ok).toBe(true);
+    expect(said[0]![1]).toBe("fire 2");
   });
 });

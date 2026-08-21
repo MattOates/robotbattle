@@ -1849,6 +1849,27 @@ button {
   color: var(--alert);
 }
 
+/*
+ * A code example in the transcript.
+ *
+ * The editor's own highlighter in preview mode, so an example is coloured
+ * exactly like the script it is talking about — and there is no second
+ * highlighter to drift from the language.
+ */
+.chat-code {
+  margin-top: 6px;
+  border: 1px solid var(--bezel);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--panel-raised);
+}
+
+.chat-code .code-editor {
+  max-height: 220px;
+  overflow: auto;
+  font-size: 12px;
+}
+
 .assistant-progress {
   width: 100%;
   height: 6px;

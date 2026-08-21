@@ -53,7 +53,7 @@ export interface ToolContext {
   opponents: Contender[];
   arena: ArenaSpec | undefined;
   /** Called with anything the assistant says, so the panel can show it. */
-  onSay: (text: string) => void;
+  onSay: (text: string, code?: string) => void;
 }
 
 /** What a tool gives back. `ok: false` is a refusal the model should read and adapt to. */
@@ -139,18 +139,22 @@ const TOOLS: Record<string, Tool> = {
       function: {
         name: "say",
         description:
-          "Say something to the player. This is the only way to talk to them. Keep it to a sentence or two, in plain words.",
+          "Say something to the player. This is the only way to talk to them. Keep it to a sentence or two, in plain words, and put any RoboScript in `code` rather than in the sentence.",
         parameters: {
           type: "object",
-          properties: { text: { type: "string", description: "What to tell the player." } },
+          properties: {
+            text: { type: "string", description: "What to tell the player." },
+            code: { type: "string", description: "RoboScript to show them, if any." },
+          },
           required: ["text"],
         },
       },
     },
     run(args, ctx) {
       const text = asString(args["text"]);
-      if (!text) return { ok: false, error: "say needs a `text` string." };
-      ctx.onSay(text);
+      const code = asString(args["code"])?.trim();
+      if (!text && !code) return { ok: false, error: "say needs a `text` string." };
+      ctx.onSay(text ?? "", code || undefined);
       return { ok: true };
     },
   },
@@ -378,6 +382,27 @@ function runTrialsInWorker(request: TrialWorkerIn["request"]): Promise<TrialRepo
     };
     worker.postMessage({ type: "run", request } satisfies TrialWorkerIn);
   });
+}
+
+/**
+ * Whether an example would actually compile.
+ *
+ * The compiler is right here, and an assistant that cannot write RoboScript is
+ * exactly the one whose examples want checking. A snippet is not a program, so
+ * it is given the smallest program around it that could hold it: a handler is
+ * dropped straight in, and loose statements get a handler of their own first.
+ */
+export function exampleCompiles(code: string): { ok: boolean; error?: string } {
+  const snippet = code.replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/, "").trim();
+  if (!snippet) return { ok: true };
+  const head = 'name "x"\nchassis tank\n\n';
+  const looksWhole = /^(on|can|name|chassis|color|var)\b/.test(snippet);
+  const wrapped = looksWhole
+    ? snippet
+    : `on tick\n${snippet.split("\n").map((l) => `  ${l}`).join("\n")}\nend`;
+  const check = checkScript(head + wrapped);
+  if (check.ok) return { ok: true };
+  return { ok: false, error: `Line ${check.error?.line}: ${check.error?.message}` };
 }
 
 /**

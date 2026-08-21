@@ -134,12 +134,18 @@ export function callsFromReply(reply: unknown, tools: readonly ToolDef[]): ToolC
   // avoid the hill" — and never write a line of RoboScript, because nothing in
   // a sentence obliges it to. A named, empty box does.
   const code = typeof body["code"] === "string" ? body["code"].trim() : "";
-  const spoken = code ? `${say}\n\n${fence(code)}` : say;
   if (say || code) {
     calls.push({
       id: `say-${calls.length}`,
       type: "function",
-      function: { name: "say", arguments: JSON.stringify({ text: spoken || code }) },
+      // Kept apart rather than glued into the sentence, so the panel can show
+      // it as code and the compiler can be pointed at it.
+      function: {
+        name: "say",
+        // `code` is omitted rather than sent empty: it is the panel's signal
+        // that there is a block to render, and an empty one is not a block.
+        arguments: JSON.stringify(code ? { text: say, code } : { text: say }),
+      },
     });
   }
 
@@ -162,12 +168,6 @@ export function callsFromReply(reply: unknown, tools: readonly ToolDef[]): ToolC
   }
 
   return calls;
-}
-
-/** Show a snippet as a code block, however the model fenced it (or did not). */
-function fence(code: string): string {
-  const bare = code.replace(/^```[a-z]*\n?/i, "").replace(/```$/, "").trim();
-  return "```\n" + bare + "\n```";
 }
 
 /**

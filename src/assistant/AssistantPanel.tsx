@@ -19,12 +19,14 @@ import { triage } from "./triage.js";
 import {
   EXPLAINER_TOOL_DEFS,
   SAY_ONLY_TOOL_DEFS,
+  exampleCompiles,
   numberedScript,
   TOOL_DEFS,
   type EditorHandle,
   type ToolContext,
 } from "./tools.js";
 import { checkScript } from "../sim/world.js";
+import { CodeEditor } from "../ui/CodeEditor.js";
 import { assistantRuntime, downloadSizeGB, type LoadProgress } from "./runtime.js";
 import type { ChatProvider } from "./provider.js";
 import type { Contender } from "../workshop/trials.js";
@@ -66,9 +68,13 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
   /** The question before this one, and the last thing worth looking up. */
   const lastQuestion = useRef<string | null>(null);
   const lastTopic = useRef<string | null>(null);
+  /** The last example shown, so it can be put to the compiler. */
+  const lastCode = useRef<string | null>(null);
 
   const latest = useRef({ opponents, arena });
   latest.current = { opponents, arena };
+
+  const onEntryRef = useRef((entry: Entry) => setEntries((prev) => [...prev, entry]));
 
   const runtime = useMemo(() => assistantRuntime(), []);
   const supported = useMemo(() => runtime?.available() ?? false, [runtime]);
@@ -145,7 +151,9 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
         },
         // Speech already reaches the transcript through the agent; this is the
         // hook for anything else that might want to hear it.
-        onSay: () => {},
+        onSay: (_text, code) => {
+          if (code) lastCode.current = code;
+        },
       };
 
       // Built once and kept, so the conversation has a memory across questions.
@@ -204,6 +212,25 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
 
       try {
         await agentRef.current.ask(asked, controller.signal, tools);
+
+        // Check the example against the real compiler, and give it one chance
+        // to fix what it got wrong. This is the one kind of mistake we can
+        // catch without a person: the model cannot reliably write RoboScript,
+        // but the thing that decides what RoboScript is happens to be sitting
+        // right here.
+        const shown = lastCode.current;
+        lastCode.current = null;
+        if (shown && !controller.signal.aborted) {
+          const verdict = exampleCompiles(shown);
+          if (!verdict.ok) {
+            onEntryRef.current({ kind: "action", text: "checked its example and it did not compile" });
+            await agentRef.current.ask(
+              `That does not compile — ${verdict.error}. Give me a corrected version, using only words from the reference.`,
+              controller.signal,
+              tools,
+            );
+          }
+        }
       } finally {
         setThinking(false);
         abortRef.current = null;
@@ -306,7 +333,15 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
                 ) : (
                   <>
                     <span className="chat-who">{entry.kind === "player" ? "You" : "Assistant"}</span>
-                    <span className="chat-text">{entry.text}</span>
+                    {entry.text ? <span className="chat-text">{entry.text}</span> : null}
+                    {/* The editor's own highlighter, in preview mode: the same
+                        colours as the script it is talking about, and no second
+                        implementation to drift from the language. */}
+                    {entry.kind === "assistant" && entry.code ? (
+                      <div className="chat-code">
+                        <CodeEditor source={entry.code} theme={theme} onChange={() => {}} preview />
+                      </div>
+                    ) : null}
                   </>
                 )}
               </div>
