@@ -102,7 +102,15 @@ export function protocolInstructions(tools: readonly ToolDef[]): string {
   return [
     "Reply with one JSON object and nothing else. It has:",
     '  "say"  — what you are telling the player. Always fill this in.',
+    // Described here as well as declared in the schema. A field the shape does
+    // not mention is a field the model does not fill in: with `code` in the
+    // schema and absent from these lines, every example came back as a
+    // sentence inside `say` and the block never appeared.
+    '  "code" — RoboScript to show them, whenever the answer involves writing',
+    "           any. Put it here and NOT inside `say`. Empty if there is none.",
     '  "op"   — the ONE thing to do this turn, or "none" to just talk.',
+    "",
+    'Example: {"say":"Sweep the radar as you start.","code":"on start\\n  radar.sweep 60\\nend","op":"none"}',
     "",
     "The ops are:",
     ...lines,

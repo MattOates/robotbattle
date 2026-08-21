@@ -224,11 +224,24 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
           const verdict = exampleCompiles(shown);
           if (!verdict.ok) {
             onEntryRef.current({ kind: "action", text: "checked its example and it did not compile" });
+            lastCode.current = null;
             await agentRef.current.ask(
               `That does not compile — ${verdict.error}. Give me a corrected version, using only words from the reference.`,
               controller.signal,
               tools,
             );
+
+            // One correction is all it gets, and it often makes things worse
+            // rather than better. Handing a player broken RoboScript is fine as
+            // long as nobody pretends otherwise; handing it over in silence,
+            // from something that sounds confident, is not.
+            const second = lastCode.current;
+            if (!second || !exampleCompiles(second).ok) {
+              onEntryRef.current({
+                kind: "error",
+                text: "That example still does not compile — treat it as a rough sketch, not something to copy.",
+              });
+            }
           }
         }
       } finally {

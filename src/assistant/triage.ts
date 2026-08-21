@@ -88,6 +88,8 @@ export function triageMessages(question: string, previous?: string): ChatMessage
         'Q: "can you edit this for me?" -> {"kind":"assistant","topic":""}',
         'Q: "what do I need to change to avoid hills?" -> {"kind":"language","topic":"hills ground"}',
         'Q: "how do I make it dodge bullets?" -> {"kind":"language","topic":"dodging bullets"}',
+        'Q: "what can I add to avoid hills?" -> {"kind":"language","topic":"hills ground"}',
+        'Q: "can I use me.slope here?" -> {"kind":"language","topic":"slope"}',
         'Q: "thanks!" -> {"kind":"other","topic":""}',
         // Carried as context rather than as a turn to be sorted. Fed in as a
         // previous message, the sorter sorted THAT one instead — a follow-up to
