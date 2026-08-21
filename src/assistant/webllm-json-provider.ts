@@ -39,11 +39,23 @@ import {
 export const ASSISTANT_MODELS: readonly AssistantModel[] = [
   { id: "Llama-3.2-1B-Instruct-q4f32_1-MLC", label: "Llama 3.2 (1B) — quickest", vramMB: 1128.82 },
   { id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 (1.5B)", vramMB: 1629.75 },
-  { id: "Llama-3.2-3B-Instruct-q4f16_1-MLC", label: "Llama 3.2 (3B) — best answers", vramMB: 2263.69 },
+  { id: "gemma-2-2b-it-q4f16_1-MLC", label: "Gemma 2 (2B)", vramMB: 1895.13 },
+  { id: "Llama-3.2-3B-Instruct-q4f16_1-MLC", label: "Llama 3.2 (3B)", vramMB: 2263.69 },
   { id: "Qwen2.5-3B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 (3B)", vramMB: 2504.76 },
+  { id: "gemma-2-9b-it-q4f16_1-MLC", label: "Gemma 2 (9B) — best answers", vramMB: 6422.01 },
 ];
 
-export const DEFAULT_MODEL_ID = "Llama-3.2-3B-Instruct-q4f16_1-MLC";
+/**
+ * The largest of them, and a real ask: six and a half gigabytes of video
+ * memory, against the two the rest of the list needs.
+ *
+ * Worth it because the quality is the whole feature. Everything below this is
+ * good at "what does chassis tank mean" and unreliable the moment a question
+ * needs two facts joined together, and no amount of prompt or retrieval work
+ * has moved that — the ceiling has been the model for a while. The smaller
+ * rungs stay for machines that cannot spare the memory.
+ */
+export const DEFAULT_MODEL_ID = "gemma-2-9b-it-q4f16_1-MLC";
 
 export function isSupportedModel(id: string): boolean {
   return ASSISTANT_MODELS.some((m) => m.id === id);

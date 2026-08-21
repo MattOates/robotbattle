@@ -247,8 +247,18 @@ export function AssistantPanel({
       // Only a question about the language gets a lesson, and it is looked up
       // by the topic the sorting call named rather than by the whole sentence,
       // so "can you see my script" cannot match on the word "see".
+      // A question about their own script often wants a lesson too — "what do
+      // I need to change to avoid hills" is about their robot AND about the
+      // ground, and answering it without the terrain chapter produced advice
+      // to drive up and down hills, which is the opposite of the lesson's
+      // point. One chapter rather than two, because the script is in the
+      // window as well and something has to give.
       const lessons =
-        routed.kind === "language" ? retrieve(topic, theme) : [];
+        routed.kind === "language"
+          ? retrieve(topic, theme)
+          : routed.kind === "script"
+            ? retrieve(topic, theme, 1)
+            : [];
       if (lessons.length) parts.push(lessons.join("\n\n"));
       const material = parts.join("\n\n");
 
