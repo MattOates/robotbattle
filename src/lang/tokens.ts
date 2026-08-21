@@ -198,26 +198,27 @@ function typeOf(tok: Token): TokenType | null {
 
 export function toTokens(source: string): RoboToken[] {
   const out: RoboToken[] = [];
-  let offset = 0;
   for (const tok of tokenize(source)) {
     const type = typeOf(tok);
+    if (!type) continue;
+    // Real offsets, from the lexer. They used to be counted here by adding up
+    // token lengths, which skipped every space and comment and so pointed at a
+    // position no cursor could ever be at — fine for ordering, useless for
+    // asking what is under a click.
     const length = tok.raw.length || 1;
-    if (type) {
-      out.push({
-        image: tok.text,
-        raw: tok.raw,
-        ...(tok.value === undefined ? {} : { value: tok.value }),
-        startOffset: offset,
-        endOffset: offset + length,
-        startLine: tok.line,
-        endLine: tok.line,
-        startColumn: tok.col,
-        endColumn: tok.col + length,
-        tokenTypeIdx: type.tokenTypeIdx!,
-        tokenType: type,
-      });
-    }
-    offset += length;
+    out.push({
+      image: tok.text,
+      raw: tok.raw,
+      ...(tok.value === undefined ? {} : { value: tok.value }),
+      startOffset: tok.offset,
+      endOffset: tok.offset + length,
+      startLine: tok.line,
+      endLine: tok.line,
+      startColumn: tok.col,
+      endColumn: tok.col + length,
+      tokenTypeIdx: type.tokenTypeIdx!,
+      tokenType: type,
+    });
   }
   return out;
 }
