@@ -47,6 +47,15 @@ interface Props {
    * consent in it.
    */
   preview?: boolean;
+  /**
+   * A preview whose whole point is to be taken away.
+   *
+   * `preview` refuses copy because a traded script must not leave its owner
+   * without consent. An example the assistant is showing you is the opposite:
+   * it cannot type it in for you, so the only way it is any use is if you can
+   * lift it out.
+   */
+  copyable?: boolean;
   /** Extra status text alongside the compile result, e.g. who else is editing. */
   statusSuffix?: React.ReactNode;
   /**
@@ -83,6 +92,7 @@ export function CodeEditor({
   collab,
   readOnly = false,
   preview = false,
+  copyable = false,
   statusSuffix,
   viewRef: exposedRef,
   onDrop,
@@ -113,12 +123,16 @@ export function CodeEditor({
           ...(preview
             ? [
                 EditorView.editable.of(false),
-                EditorView.domEventHandlers({
-                  copy: refuse,
-                  cut: refuse,
-                  dragstart: refuse,
-                  contextmenu: refuse,
-                }),
+                ...(copyable
+                  ? []
+                  : [
+                      EditorView.domEventHandlers({
+                        copy: refuse,
+                        cut: refuse,
+                        dragstart: refuse,
+                        contextmenu: refuse,
+                      }),
+                    ]),
               ]
             : []),
           // Accept a block dragged in from the shelf. Anything else dropped —

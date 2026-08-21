@@ -19,7 +19,6 @@ import { triage } from "./triage.js";
 import {
   EXPLAINER_TOOL_DEFS,
   SAY_ONLY_TOOL_DEFS,
-  exampleCompiles,
   numberedScript,
   TOOL_DEFS,
   type EditorHandle,
@@ -73,13 +72,9 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
   /** The question before this one, and the last thing worth looking up. */
   const lastQuestion = useRef<string | null>(null);
   const lastTopic = useRef<string | null>(null);
-  /** The last example shown, so it can be put to the compiler. */
-  const lastCode = useRef<string | null>(null);
 
   const latest = useRef({ opponents, arena });
   latest.current = { opponents, arena };
-
-  const onEntryRef = useRef((entry: Entry) => setEntries((prev) => [...prev, entry]));
 
   const runtime = useMemo(() => assistantRuntime(), []);
   const supported = useMemo(() => runtime?.available() ?? false, [runtime]);
@@ -177,9 +172,7 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
         },
         // Speech already reaches the transcript through the agent; this is the
         // hook for anything else that might want to hear it.
-        onSay: (_text, code) => {
-          if (code) lastCode.current = code;
-        },
+        onSay: () => {},
       };
 
       // Built once and kept, so the conversation has a memory across questions.
@@ -239,37 +232,6 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       try {
         await agentRef.current.ask(asked, controller.signal, tools);
 
-        // Check the example against the real compiler, and give it one chance
-        // to fix what it got wrong. This is the one kind of mistake we can
-        // catch without a person: the model cannot reliably write RoboScript,
-        // but the thing that decides what RoboScript is happens to be sitting
-        // right here.
-        const shown = lastCode.current;
-        lastCode.current = null;
-        if (shown && !controller.signal.aborted) {
-          const verdict = exampleCompiles(shown);
-          if (!verdict.ok) {
-            onEntryRef.current({ kind: "action", text: "checked its example and it did not compile" });
-            lastCode.current = null;
-            await agentRef.current.ask(
-              `That does not compile — ${verdict.error}. Give me a corrected version, using only words from the reference.`,
-              controller.signal,
-              tools,
-            );
-
-            // One correction is all it gets, and it often makes things worse
-            // rather than better. Handing a player broken RoboScript is fine as
-            // long as nobody pretends otherwise; handing it over in silence,
-            // from something that sounds confident, is not.
-            const second = lastCode.current;
-            if (!second || !exampleCompiles(second).ok) {
-              onEntryRef.current({
-                kind: "error",
-                text: "That example still does not compile — treat it as a rough sketch, not something to copy.",
-              });
-            }
-          }
-        }
       } finally {
         setThinking(false);
         abortRef.current = null;
@@ -378,7 +340,23 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
                         implementation to drift from the language. */}
                     {entry.kind === "assistant" && entry.code ? (
                       <div className="chat-code">
-                        <CodeEditor source={entry.code} theme={theme} onChange={() => {}} preview />
+                        <CodeEditor
+                          source={entry.code}
+                          theme={theme}
+                          onChange={() => {}}
+                          preview
+                          copyable
+                        />
+                        {/* Selecting inside an editor is fiddly with a mouse and
+                            worse on a laptop trackpad, and this is the one
+                            thing the player has to get out of the panel. */}
+                        <button
+                          type="button"
+                          className="chat-code-copy"
+                          onClick={() => void navigator.clipboard?.writeText(entry.code ?? "")}
+                        >
+                          Copy
+                        </button>
                       </div>
                     ) : null}
                   </>

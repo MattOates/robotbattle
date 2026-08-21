@@ -1867,6 +1867,7 @@ button {
  * highlighter to drift from the language.
  */
 .chat-code {
+  position: relative;
   margin-top: 6px;
   border: 1px solid var(--bezel);
   border-radius: 4px;
@@ -1874,7 +1875,32 @@ button {
   background: var(--panel-raised);
 }
 
+.chat-code-copy {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--bezel);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--ink-muted);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  /* Over the code, so it costs no height, but never over the first line's
+     text — the block is padded on the right to keep out of its way. */
+  opacity: 0.75;
+}
+
+.chat-code-copy:hover {
+  opacity: 1;
+  color: var(--ink);
+}
+
 .chat-code .code-editor {
+  padding-right: 52px;
   max-height: 220px;
   overflow: auto;
   font-size: 12px;

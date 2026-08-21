@@ -149,7 +149,12 @@ export class Agent {
         }
 
         const result = await runTool(name, call.function.arguments, ctx);
-        if (SPEECH_TOOLS.has(name) && result.ok) spoke = true;
+        if (SPEECH_TOOLS.has(name)) {
+          if (result.ok) spoke = true;
+          // Speech can be refused — an example that does not compile is sent
+          // back rather than shown — and a refused turn is not a finished one.
+          else onlySpeech = false;
+        }
 
         this.history.push({
           role: "tool",
@@ -163,12 +168,13 @@ export class Agent {
       if (onlySpeech) return;
     }
 
-    // Out of rounds. Something was probably done to the script, so say so
-    // rather than leaving the player looking at a silent panel.
+    // Out of rounds with nothing said. Usually this is an example that never
+    // compiled however many times it was sent back, so say that plainly rather
+    // than leaving the player looking at a silent panel.
     if (!spoke) {
       onEntry({
         kind: "error",
-        text: "The assistant gave up part way through. Have a look at your script before carrying on.",
+        text: "I could not come up with an example for that which actually works. Try asking about one small piece of it.",
       });
     }
   }

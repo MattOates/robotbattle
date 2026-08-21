@@ -345,3 +345,40 @@ describe("saying something with code in it", () => {
     expect(said[0]![1]).toBe("fire 2");
   });
 });
+
+describe("refusing an example that does not compile", () => {
+  /**
+   * Checked before it is spoken, not after. Validating afterwards showed the
+   * player a broken example, then a second attempt at the same broken example,
+   * then a note saying not to trust either — three messages to deliver
+   * nothing. Refused here, the compiler error is an ordinary tool result the
+   * model can act on, and only working RoboScript reaches the transcript.
+   */
+  it("does not say it, and hands back what the compiler said", async () => {
+    const said: [string, string | undefined][] = [];
+    const { ctx } = context();
+    ctx.onSay = (text, code) => said.push([text, code]);
+    const result = await call(
+      "say",
+      { text: "Try this.", code: "if me.slope > 12 then turn chassis to me.downhill end" },
+      ctx,
+    );
+    expect(result.ok).toBe(false);
+    expect(String(result["error"])).toContain("does not compile");
+    expect(said).toEqual([]);
+  });
+
+  it("says it when the example is sound", async () => {
+    const said: [string, string | undefined][] = [];
+    const { ctx } = context();
+    ctx.onSay = (text, code) => said.push([text, code]);
+    const good = "on tick\n  drive forward 80\nend";
+    expect((await call("say", { text: "Try this.", code: good }, ctx)).ok).toBe(true);
+    expect(said).toEqual([["Try this.", good]]);
+  });
+
+  it("never blocks plain speech, which has nothing to compile", async () => {
+    const { ctx } = context();
+    expect((await call("say", { text: "A tank turns on the spot." }, ctx)).ok).toBe(true);
+  });
+});

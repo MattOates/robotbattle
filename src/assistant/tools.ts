@@ -154,6 +154,23 @@ const TOOLS: Record<string, Tool> = {
       const text = asString(args["text"]);
       const code = asString(args["code"])?.trim();
       if (!text && !code) return { ok: false, error: "say needs a `text` string." };
+
+      // Checked before it is spoken, not after. Validating afterwards meant
+      // the player was shown a broken example, then a second attempt at the
+      // same broken example, then a note saying not to trust either — three
+      // messages to deliver nothing. Refusing here turns the compiler error
+      // into an ordinary tool result and the model simply tries again, and
+      // only working RoboScript ever reaches the transcript.
+      if (code) {
+        const verdict = exampleCompiles(code);
+        if (!verdict.ok) {
+          return {
+            ok: false,
+            error: `That RoboScript does not compile — ${verdict.error}. Fix it and say it again, using only words from the reference.`,
+          };
+        }
+      }
+
       ctx.onSay(text ?? "", code || undefined);
       return { ok: true };
     },
