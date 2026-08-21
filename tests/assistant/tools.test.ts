@@ -16,6 +16,8 @@ import {
   EXPLAINER_TOOL_DEFS,
   exampleCompiles,
   EXPLAINER_TOOL_NAMES,
+  numberedScript,
+  numberLines,
   runTool,
   TOOL_DEFS,
   type EditorHandle,
@@ -407,5 +409,42 @@ describe("when only the example is broken", () => {
     const result = await call("say", { text: "ok", code: "on tick\n  fire 2\nend" }, ctx);
     expect(result["note"]).toBeUndefined();
     expect(said).toEqual([undefined]);
+  });
+});
+
+describe("putting the script in front of it", () => {
+  /**
+   * Read from the source, not from the editor. The editor is only mounted
+   * while the Editor tab is on screen, so anything reading the script through
+   * the view got nothing at all from someone sitting on the map or the test
+   * bench — and the assistant answered questions about a robot it could not
+   * see, which is exactly as useful as it sounds.
+   */
+  it("numbers from text, with no editor involved", () => {
+    expect(numberLines('name "S"\nchassis tank')).toBe('1: name "S"\n2: chassis tank');
+  });
+
+  it("agrees with the editor when there is one", () => {
+    const view = handle('name "S"\nchassis tank', false);
+    expect(numberedScript(view)).toBe(numberLines('name "S"\nchassis tank'));
+  });
+
+  /**
+   * A thousand-line robot would crowd out the lesson and the question both.
+   * The top and tail are where the useful parts are: settings and handlers at
+   * the top, and whatever was added most recently at the bottom.
+   */
+  it("trims a long script from the middle, and says it has", () => {
+    const long = Array.from({ length: 200 }, (_, i) => `line ${i + 1}`).join("\n");
+    const out = numberLines(long);
+    expect(out.split("\n").length).toBeLessThan(70);
+    expect(out).toContain("1: line 1");
+    expect(out).toContain("200: line 200");
+    expect(out).toContain("more lines");
+  });
+
+  it("leaves a script that fits completely alone", () => {
+    const short = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join("\n");
+    expect(numberLines(short)).not.toContain("more lines");
   });
 });

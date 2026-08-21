@@ -570,6 +570,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               theme={theme}
               modelId={assistantModel}
               editorRef={editorViewRef}
+              script={editorSource}
               opponents={assistantOpponents}
               arena={benchArena ?? undefined}
               editable={editable}

@@ -46,7 +46,9 @@ describe("the sorting question", () => {
     // words, which is the point of them.
     expect(system!.content).not.toContain("## Actions");
     expect(system!.content).not.toContain("me.health");
-    expect(system!.content!.length).toBeLessThan(1600);
+    // Room for worked examples — which are what the sorting actually runs on —
+    // but nowhere near enough to be hiding a reference card in here.
+    expect(system!.content!.length).toBeLessThan(2400);
   });
 
   /**

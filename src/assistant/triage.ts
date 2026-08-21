@@ -84,6 +84,13 @@ export function triageMessages(question: string, previous?: string): ChatMessage
         'Q: "what is event.bearing?" -> {"kind":"language","topic":"bearing"}',
         'Q: "why does my robot never shoot?" -> {"kind":"script","topic":""}',
         'Q: "what is wrong with line 4?" -> {"kind":"script","topic":""}',
+        // "What does my robot do when X" reads as a question about X and is
+        // not one: the answer is in the handler in front of you. Sent to the
+        // lessons, it came back describing dodging in general while the robot\'s
+        // own `on hit by bullet` sat there unread.
+        'Q: "what does my robot do when it gets shot?" -> {"kind":"script","topic":""}',
+        'Q: "what is my robot called?" -> {"kind":"script","topic":""}',
+        'Q: "does my robot ever fire?" -> {"kind":"script","topic":""}',
         'Q: "can you see my script?" -> {"kind":"assistant","topic":""}',
         'Q: "can you edit this for me?" -> {"kind":"assistant","topic":""}',
         'Q: "what do I need to change to avoid hills?" -> {"kind":"language","topic":"hills ground"}',

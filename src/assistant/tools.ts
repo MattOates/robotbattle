@@ -435,10 +435,29 @@ export function exampleCompiles(code: string): { ok: boolean; error?: string } {
  * than be asked for it — see `SIGHTED_TOOL_NAMES`.
  */
 export function numberedScript(view: EditorHandle): string {
-  const doc = view.state.doc;
-  const lines: string[] = [];
-  for (let n = 1; n <= doc.lines; n++) lines.push(`${n}: ${doc.line(n).text}`);
-  return lines.join("\n");
+  return numberLines(view.state.doc.toString());
+}
+
+/**
+ * The same, from text rather than from a live editor.
+ *
+ * The editor is only mounted while the Editor tab is on screen, so anything
+ * that reads the script through the view gets nothing at all from someone
+ * sitting on the map or the test bench. The source is always to hand; the
+ * view is not.
+ *
+ * Long scripts are trimmed from the middle. A whole thousand-line robot would
+ * crowd out the lesson and the question both, and the top and tail are where
+ * the useful parts are — the settings and handlers at the top, and whatever
+ * was most recently added at the bottom.
+ */
+export function numberLines(source: string, maxLines = 60): string {
+  const lines = source.split("\n");
+  const numbered = lines.map((text, i) => `${i + 1}: ${text}`);
+  if (numbered.length <= maxLines) return numbered.join("\n");
+  const head = numbered.slice(0, maxLines - 20);
+  const tail = numbered.slice(-20);
+  return [...head, `… ${numbered.length - maxLines} more lines …`, ...tail].join("\n");
 }
 
 /** The definitions to show the model. */

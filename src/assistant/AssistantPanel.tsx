@@ -19,7 +19,7 @@ import { triage } from "./triage.js";
 import {
   EXPLAINER_TOOL_DEFS,
   SAY_ONLY_TOOL_DEFS,
-  numberedScript,
+  numberLines,
   TOOL_DEFS,
   type EditorHandle,
   type ToolContext,
@@ -46,13 +46,29 @@ interface Props {
   modelId: string;
   /** The live editor, so the assistant can read and change the script. */
   editorRef: React.MutableRefObject<EditorHandle | null>;
+  /**
+   * The script as text.
+   *
+   * Not read off `editorRef`, which is only populated while the Editor tab is
+   * on screen — asking about your robot from the test bench got an assistant
+   * that could not see it at all.
+   */
+  script: string;
   opponents: Contender[];
   arena: ArenaSpec | undefined;
   /** False while the player is only looking at somebody else's robot. */
   editable: boolean;
 }
 
-export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, editable }: Props) {
+export function AssistantPanel({
+  theme,
+  modelId,
+  editorRef,
+  script,
+  opponents,
+  arena,
+  editable,
+}: Props) {
   const [status, setStatus] = useState<Status>("asking");
   const [progress, setProgress] = useState<LoadProgress | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -144,14 +160,12 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       setEntries((prev) => [...prev, { kind: "player", text: question }]);
       setThinking(true);
 
-      const view0 = editorRef.current;
-
       // Offer `check_script` only while there is something wrong to look at.
       // On a script that already compiles it is the only op available, so a
       // small model calls it every turn, learns nothing, repeats itself, and
       // burns the whole round cap. With no op to reach for, the turn is speech,
       // and speech ends the turn.
-      const broken = view0 ? !checkScript(view0.state.doc.toString()).ok : false;
+      const broken = script.trim() ? !checkScript(script).ok : false;
       const tools =
         budget !== "tight" ? TOOL_DEFS : broken ? EXPLAINER_TOOL_DEFS : SAY_ONLY_TOOL_DEFS;
 
@@ -212,14 +226,16 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       // On a tight budget the script is given rather than fetched. A small
       // model handed a tool for reading it will read it, and read it again,
       // until the round cap stops it — see `EXPLAINER_TOOL_NAMES`.
-      const view = view0;
-      if (budget === "tight" && view && routed.kind !== "assistant") {
-        parts.push(`My script right now:\n${numberedScript(view)}`);
+      // Always, including when the question is about the assistant itself.
+      // "Can you see my script?" was being answered without the script in
+      // front of it, which made the honest answer a lucky guess.
+      if (budget === "tight" && script.trim()) {
+        parts.push(`My script right now:\n${numberLines(script)}`);
         // Volunteered rather than waited for. "Why will this not work?" is one
         // of the two questions people actually ask, and the answer is usually
         // sitting in the compiler already — a model that has to remember to go
         // and look for it will often not bother.
-        const check = checkScript(view.state.doc.toString());
+        const check = checkScript(script);
         if (!check.ok) {
           parts.push(
             `It does not compile. Line ${check.error?.line}: ${check.error?.message}` +
@@ -244,7 +260,7 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
         abortRef.current = null;
       }
     },
-    [budget, editorRef, theme]
+    [budget, editorRef, script, theme]
   );
 
   // No runtime compiled in, or one that has looked and decided this machine
