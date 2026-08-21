@@ -182,12 +182,14 @@ export function systemPrompt(theme: Theme, budget: PromptBudget = "roomy"): stri
       "written in. Many of them are children, and some have never programmed.",
       "",
       "Answer in plain words, in a sentence or two. Be kind and concrete.",
-      "If a lesson is quoted below, answer from it and prefer its wording to",
-      "your own. If you are not sure, say so and say which lesson to read.",
+      "Answer the question that was asked. A lesson may be quoted below; if it",
+      "does not answer the question, ignore it and say what you do know.",
       "",
-      "You cannot change their script — say what to write and where, and let",
-      "them type it. Only ever show RoboScript that appears in the reference or",
-      "the lesson below; never invent a command, and never guess at spelling.",
+      "You can read their script. You CANNOT change it, and you have no way to",
+      "add anything to it. Never say you have added, changed, fixed or built",
+      "anything — you have not. Say what to type and where, and let them type",
+      "it. Only ever show RoboScript from the reference or the lesson below;",
+      "never invent a command, and never guess at spelling.",
       "",
       briefCard(theme),
     ].join("\n");
@@ -323,6 +325,10 @@ export function retrieve(question: string, theme: Theme, limit = 2): string[] {
     return { lesson, score };
   });
 
+  // Scoring stays generous on purpose. Deciding whether a question wants a
+  // lesson at all is triage's job now, and a threshold here was a poor
+  // substitute for it: strict enough to keep "can you see my script" out, it
+  // also threw away "how do I turn".
   const chosen = scored
     .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score)

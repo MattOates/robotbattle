@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Agent, type Entry } from "./agent.js";
 import { systemPrompt, retrieve } from "./knowledge.js";
+import { triage } from "./triage.js";
 import {
   EXPLAINER_TOOL_DEFS,
   numberedScript,
@@ -145,13 +146,18 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       // The lesson that bears on this question, if there is one. Retrieved per
       // question rather than kept in the prompt, because the context window
       // cannot hold seventeen chapters and only one of them is ever relevant.
+      // Sort the question before answering it. Looking up a lesson for every
+      // question is how "can you see my script?" got answered with a chapter
+      // about sense cones — see `triage.ts`.
+      const routed = await triage(provider, question);
+
       const parts = [question];
 
       // On a tight budget the script is given rather than fetched. A small
       // model handed a tool for reading it will read it, and read it again,
       // until the round cap stops it — see `EXPLAINER_TOOL_NAMES`.
       const view = editorRef.current;
-      if (budget === "tight" && view) {
+      if (budget === "tight" && view && routed.kind !== "assistant") {
         parts.push(`My script right now:\n${numberedScript(view)}`);
         // Volunteered rather than waited for. "Why will this not work?" is one
         // of the two questions people actually ask, and the answer is usually
@@ -166,7 +172,11 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
         }
       }
 
-      const lessons = retrieve(question, theme);
+      // Only a question about the language gets a lesson, and it is looked up
+      // by the topic the sorting call named rather than by the whole sentence,
+      // so "can you see my script" cannot match on the word "see".
+      const lessons =
+        routed.kind === "language" ? retrieve(routed.topic || question, theme) : [];
       if (lessons.length) parts.push(lessons.join("\n\n"));
       const asked = parts.join("\n\n");
 
