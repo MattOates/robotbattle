@@ -11,6 +11,8 @@ import { useEffect, useRef, useState } from "react";
 import { BRANDING } from "./branding.js";
 import { openBugReport } from "./bugReport.js";
 import { THEMES, type Theme } from "../lang/vocab.js";
+import { assistantRuntime, downloadSizeGB, type AssistantModel } from "../assistant/runtime.js";
+import { useAssistantUsable } from "../assistant/useAssistant.js";
 import type { LibraryApi } from "./useLibrary.js";
 import type { Profile } from "./useLibrary.js";
 
@@ -18,10 +20,11 @@ interface Props {
   profile: Profile;
   onName: (name: string) => void;
   onTheme: (theme: Theme) => void;
+  onAssistantModel: (id: string) => void;
   lib: LibraryApi;
 }
 
-export function Settings({ profile, onName, onTheme, lib }: Props) {
+export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Props) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -49,6 +52,29 @@ export function Settings({ profile, onName, onTheme, lib }: Props) {
     };
   }, [open]);
 
+  const runtime = assistantRuntime();
+  // Nothing about the assistant appears on a machine that cannot run one. An
+  // option you can read but never use is worse than no option.
+  const assistantUsable = useAssistantUsable() === true;
+
+  /**
+   * Which models are actually on the disk.
+   *
+   * Looked up when the panel opens rather than kept, because it changes
+   * whenever somebody starts the assistant in another tab — and because the
+   * only thing it drives is a line of text and a button.
+   */
+  const [downloaded, setDownloaded] = useState<AssistantModel[] | null>(null);
+  useEffect(() => {
+    if (!open || !runtime || !assistantUsable) return;
+    let cancelled = false;
+    void runtime.cached().then((models) => {
+      if (!cancelled) setDownloaded(models);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [assistantUsable, open, runtime]);
   const usedKb = Math.round((lib.storage.used / 1024) * 10) / 10;
   const percent = Math.min(100, (lib.storage.used / lib.storage.budget) * 100);
   const words = THEMES[profile.theme];
@@ -111,6 +137,63 @@ export function Settings({ profile, onName, onTheme, lib }: Props) {
                 a {words.robot}, and it fights in {words.arena}.
               </span>
             </div>
+
+            {/* Only worth showing to a machine that could run one, and only
+                when there is more than one to choose between. Otherwise it is
+                a dropdown of things that will not happen. */}
+            {assistantUsable && runtime && runtime.models.length > 1 ? (
+              <div className="field">
+                <span className="silkscreen">Assistant</span>
+                <select
+                  className="text-input"
+                  value={profile.assistantModel}
+                  onChange={(e) => onAssistantModel(e.target.value)}
+                >
+                  {runtime.models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label}
+                      {model.vramMB > 0 ? ` — ${downloadSizeGB(model.id)} GB` : ""}
+                    </option>
+                  ))}
+                </select>
+                <span className="roster-meta">
+                  {/* The chosen one described in full, since a dropdown can only
+                      show a line and the difference between them is the whole
+                      decision. */}
+                  {runtime.models.find((m) => m.id === profile.assistantModel)?.blurb}{" "}
+                  Nothing is downloaded until you ask for it, and a change here applies next time
+                  you open the Workshop.
+                </span>
+              </div>
+            ) : null}
+
+            {/* Separate from the storage meter below on purpose. Model weights
+                live in the browser's cache rather than in local storage, so
+                they do not show up there at all — which meant the settings
+                screen could report "77 kB used" with six gigabytes of model
+                sitting next to it, invisible and with no way to remove it. */}
+            {downloaded && downloaded.length > 0 ? (
+              <div className="field">
+                <span className="silkscreen">Assistant downloads</span>
+                <span className="roster-meta">
+                  {downloaded.map((m) => m.label).join(", ")} ·{" "}
+                  {Math.round(downloaded.reduce((n, m) => n + m.vramMB, 0) / 102.4) / 10} GB kept in
+                  this browser
+                </span>
+                <button
+                  type="button"
+                  className="btn small"
+                  onClick={() => {
+                    void runtime?.forget().then(() => setDownloaded([]));
+                  }}
+                >
+                  Delete downloaded models
+                </button>
+                <span className="roster-meta">
+                  Frees the space. The assistant will offer to download again next time you open it.
+                </span>
+              </div>
+            ) : null}
 
             <div className="field">
               <span className="silkscreen">Stored on this device</span>

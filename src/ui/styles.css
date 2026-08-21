@@ -1194,6 +1194,18 @@ button {
 
 /* The Workshop sidebar holds only the robot list, so it stays narrow and the
    editor and arena get the room they actually need. */
+/* The closed tray leaves its handle sticking out over the page, so the
+   workspace gives that strip back rather than running underneath it. On a
+   machine with no assistant there is no handle, and `:has` hands the space
+   back rather than leaving a gap nobody can explain. */
+.workshop {
+  padding-right: 34px;
+}
+
+.workshop:not(:has(.assistant-tray)) {
+  padding-right: 0;
+}
+
 .workshop-body {
   display: grid;
   grid-template-columns: minmax(240px, 300px) 1fr;
@@ -1737,6 +1749,216 @@ button {
   min-width: 0;
   font-size: 12px;
   padding: 6px 8px;
+}
+
+/* ---- the assistant ------------------------------------------------------
+ *
+ * Borrows the chat panel wholesale, because a conversation is a conversation
+ * and the player already knows how that one works. Only two things are new:
+ * a line for each action it took on the script, and a progress bar for the
+ * download.
+ */
+
+/* ---- the assistant tray -------------------------------------------------
+ *
+ * Off the right edge, sliding out over the workspace rather than sitting in
+ * the sidebar. A conversation is something you turn to and then turn away
+ * from, and while it is open it wants more width than a 300px column — but it
+ * should not take that room from the editor permanently.
+ *
+ * The handle stays put when the tray moves, so the thing you press to close it
+ * is where the thing you pressed to open it was.
+ */
+
+.assistant-tray {
+  position: fixed;
+  /* Below the screen header, so the settings cog in the corner stays reachable
+     while the tray is open. Covering it looked like a bug — the cog sits at a
+     higher layer and was drawn straight through the tray. */
+  top: 56px;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  width: min(380px, 92vw);
+  /* Parked just off screen, with the handle left sticking out. */
+  transform: translateX(calc(100% - 34px));
+  transition: transform 180ms ease;
+}
+
+.assistant-tray.open {
+  transform: translateX(0);
+}
+
+/* No animation for anyone who has asked for less movement. */
+@media (prefers-reduced-motion: reduce) {
+  .assistant-tray {
+    transition: none;
+  }
+}
+
+.assistant-handle {
+  flex: none;
+  width: 34px;
+  border: 1px solid var(--bezel);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  background: var(--panel-raised);
+  color: var(--ink-muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  /* Reading bottom-to-top keeps the word upright against the screen edge. */
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  padding: 14px 0;
+}
+
+.assistant-handle:hover {
+  color: var(--ink);
+  background: var(--panel);
+}
+
+.assistant-tray-body {
+  flex: 1;
+  border-top-left-radius: 6px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--bezel);
+  box-shadow: -12px 0 28px rgb(0 0 0 / 0.35);
+  padding: var(--gap);
+  overflow: hidden;
+}
+
+/* Inside the tray the panel is the whole height, not a card in a stack. */
+.assistant-tray .assistant-panel {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+}
+
+.assistant-panel {
+  /* Taller than chat: an answer plus the actions behind it needs more room
+     than a one-line message does. */
+  min-height: 260px;
+}
+
+/*
+ * What it did, as against what it said.
+ *
+ * Deliberately quieter than speech. These lines are a receipt — they exist so
+ * that "it changed something and I do not know what" cannot happen — and a
+ * receipt should be readable without competing with the answer.
+ */
+.chat-line.action .chat-text {
+  color: var(--ink-muted);
+  font-size: 11.5px;
+  font-style: italic;
+}
+
+.chat-line.bad .chat-text {
+  color: var(--alert);
+}
+
+/*
+ * A code example in the transcript.
+ *
+ * The editor's own highlighter in preview mode, so an example is coloured
+ * exactly like the script it is talking about — and there is no second
+ * highlighter to drift from the language.
+ */
+.chat-code {
+  position: relative;
+  margin-top: 6px;
+  border: 1px solid var(--bezel);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--panel-raised);
+}
+
+.chat-code-copy {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--bezel);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--ink-muted);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  /* Over the code, so it costs no height, but never over the first line's
+     text — the block is padded on the right to keep out of its way. */
+  opacity: 0.75;
+}
+
+.chat-code-copy:hover {
+  opacity: 1;
+  color: var(--ink);
+}
+
+/*
+ * An example the compiler has already rejected.
+ *
+ * Still shown, because a wrong example you can look at teaches more than a
+ * paragraph about not having one — but marked, and with no Copy button, so it
+ * cannot be lifted out and pasted in without being read first.
+ */
+.chat-code.suspect {
+  border-color: var(--alert);
+}
+
+/*
+ * Where a quoted example came from.
+ *
+ * Under the block rather than over it, and phrased as a citation, because the
+ * whole point is that this is the lessons' code and not the assistant's.
+ */
+.chat-code-from {
+  display: block;
+  padding: 3px 8px;
+  border-top: 1px solid var(--bezel);
+  color: var(--ink-muted);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.chat-code-warn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--alert);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* The compiler's own words are on the title, for anyone who wants them. */
+  cursor: help;
+}
+
+.chat-code .code-editor {
+  padding-right: 118px;
+  max-height: 220px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.assistant-progress {
+  width: 100%;
+  height: 6px;
+  margin-top: 8px;
 }
 
 /* Remote cursors and selections, drawn by y-codemirror.next. */

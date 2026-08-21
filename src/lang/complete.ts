@@ -379,6 +379,46 @@ const NEEDS_A_WORD_AFTER: ReadonlySet<string> = new Set([
 ]);
 
 /** Should accepting this suggestion leave a space ready for the next word? */
+/**
+ * Everything this module knows how to describe, flattened, in one vocabulary.
+ *
+ * The completion popup asks "what fits here?"; this asks "what is there?" — the
+ * same tables read whole rather than filtered by cursor position. It exists so
+ * the assistant's language card can be *generated* from the tables the parser
+ * and compiler already agree on, instead of being a second, hand-written
+ * description of the language that would start drifting the day it was written.
+ *
+ * Same guarantee as the popup, for the same reason: a word that appears here is
+ * a word the compiler accepts.
+ */
+export function referenceTables(theme: Theme): {
+  keywords: Suggestion[];
+  statements: Suggestion[];
+  actions: Suggestion[];
+  turret: Suggestion[];
+  radar: Suggestion[];
+  me: Suggestion[];
+  arena: Suggestion[];
+  builtins: Suggestion[];
+  literals: Suggestion[];
+} {
+  return {
+    keywords: [...TOP_LEVEL],
+    statements: [...STATEMENTS],
+    actions: actionSuggestions(theme),
+    turret: turretMembers(theme),
+    radar: radarMembers(theme),
+    me: propSuggestions(ME_PROPS, theme),
+    arena: propSuggestions(ARENA_PROPS, theme),
+    builtins: Object.entries(BUILTIN_DOCS).map(([label, detail]) => ({
+      label,
+      kind: "function" as const,
+      detail,
+    })),
+    literals: [...LITERALS],
+  };
+}
+
 export function completionKeepsGoing(label: string): boolean {
   return NEEDS_A_WORD_AFTER.has(label);
 }

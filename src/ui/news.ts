@@ -27,6 +27,11 @@ export interface NewsEntry {
 /** Newest first, which is the order they are shown in. */
 export const NEWS: readonly NewsEntry[] = [
   {
+    date: "2026-08-21",
+    title: "Someone to ask",
+    body: "There is a helper in the Workshop now, in a tray that pulls out from the right. Ask it what a word does, what your {robot} does when something happens to it, or for an example you can copy, and it answers out of the lessons. It reads your script and it never changes it \u2014 it shows you what to type and leaves the typing to you. It runs on your own machine, so nothing you write is sent anywhere, and it downloads nothing until you ask it to.",
+  },
+  {
     date: "2026-08-20",
     title: "Mouse knows the way out",
     body: "A new {robot} to read: Mouse keeps its left hand on the wall and walks, which is the oldest maze rule there is and enough to get round almost all of a labyrinth with no map and no memory. It is the first one to point its {radar} at a wall instead of at people \u2014 a whisker rather than a way of finding someone.",

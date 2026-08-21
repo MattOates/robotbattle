@@ -61,12 +61,16 @@ import { drivableMazeGrid, generateFittingMaze } from "../../sim/maze.js";
 import { blankArena } from "../../store/arenas.js";
 import { MapEditor } from "../MapEditor.js";
 import { ARENA_SIZE } from "../../net/matchsetup.js";
+import { AssistantPanel } from "../../assistant/AssistantPanel.js";
+import { useAssistantUsable } from "../../assistant/useAssistant.js";
 
 interface Props {
   theme: Theme;
   lib: LibraryApi;
   playerName: string;
   initialRoom: string | null;
+  /** Which model the assistant downloads when it is first asked to. */
+  assistantModel: string;
 }
 
 type Pane = "editor" | "map" | "trial" | "bench" | "history";
@@ -110,7 +114,7 @@ interface ViewedRobot {
   source: string;
 }
 
-export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
+export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }: Props) {
   const { library, robots, refresh, chat } = lib;
   const [selectedId, setSelectedId] = useState<string | null>(robots[0]?.id ?? null);
   /**
@@ -124,6 +128,23 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
   const [selectedArenaId, setSelectedArenaId] = useState<string | null>(null);
   const [pane, setPane] = useState<Pane>("editor");
   const [showCones, setShowCones] = useState(true);
+  /**
+   * Whether the assistant tray is out.
+   *
+   * Closed by default, and not remembered. It costs a gigabyte to start and
+   * most visits to the Workshop are not questions, so the quiet state is the
+   * right one to land in.
+   */
+  const [assistantOpen, setAssistantOpen] = useState(false);
+
+  /**
+   * Whether this machine can run an assistant at all.
+   *
+   * Null while the graphics adapter is being asked. Nothing is drawn until the
+   * answer arrives, and nothing ever if it is no — there is no point offering
+   * a handle that opens onto an explanation of why it cannot work.
+   */
+  const assistantUsable = useAssistantUsable();
 
   const room = useRoom(playerName || "Player", null);
   useAutoJoin(room, initialRoom);
@@ -442,6 +463,20 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
   // and bringing one into a shared script is one of the better reasons to be in
   // a session at all.
   const editorViewRef = useRef<EditorView | null>(null);
+
+  /**
+   * Who the assistant fights when it wants to know whether a change helped.
+   *
+   * The sample robots only. The test bench proper offers your own library and
+   * your snapshots too, but the assistant is answering "is this any better",
+   * and the samples are the one set of opponents that means the same thing
+   * from one week to the next.
+   */
+  const assistantOpponents = useMemo(
+    () => buildContenders([], selected?.id ?? null),
+    [selected?.id],
+  );
+
   const shelf = useMemo(() => libraryBlocks(robots), [robots]);
   const shelfGroups = useMemo(() => groupBlocks(shelf), [shelf]);
 
@@ -521,6 +556,40 @@ export function Workshop({ theme, lib, playerName, initialRoom }: Props) {
         </div>
       ) : null}
       {room.error ? <div className="notice bad">{room.error}</div> : null}
+
+      {/* Not in the sidebar with the shelves.
+          A conversation is a thing you turn to and then turn away from, and it
+          wants more width than a 300px column while it is open — so it lives
+          off the right edge and slides out over the workspace, rather than
+          permanently taking room from the editor. */}
+      {assistantUsable === true ? (
+      <div className={`assistant-tray${assistantOpen ? " open" : ""}`}>
+        <button
+          type="button"
+          className="assistant-handle"
+          aria-expanded={assistantOpen}
+          aria-controls="assistant-tray-body"
+          onClick={() => setAssistantOpen((open) => !open)}
+        >
+          {assistantOpen ? "Close ›" : "‹ Ask"}
+        </button>
+        <div className="assistant-tray-body" id="assistant-tray-body">
+          {/* Mounted only while open, so a model is never quietly holding the
+              GPU behind a closed tray. */}
+          {assistantOpen ? (
+            <AssistantPanel
+              theme={theme}
+              modelId={assistantModel}
+              editorRef={editorViewRef}
+              script={editorSource}
+              opponents={assistantOpponents}
+              arena={benchArena ?? undefined}
+              editable={editable}
+            />
+          ) : null}
+        </div>
+      </div>
+      ) : null}
 
       <div className="workshop-body">
         <aside className="column sidebar">
