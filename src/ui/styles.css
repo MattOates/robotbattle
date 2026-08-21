@@ -1797,7 +1797,11 @@ button {
   z-index: 40;
   display: flex;
   align-items: stretch;
-  width: min(380px, 92vw);
+  /* About a third of the window. A conversation with code in it needs the
+     width — at a quarter the examples wrapped mid-line and the transcript read
+     like a column of newsprint. Bounded at both ends so it stays usable on a
+     laptop and does not sprawl on a wide monitor. */
+  width: clamp(340px, 34vw, 620px);
   /* Parked just off screen, with the handle left sticking out. */
   transform: translateX(calc(100% - 34px));
   transition: transform 180ms ease;
@@ -1836,6 +1840,18 @@ button {
 .assistant-handle:hover {
   color: var(--ink);
   background: var(--panel);
+}
+
+/*
+ * Parked off screen, and out of reach while it is there.
+ *
+ * The panel stays mounted when the tray shuts, so that the conversation and the
+ * loaded model survive — but a thing you cannot see should not be a thing you
+ * can tab into, and a screen reader should not read out a chat log that is not
+ * on screen. `visibility` takes it out of both.
+ */
+.assistant-tray:not(.open) .assistant-tray-body {
+  visibility: hidden;
 }
 
 .assistant-tray-body {

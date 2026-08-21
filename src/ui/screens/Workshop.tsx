@@ -138,6 +138,21 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
   const [assistantOpen, setAssistantOpen] = useState(false);
 
   /**
+   * Whether the tray has ever been opened this visit.
+   *
+   * The panel is mounted from the first time it is asked for and then left
+   * alone, rather than torn down whenever the tray shuts. Closing it used to
+   * unmount the panel, which threw away the conversation and — much worse —
+   * unloaded the model, so shutting the tray for a moment cost a multi-gigabyte
+   * reload to open it again.
+   *
+   * It still goes when the Workshop does, which is the case the tearing-down
+   * was really for: nobody should hold six gigabytes of video memory for a
+   * screen they have left.
+   */
+  const [assistantUsed, setAssistantUsed] = useState(false);
+
+  /**
    * Whether this machine can run an assistant at all.
    *
    * Null while the graphics adapter is being asked. Nothing is drawn until the
@@ -569,14 +584,22 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
           className="assistant-handle"
           aria-expanded={assistantOpen}
           aria-controls="assistant-tray-body"
-          onClick={() => setAssistantOpen((open) => !open)}
+          onClick={() => {
+            setAssistantUsed(true);
+            setAssistantOpen((open) => !open);
+          }}
         >
           {assistantOpen ? "Close ›" : "‹ Ask"}
         </button>
-        <div className="assistant-tray-body" id="assistant-tray-body">
-          {/* Mounted only while open, so a model is never quietly holding the
-              GPU behind a closed tray. */}
-          {assistantOpen ? (
+        <div
+          className="assistant-tray-body"
+          id="assistant-tray-body"
+          aria-hidden={!assistantOpen}
+        >
+          {/* Nothing until it is first asked for — otherwise every visit to the
+              Workshop would quietly start loading a cached model for somebody
+              who never opens the tray. */}
+          {assistantUsed ? (
             <AssistantPanel
               theme={theme}
               modelId={assistantModel}
