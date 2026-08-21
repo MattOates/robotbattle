@@ -127,6 +127,14 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
   const [selectedArenaId, setSelectedArenaId] = useState<string | null>(null);
   const [pane, setPane] = useState<Pane>("editor");
   const [showCones, setShowCones] = useState(true);
+  /**
+   * Whether the assistant tray is out.
+   *
+   * Closed by default, and not remembered. It costs a gigabyte to start and
+   * most visits to the Workshop are not questions, so the quiet state is the
+   * right one to land in.
+   */
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
   const room = useRoom(playerName || "Player", null);
   useAutoJoin(room, initialRoom);
@@ -539,6 +547,37 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
       ) : null}
       {room.error ? <div className="notice bad">{room.error}</div> : null}
 
+      {/* Not in the sidebar with the shelves.
+          A conversation is a thing you turn to and then turn away from, and it
+          wants more width than a 300px column while it is open — so it lives
+          off the right edge and slides out over the workspace, rather than
+          permanently taking room from the editor. */}
+      <div className={`assistant-tray${assistantOpen ? " open" : ""}`}>
+        <button
+          type="button"
+          className="assistant-handle"
+          aria-expanded={assistantOpen}
+          aria-controls="assistant-tray-body"
+          onClick={() => setAssistantOpen((open) => !open)}
+        >
+          {assistantOpen ? "Close ›" : "‹ Ask"}
+        </button>
+        <div className="assistant-tray-body" id="assistant-tray-body">
+          {/* Mounted only while open, so a model is never quietly holding the
+              GPU behind a closed tray. */}
+          {assistantOpen ? (
+            <AssistantPanel
+              theme={theme}
+              modelId={assistantModel}
+              editorRef={editorViewRef}
+              opponents={assistantOpponents}
+              arena={benchArena ?? undefined}
+              editable={editable}
+            />
+          ) : null}
+        </div>
+      </div>
+
       <div className="workshop-body">
         <aside className="column sidebar">
           {/* The library comes first: working alone is the common case, and the
@@ -575,18 +614,6 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               setPane("editor");
               setPendingBlock(block);
             }}
-          />
-
-          {/* Under the shelf, because it is the other way to get code into the
-              editor — and the one you reach for when the shelf has not got what
-              you need. */}
-          <AssistantPanel
-            theme={theme}
-            modelId={assistantModel}
-            editorRef={editorViewRef}
-            opponents={assistantOpponents}
-            arena={benchArena ?? undefined}
-            editable={editable}
           />
 
           {/* Last of the three shelves. Places are the thing you reach for

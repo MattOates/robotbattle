@@ -1747,6 +1747,85 @@ button {
  * download.
  */
 
+/* ---- the assistant tray -------------------------------------------------
+ *
+ * Off the right edge, sliding out over the workspace rather than sitting in
+ * the sidebar. A conversation is something you turn to and then turn away
+ * from, and while it is open it wants more width than a 300px column — but it
+ * should not take that room from the editor permanently.
+ *
+ * The handle stays put when the tray moves, so the thing you press to close it
+ * is where the thing you pressed to open it was.
+ */
+
+.assistant-tray {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  width: min(380px, 92vw);
+  /* Parked just off screen, with the handle left sticking out. */
+  transform: translateX(calc(100% - 34px));
+  transition: transform 180ms ease;
+}
+
+.assistant-tray.open {
+  transform: translateX(0);
+}
+
+/* No animation for anyone who has asked for less movement. */
+@media (prefers-reduced-motion: reduce) {
+  .assistant-tray {
+    transition: none;
+  }
+}
+
+.assistant-handle {
+  flex: none;
+  width: 34px;
+  border: 1px solid var(--bezel);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  background: var(--panel-raised);
+  color: var(--ink-muted);
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  /* Reading bottom-to-top keeps the word upright against the screen edge. */
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  padding: 14px 0;
+}
+
+.assistant-handle:hover {
+  color: var(--ink);
+  background: var(--panel);
+}
+
+.assistant-tray-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--bezel);
+  box-shadow: -12px 0 28px rgb(0 0 0 / 0.35);
+  padding: var(--gap);
+  overflow: hidden;
+}
+
+/* Inside the tray the panel is the whole height, not a card in a stack. */
+.assistant-tray .assistant-panel {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+}
+
 .assistant-panel {
   /* Taller than chat: an answer plus the actions behind it needs more room
      than a one-line message does. */
