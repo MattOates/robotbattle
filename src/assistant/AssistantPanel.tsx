@@ -327,7 +327,9 @@ export function AssistantPanel({
             {/* Only claimed when it is true. A runtime with nothing to download
                 is one doing its thinking somewhere else, and promising privacy
                 on its behalf would be a lie. */}
-            {size > 0 ? " It runs on your own machine — nothing you write is sent anywhere." : null}
+            {size > 0
+              ? " It runs on your own machine — nothing you write is sent anywhere, and this is a one-off download."
+              : null}
           </p>
           {failure ? <p className="notice bad">{failure}</p> : null}
           <button type="button" className="btn small" onClick={() => void load()}>

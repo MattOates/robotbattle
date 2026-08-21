@@ -1069,9 +1069,22 @@ button {
  * with a real match running behind it, and a changelog that pushed the footer
  * off the bottom would be a changelog nobody reads twice.
  */
+/*
+ * The part of the menu that gives when the window is short.
+ *
+ * The column is title, cards and news, and only the news can lose height
+ * without losing meaning — it already scrolls inside itself. Without this it
+ * could not: a flex child will not shrink below its own content unless it is
+ * told it may, so the news held its full height and pushed the whole menu past
+ * the bottom of a laptop window, putting a scrollbar down the side of the front
+ * screen.
+ */
 .menu-news {
   margin-top: 26px;
   max-width: 640px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .menu-news-head {
@@ -1088,7 +1101,10 @@ button {
   list-style: none;
   margin: 0;
   padding: 0 12px 0 0;
+  /* A ceiling when there is room and a target to shrink from when there is
+     not; `min-height` is what lets the shrinking happen. */
   max-height: 210px;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -2158,7 +2174,17 @@ button {
   flex-direction: column;
   gap: 16px;
   padding: 14px;
-  max-height: min(70vh, 560px);
+  /*
+   * As tall as the screen allows, rather than a number.
+   *
+   * 560px was chosen when this panel had four sections in it. Adding a fifth
+   * put a scrollbar down the side of a panel with plenty of empty screen
+   * beneath it, which reads as a bug rather than as a limit. The panel hangs
+   * 50px from the top of the window and wants a margin at the bottom, so that
+   * is what actually constrains it. Short windows still scroll — which is the
+   * case a limit is for.
+   */
+  max-height: calc(100vh - 100px);
   overflow-y: auto;
 }
 

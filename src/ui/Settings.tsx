@@ -160,9 +160,7 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
                   {/* The chosen one described in full, since a dropdown can only
                       show a line and the difference between them is the whole
                       decision. */}
-                  {runtime.models.find((m) => m.id === profile.assistantModel)?.blurb}{" "}
-                  Nothing is downloaded until you ask for it, and a change here applies next time
-                  you open the Workshop.
+                  {runtime.models.find((m) => m.id === profile.assistantModel)?.blurb}
                 </span>
               </div>
             ) : null}
@@ -189,9 +187,6 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
                 >
                   Delete downloaded models
                 </button>
-                <span className="roster-meta">
-                  Frees the space. The assistant will offer to download again next time you open it.
-                </span>
               </div>
             ) : null}
 
