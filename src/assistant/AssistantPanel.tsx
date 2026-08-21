@@ -20,7 +20,6 @@ import {
   EXPLAINER_TOOL_DEFS,
   SAY_ONLY_TOOL_DEFS,
   numberLines,
-  TOOL_DEFS,
   type EditorHandle,
   type ToolContext,
 } from "./tools.js";
@@ -102,7 +101,8 @@ export function AssistantPanel({
   // model of this size explains RoboScript well and cannot compose it at all,
   // so the editing tools are absent rather than merely discouraged. See
   // `PromptBudget` and `EXPLAINER_TOOL_NAMES`.
-  const budget = runtime?.promptBudget ?? "roomy";
+  const model = runtime?.models.find((m) => m.id === modelId);
+  const budget = model?.promptBudget ?? "tight";
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
@@ -164,8 +164,9 @@ export function AssistantPanel({
       // burns the whole round cap. With no op to reach for, the turn is speech,
       // and speech ends the turn.
       const broken = script.trim() ? !checkScript(script).ok : false;
-      const tools =
-        budget !== "tight" ? TOOL_DEFS : broken ? EXPLAINER_TOOL_DEFS : SAY_ONLY_TOOL_DEFS;
+      // Chosen by what there is to do, never by the budget. A model given the
+      // fuller card has not thereby been given permission to edit anything.
+      const tools = broken ? EXPLAINER_TOOL_DEFS : SAY_ONLY_TOOL_DEFS;
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -206,7 +207,7 @@ export function AssistantPanel({
       // Sort the question before answering it. Looking up a lesson for every
       // question is how "can you see my script?" got answered with a chapter
       // about sense cones — see `triage.ts`.
-      const composes = runtime?.models.find((m) => m.id === modelId)?.composes ?? true;
+      const composes = model?.composes ?? true;
 
       const routed = await triage(provider, question, lastQuestion.current ?? undefined);
       lastQuestion.current = question;
@@ -290,7 +291,7 @@ export function AssistantPanel({
         abortRef.current = null;
       }
     },
-    [budget, editorRef, script, theme]
+    [budget, model, editorRef, script, theme]
   );
 
   // Nothing at all until we know, and nothing ever if the answer is no. The

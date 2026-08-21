@@ -17,9 +17,13 @@
  */
 
 import { referenceTables } from "../lang/complete.js";
+import {
+  ARENA_SIZE,
+} from "../net/matchsetup.js";
+import { BULLET, MAX_HEALTH, RADAR, SENSE, TICK_RATE, TURRET } from "../sim/types.js";
 import { EVENT_NAMES } from "../lang/ast.js";
 import { EVENT_DOCS, eventFields, renderDoc } from "../lang/events.js";
-import { wordFor, type Theme } from "../lang/vocab.js";
+import { healthPropertyFor, THEMES, wordFor, type Theme } from "../lang/vocab.js";
 import type { PromptBudget } from "./runtime.js";
 import {
   CODE_LANGS,
@@ -97,7 +101,17 @@ export function languageCard(theme: Theme): string {
     "## Handlers (`on <event> ... end`)",
     ...events,
     "",
+    "## How often a handler runs",
+    "Said on the `on` line itself, not built out of loops.",
+    "- on tick every 30 — one time in 30, so once a second",
+    "- on tick before 90 — only for the first 90 ticks",
+    "- on hit wall after 2 — from the third bump onward",
+    "- on hit by bullet at 3 — on the third hit, once",
+    "`every`, `after` and `before` combine; `at` goes alone. A `can` block takes",
+    "the same words after `given <event>`.",
+    "",
     "## Statements",
+    "These all finish inside one tick. None of them schedules anything.",
     ...t.statements.map((s) => line(s.label, s.detail)),
     "",
     "## Actions",
@@ -117,9 +131,41 @@ export function languageCard(theme: Theme): string {
     "## Values",
     ...t.literals.map((s) => line(s.label, s.detail)),
     "",
+    worldFacts(theme),
+    "",
     "Only the words above exist. Do not invent commands, and do not write",
     "anything from another language — there are no `if (...)` brackets, no `{`,",
     "no `def`, no `function`, no `return`.",
+  ].join("\n");
+}
+
+/**
+ * How the world behaves, as against how the language reads.
+ *
+ * Read out of the simulation's own constants rather than written down, for the
+ * same reason the rest of the card is generated: a number typed here would be
+ * true until somebody tuned the balance, and then it would be a lie nobody
+ * noticed. `TICK_RATE` moving retunes every sentence below it.
+ *
+ * These are the questions a card about syntax cannot answer — how long a tick
+ * is, how far you can see, how much a shot hurts. Without them the advice is
+ * shaped right and numbered by guesswork.
+ */
+export function worldFacts(theme: Theme): string {
+  const cone = SENSE.halfAngle * 2;
+  const beam = RADAR.halfAngle * 2;
+  return [
+    "## How the world works",
+    // Plain lines rather than a bulleted list. A `- ` bullet in this card is a
+    // claim about a RoboScript word, and a test lexes every one of them; these
+    // are sentences about the world, and would fail it for being English.
+    `There are ${TICK_RATE} ticks in a second, so \`wait 15 ticks\` is half a second.`,
+    `The ${THEMES[theme].arena} is ${ARENA_SIZE.width} across and ${ARENA_SIZE.height} down. You start with ${MAX_HEALTH} ${healthPropertyFor(theme)}.`,
+    `Your sense cone is ${cone} degrees wide and reaches ${SENSE.range}. It is always on and costs nothing.`,
+    `The ${wordFor("radar", theme)} beam is ${beam} degrees wide and reaches ${RADAR.range} — but only where you point it, and only when you ${wordFor("ping", theme)}, with ${RADAR.cooldown} ticks between one and the next.`,
+    `Shots are power 1 to 3. Stronger hurts more, ${BULLET.damagePerPower} a power, and flies slower: ${BULLET.baseSpeed} less ${BULLET.speedPerPower} a power.`,
+    `The ${wordFor("turret", theme)} turns ${TURRET.slewRate} degrees a second and the ${wordFor("radar", theme)} ${RADAR.slewRate}, so aiming is never instant.`,
+    `Moving, turning, ${wordFor("fire", theme)} and ${wordFor("ping", theme)} all spend ${wordFor("fuel", theme)}. Thinking is free.`,
   ].join("\n");
 }
 
@@ -169,6 +215,29 @@ export function briefCard(theme: Theme): string {
     "end",
     "```",
     "",
+    "",
+    // The part nobody guesses, and the part it kept getting wrong. Asked how to
+    // do something on a cadence it reached for `repeat`, because `repeat` was
+    // the only word on this card that looked periodic — and `repeat` is a loop
+    // that runs inside a single tick. How often a handler runs is a property of
+    // the handler, not something you build out of control flow, and that is the
+    // genuinely unusual thing about this language.
+    "## How often a handler runs",
+    "",
+    "Say it on the `on` line. Nothing else schedules anything:",
+    "",
+    "```",
+    "on tick every 30      -- once a second (there are 30 ticks in a second)",
+    "on tick before 90     -- only for the first three seconds",
+    "on tick every 5 after 60   -- every 5 ticks, once 60 have passed",
+    "on hit by bullet at 3 -- on the third hit, once, and never again",
+    "```",
+    "",
+    "`every`, `after` and `before` combine. `at` goes on its own.",
+    "",
+    "`loop`, `for` and `repeat` are NOT how you do something periodically —",
+    "they all run to completion inside one tick. Use `every` for a cadence.",
+    "",
     `Top level: ${names(t.keywords)}`,
     `Statements: ${names(t.statements)}`,
     `Actions: ${names(t.actions)}`,
@@ -179,8 +248,23 @@ export function briefCard(theme: Theme): string {
     `Functions: ${t.builtins.map((s) => `${s.label}()`).join(", ")}`,
     `Values: ${names(t.literals)}`,
     "",
+    "",
+    "",
+    worldFacts(theme),
+    "",
     "Inside a handler, `event.` carries what happened — usually `event.bearing`",
-    "and `event.distance`. Use only the words above.",
+    "and `event.distance`.",
+    "",
+    "A `can` block is a named handler you can also call by name, and it takes",
+    "the same `given <event>` and cadence:",
+    "",
+    "```",
+    "can rally given hit wall after 2",
+    "  turn chassis by 150",
+    "end",
+    "```",
+    "",
+    "Use only the words above.",
   ].join("\n");
 }
 

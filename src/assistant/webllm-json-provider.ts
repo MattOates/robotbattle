@@ -58,6 +58,8 @@ export const ASSISTANT_MODELS: readonly AssistantModel[] = [
     blurb: "Answers questions about RoboScript and finds the right example in the lessons.",
     vramMB: 1895.13,
     composes: false,
+    // Names and shapes only. A 2B spends its attention badly given more.
+    promptBudget: "tight",
   },
   {
     id: "gemma-2-9b-it-q4f16_1-MLC",
@@ -65,6 +67,10 @@ export const ASSISTANT_MODELS: readonly AssistantModel[] = [
     blurb: "Everything the Guide does, and writes examples for your own robot. Slower to answer.",
     vramMB: 6422.01,
     composes: true,
+    // The full reference, with what every event carries and what every
+    // property means. This is most of what the extra three and a half
+    // gigabytes are for.
+    promptBudget: "roomy",
   },
 ];
 
@@ -142,8 +148,6 @@ export async function probeCapability(): Promise<AssistantCapability> {
 export const webllmJsonRuntime: AssistantRuntime = {
   models: ASSISTANT_MODELS,
   defaultModelId: DEFAULT_MODEL_ID,
-  // A 1B sharing a 4096 token window with the protocol and the player's script.
-  promptBudget: "tight",
   capability: probeCapability,
   isCached: modelIsCached,
   cached: cachedModels,

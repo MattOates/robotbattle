@@ -56,6 +56,16 @@ export interface AssistantModel {
    * writing one, and says which lesson it came from.
    */
   composes: boolean;
+  /**
+   * How much of the language to put in front of it.
+   *
+   * Per model rather than per runtime, which is where it started and was
+   * wrong: the two rungs differ by three and a half gigabytes, and handing the
+   * larger one the same cut-down card as the smaller wastes most of what it
+   * was downloaded for. The Guide gets names and shapes; the Tutor gets the
+   * explanations too.
+   */
+  promptBudget: PromptBudget;
 }
 
 /** Progress while a model is being fetched and made ready. */
@@ -89,7 +99,6 @@ export interface AssistantCapability {
 export interface AssistantRuntime {
   readonly models: readonly AssistantModel[];
   readonly defaultModelId: string;
-  readonly promptBudget: PromptBudget;
   /**
    * Whether this machine can actually run the smallest of them.
    *

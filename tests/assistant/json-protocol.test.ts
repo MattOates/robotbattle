@@ -241,3 +241,37 @@ describe("a model that must not write code", () => {
     expect(JSON.parse(calls[0]!.function.arguments).code).toBe("swerve left");
   });
 });
+
+describe("when the answer repeats itself", () => {
+  /**
+   * A model that fills in `code` often pastes the same lines into `say` too,
+   * inside a fence — so the panel showed the example twice, once as flat prose
+   * and once as the real block. The block is the one with highlighting, a
+   * compiler verdict and a Copy button, so the prose copy is the one to lose.
+   */
+  it("drops a fenced copy of the code out of the sentence", () => {
+    const calls = callsFromReply(
+      {
+        say: "Here is an example:\n\n```\non tick every 10\n  stop\nend\n```\n\nChange the number.",
+        code: "on tick every 10\n  stop\nend",
+        op: NO_OP,
+      },
+      [],
+    );
+    const args = JSON.parse(calls[0]!.function.arguments);
+    expect(args.text).toBe("Here is an example:\n\nChange the number.");
+    expect(args.code).toBe("on tick every 10\n  stop\nend");
+  });
+
+  it("leaves a sentence with no fence in it alone", () => {
+    const calls = callsFromReply({ say: "Try this.", code: "stop", op: NO_OP }, []);
+    expect(JSON.parse(calls[0]!.function.arguments).text).toBe("Try this.");
+  });
+
+  it("still speaks when the sentence was nothing but the fence", () => {
+    // Losing the prose must not lose the turn: the example is the answer.
+    const calls = callsFromReply({ say: "```\nstop\n```", code: "stop", op: NO_OP }, []);
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(calls[0]!.function.arguments).code).toBe("stop");
+  });
+});

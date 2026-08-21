@@ -16,6 +16,7 @@ import {
   retrieve,
   retrieveExample,
   systemPrompt,
+  worldFacts,
 } from "../../src/assistant/knowledge.js";
 import {
   ESSENTIAL_TOOL_DEFS,
@@ -26,6 +27,7 @@ import {
 import { tokenize } from "../../src/lang/lexer.js";
 import { healthPropertyFor, THEMES, type Theme } from "../../src/lang/vocab.js";
 import { EVENT_NAMES } from "../../src/lang/ast.js";
+import { BULLET, SENSE, TICK_RATE } from "../../src/sim/types.js";
 
 const themes = Object.keys(THEMES) as Theme[];
 
@@ -53,7 +55,11 @@ describe("the language card", () => {
    */
   it.each(themes)("fits the %s card in its share of the context window", (theme) => {
     const approxTokens = systemPrompt(theme).length / 4;
-    expect(approxTokens).toBeLessThan(1600);
+    // The Tutor's card. Larger than the Guide's on purpose — it is what the
+    // extra three and a half gigabytes were downloaded for — but still under
+    // half the window, so the script, two quoted lessons and the conversation
+    // all still fit beside it.
+    expect(approxTokens).toBeLessThan(1900);
   });
 
   it.each(themes)("only names words the lexer accepts in the %s world", (theme) => {
@@ -76,6 +82,46 @@ describe("the language card", () => {
   });
 });
 
+describe("what the world does, as against what the language says", () => {
+  /**
+   * Read out of the simulation's own constants, never typed here. A number
+   * written down would be true until somebody retuned the balance, and then it
+   * would be a lie nobody noticed — and advice about leading a target is only
+   * as good as the bullet speed behind it.
+   */
+  it.each(themes)("quotes the real numbers in the %s world", (theme) => {
+    const facts = worldFacts(theme);
+    expect(facts).toContain(String(TICK_RATE));
+    expect(facts).toContain(String(SENSE.range));
+    expect(facts).toContain(String(BULLET.baseSpeed));
+  });
+
+  it("moves when the simulation moves", () => {
+    // The point of generating it: this is the sentence people ask about most,
+    // and it has to follow TICK_RATE rather than a memory of it.
+    expect(worldFacts("mechanical")).toContain(`${TICK_RATE} ticks in a second`);
+  });
+
+  it("reaches both cards, since both are asked the same questions", () => {
+    for (const budget of ["tight", "roomy"] as const) {
+      expect(systemPrompt("mechanical", budget)).toContain("How the world works");
+    }
+  });
+
+  /**
+   * The vocabulary rule the rest of the app follows: a microcosm player is
+   * never shown a word from the arena. `arena` and `health` come from a
+   * different lookup than the rest and were the two that stayed mechanical.
+   */
+  it("speaks the microcosm's words", () => {
+    const facts = worldFacts("biological");
+    expect(facts).toContain("microcosm");
+    expect(facts).toContain("vitality");
+    expect(facts).not.toMatch(/\barena\b/);
+    expect(facts).not.toMatch(/\bhealth\b/);
+  });
+});
+
 describe("the brief card, for a tight budget", () => {
   /**
    * The reason this exists. An in-browser 7B has a 4096 token window that also
@@ -92,13 +138,22 @@ describe("the brief card, for a tight budget", () => {
     // hold two quoted lessons and the player's script.
     const total =
       (systemPrompt(theme, "tight").length + JSON.stringify(EXPLAINER_TOOL_DEFS).length) / 4;
-    expect(total).toBeLessThan(950);
+    // Raised twice: once for the cadence rules, once for the world facts.
+    // Both earn it. Without cadence the only periodic-looking word on the
+    // card was `repeat` — a loop that finishes inside one tick — and that is
+    // exactly what it reached for when asked about a schedule. Without the
+    // world facts the advice is shaped right and numbered by guesswork. A
+    // third of the window still leaves the script, two quoted lessons and the
+    // answer with room.
+    expect(total).toBeLessThan(1300);
   });
 
   it.each(themes)("is a large cut on the roomy %s prompt, not a trim", (theme) => {
     const roomy = systemPrompt(theme, "roomy").length + JSON.stringify(TOOL_DEFS).length;
     const tight = systemPrompt(theme, "tight").length + JSON.stringify(ESSENTIAL_TOOL_DEFS).length;
-    expect(tight * 2).toBeLessThan(roomy);
+    // Still a large cut rather than a trim, though less dramatic now that both
+    // cards carry the cadence rules — those are worth their room in either.
+    expect(tight * 1.6).toBeLessThan(roomy);
   });
 
   /**
