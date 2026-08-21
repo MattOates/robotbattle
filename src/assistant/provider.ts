@@ -51,6 +51,18 @@ export interface ChatRequest {
   messages: ChatMessage[];
   tools: ToolDef[];
   temperature?: number;
+  /**
+   * Ask for one specific JSON shape instead of a turn of conversation.
+   *
+   * For the private questions we put to the model about the player's question
+   * rather than on their behalf — routing, classification, picking a topic to
+   * look up. The reply comes back raw in `content` and `tool_calls` is empty,
+   * because none of this is a turn the player ever sees.
+   *
+   * A provider that cannot constrain output is free to ignore it; the caller
+   * has to cope with an unparseable answer regardless.
+   */
+  json?: { schema: Record<string, unknown> };
 }
 
 export interface ChatResponse {

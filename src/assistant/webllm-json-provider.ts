@@ -186,7 +186,11 @@ export class WebLLMJsonProvider implements ChatProvider {
     // Flattened as well as annotated: the `tool` and `tool_calls` roles the
     // loop records mean nothing to a backend that was not told about tools,
     // and leaving them in fails the request as soon as there is any history.
-    const messages = flattenToolTurns(withProtocol(req.messages, req.tools));
+    // A private structured question is asked as-is: no protocol preamble, and
+    // no tool vocabulary, because the answer is not a turn of conversation.
+    const messages = req.json
+      ? flattenToolTurns(req.messages)
+      : flattenToolTurns(withProtocol(req.messages, req.tools));
     const deadline = deadlineWhileVisible(REPLY_TIMEOUT_MS);
 
     let reply: Reply | null;
@@ -197,7 +201,7 @@ export class WebLLMJsonProvider implements ChatProvider {
           // No `tools`. That is the whole point — see the file header.
           response_format: {
             type: "json_object",
-            schema: JSON.stringify(protocolSchema(req.tools)),
+            schema: JSON.stringify(req.json ? req.json.schema : protocolSchema(req.tools)),
           },
           // Low, because there is exactly one right shape for this answer and
           // no reason to go looking for a different one.
@@ -227,6 +231,9 @@ export class WebLLMJsonProvider implements ChatProvider {
     }
 
     const text = reply.choices[0]?.message.content ?? "";
+    // A private question is answered to the caller, not to the player.
+    if (req.json) return { content: text, tool_calls: [], finishReason: "stop" };
+
     const parsed = parseReply(text);
     if (parsed === null) {
       // Grammar-constrained output should make this impossible. If it happens
