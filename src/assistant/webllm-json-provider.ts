@@ -59,8 +59,39 @@ export const webllmJsonRuntime: AssistantRuntime = {
   // A 1B sharing a 4096 token window with the protocol and the player's script.
   promptBudget: "tight",
   available: webGpuAvailable,
+  isCached: modelIsCached,
   create: (modelId, onProgress) => WebLLMJsonProvider.create(modelId, onProgress),
 };
+
+/**
+ * Is this model already sitting in the browser's cache?
+ *
+ * WebLLM has `hasModelInCache`, and it lives inside the engine — importing five
+ * megabytes of inference runtime to answer a yes/no would undo the whole reason
+ * the engine is loaded lazily. It stores weights in a Cache API bucket of its
+ * own, keyed by URLs that carry the model id, so the question can be answered
+ * by looking rather than by loading.
+ *
+ * Every failure here answers "no", which shows a download button for something
+ * already downloaded. That costs a click. Guessing "yes" wrongly would start a
+ * two gigabyte fetch nobody asked for, so the asymmetry is deliberate.
+ */
+export async function modelIsCached(modelId: string): Promise<boolean> {
+  try {
+    if (typeof caches === "undefined") return false;
+    if (!(await caches.has(WEBLLM_CACHE))) return false;
+    const cache = await caches.open(WEBLLM_CACHE);
+    const keys = await cache.keys();
+    return keys.some((request) => request.url.includes(modelId));
+  } catch {
+    // A browser that will not talk about its caches is one we know nothing
+    // about, which is the same as not knowing whether the model is there.
+    return false;
+  }
+}
+
+/** WebLLM's own bucket for model weights. */
+const WEBLLM_CACHE = "webllm/model";
 
 /**
  * How long to let one reply take before giving up on it.

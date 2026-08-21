@@ -35,7 +35,12 @@ import type { Theme } from "../lang/vocab.js";
 
 const MAX_QUESTION_LENGTH = 300;
 
-type Status = "cold" | "loading" | "ready" | "failed";
+/**
+ * `asking` is the moment before we know whether the model is already here.
+ * Brief, and worth having: showing a download button and then snatching it away
+ * a beat later is worse than showing nothing at all for that beat.
+ */
+type Status = "asking" | "cold" | "loading" | "ready" | "failed";
 
 interface Props {
   theme: Theme;
@@ -49,7 +54,7 @@ interface Props {
 }
 
 export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, editable }: Props) {
-  const [status, setStatus] = useState<Status>("cold");
+  const [status, setStatus] = useState<Status>("asking");
   const [progress, setProgress] = useState<LoadProgress | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [draft, setDraft] = useState("");
@@ -101,6 +106,27 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       agentRef.current = null;
     };
   }, []);
+
+  // Already downloaded means already agreed to. The consent this asks for is
+  // about somebody's connection and disk, and neither is spent twice — so the
+  // second visit goes straight to loading and then to a chat box, which is
+  // what was wanted both times.
+  useEffect(() => {
+    if (!runtime?.available()) {
+      setStatus("cold");
+      return;
+    }
+    let cancelled = false;
+    void runtime.isCached(modelId).then((cached) => {
+      if (cancelled) return;
+      if (cached) void load();
+      else setStatus("cold");
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId, runtime]);
 
   const load = useCallback(async () => {
     if (!runtime) return;

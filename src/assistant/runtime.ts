@@ -59,6 +59,15 @@ export interface AssistantRuntime {
   readonly promptBudget: PromptBudget;
   /** Whether this browser could run one of these at all. */
   available(): boolean;
+  /**
+   * Whether this model is already here, so starting it costs seconds rather
+   * than gigabytes.
+   *
+   * Allowed to be wrong in one direction only: a false negative shows a
+   * download button for something already downloaded, which is a wasted click.
+   * A false positive would start a multi-gigabyte fetch nobody agreed to.
+   */
+  isCached(modelId: string): Promise<boolean>;
   create(modelId: string, onProgress: (progress: LoadProgress) => void): Promise<ChatProvider>;
 }
 
