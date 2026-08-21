@@ -107,6 +107,33 @@ export function op(symbol: string): TokenType {
 }
 
 /**
+ * A token type's name back to the word it stands for.
+ *
+ * `getGAstProductions()` describes the grammar in terms of token type names —
+ * `Drive`, `Dot`, `NumLit` — and anything reading the grammar as documentation
+ * needs the word a player would actually type. The placeholders answer with a
+ * shape rather than a word, because that is what they are.
+ */
+const WORD_FOR_TYPE = new Map<string, string>([
+  ...[...KEYWORD_TYPES].map(([word, type]) => [type.name, word] as const),
+  ...[...OPERATOR_TYPES].map(([symbol, type]) => [type.name, symbol] as const),
+  [Ident.name, "name"],
+  [NumLit.name, "number"],
+  [StrLit.name, "text"],
+  [ColorLit.name, "colour"],
+  [Newline.name, "new line"],
+]);
+
+export function wordForType(typeName: string): string {
+  return WORD_FOR_TYPE.get(typeName) ?? typeName;
+}
+
+/** True when the type stands for a shape of thing rather than a fixed word. */
+export function isPlaceholder(typeName: string): boolean {
+  return [Ident, NumLit, StrLit, ColorLit, Newline].some((t) => t.name === typeName);
+}
+
+/**
  * Order matters to Chevrotain only for lexing, which we do not do here — but
  * the parser still wants the full vocabulary up front.
  */
