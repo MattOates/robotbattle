@@ -13,7 +13,12 @@ import { describe, expect, it, vi } from "vitest";
 import { EditorState, type TransactionSpec } from "@codemirror/state";
 import { Agent, type Entry } from "../../src/assistant/agent.js";
 import { TOOL_DEFS, type EditorHandle, type ToolContext } from "../../src/assistant/tools.js";
-import type { ChatProvider, ChatResponse, ToolCall } from "../../src/assistant/provider.js";
+import type {
+  ChatMessage,
+  ChatProvider,
+  ChatResponse,
+  ToolCall,
+} from "../../src/assistant/provider.js";
 
 function handle(doc: string): EditorHandle {
   let state = EditorState.create({ doc });
@@ -306,5 +311,61 @@ describe("history", () => {
     await agent.ask("second");
     // System prompt plus the one new question, and nothing of the first.
     expect(seen[1]).toHaveLength(2);
+  });
+});
+
+describe("what the conversation remembers", () => {
+  /** Capture every request so history can be inspected across turns. */
+  function recorder() {
+    const seen: ChatMessage[][] = [];
+    const provider: ChatProvider = {
+      id: "recorder",
+      async chat(req) {
+        seen.push(req.messages);
+        return speak("ok");
+      },
+      dispose() {},
+    };
+    const agent = new Agent("prompt", {
+      provider,
+      tools: TOOL_DEFS,
+      ctx: { view: handle(""), opponents: [], arena: undefined, onSay: () => {} },
+      onEntry: () => {},
+    });
+    return { seen, agent };
+  }
+
+  /**
+   * A quoted lesson runs to a couple of thousand characters. Kept in history,
+   * a few questions in the window holds mostly OLD lessons — which is how a
+   * question about tracking an enemy came back as "change the colour of your
+   * robot", out of a paragraph retrieved two questions earlier.
+   */
+  it("uses this turn's material and does not carry it into the next", async () => {
+    const { seen, agent } = recorder();
+    await agent.ask("what is a tank?", undefined, undefined, "LESSON ABOUT COLOUR");
+    // It has to reach the model, or retrieval is pointless.
+    expect(JSON.stringify(seen[0])).toContain("LESSON ABOUT COLOUR");
+
+    await agent.ask("how do I ping?", undefined, undefined, "LESSON ABOUT RADAR");
+    const second = JSON.stringify(seen[1]);
+    expect(second).toContain("LESSON ABOUT RADAR");
+    expect(second).not.toContain("LESSON ABOUT COLOUR");
+  });
+
+  it("still remembers what was asked, so a follow-up makes sense", async () => {
+    const { seen, agent } = recorder();
+    await agent.ask("what is a tank?", undefined, undefined, "LESSON");
+    await agent.ask("can you give an example?");
+    expect(JSON.stringify(seen[1])).toContain("what is a tank?");
+  });
+
+  it("attaches material to the question rather than as a turn of its own", async () => {
+    const { seen, agent } = recorder();
+    await agent.ask("what is a tank?", undefined, undefined, "MATERIAL");
+    const users = seen[0]!.filter((m) => m.role === "user");
+    expect(users).toHaveLength(1);
+    expect(users[0]!.content).toContain("what is a tank?");
+    expect(users[0]!.content).toContain("MATERIAL");
   });
 });

@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Agent, type Entry } from "./agent.js";
-import { systemPrompt, retrieve } from "./knowledge.js";
+import { hasSubject, systemPrompt, retrieve } from "./knowledge.js";
 import { triage } from "./triage.js";
 import {
   EXPLAINER_TOOL_DEFS,
@@ -194,13 +194,17 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       const routed = await triage(provider, question, lastQuestion.current ?? undefined);
       lastQuestion.current = question;
 
-      // A follow-up often names no subject of its own — "can you give an
-      // example?" — so it keeps the one before it rather than looking up
-      // nothing at all.
-      const topic = routed.topic || lastTopic.current || question;
+      // A follow-up that names nothing of its own — "can you give an example?"
+      // — borrows the subject of the question before it. One that names
+      // something does NOT, however little the sorter made of it: an inherited
+      // subject on a question that had its own is how "can I ping them twice
+      // and diff the x,y?" came back as "change the colour of your robot".
+      const topic =
+        routed.topic || (hasSubject(question) ? question : (lastTopic.current ?? question));
       if (routed.kind === "language") lastTopic.current = topic;
 
-      const parts = [question];
+      // Gathered for this question only, and deliberately not remembered.
+      const parts: string[] = [];
 
       // On a tight budget the script is given rather than fetched. A small
       // model handed a tool for reading it will read it, and read it again,
@@ -227,10 +231,10 @@ export function AssistantPanel({ theme, modelId, editorRef, opponents, arena, ed
       const lessons =
         routed.kind === "language" ? retrieve(topic, theme) : [];
       if (lessons.length) parts.push(lessons.join("\n\n"));
-      const asked = parts.join("\n\n");
+      const material = parts.join("\n\n");
 
       try {
-        await agentRef.current.ask(asked, controller.signal, tools);
+        await agentRef.current.ask(question, controller.signal, tools, material || undefined);
 
       } finally {
         setThinking(false);

@@ -50,6 +50,21 @@ export interface AgentOptions {
   onEntry: (entry: Entry) => void;
 }
 
+/**
+ * Attach this turn's material to the question being asked, without storing it.
+ *
+ * Appended to the last thing the player said, which within a turn is always
+ * the question itself — tool results come after it and carry the `tool` role.
+ */
+function withContext(messages: ChatMessage[], context?: string): ChatMessage[] {
+  if (!context) return messages;
+  const at = messages.map((m) => m.role).lastIndexOf("user");
+  if (at === -1) return [...messages, { role: "user", content: context }];
+  const copy = [...messages];
+  copy[at] = { ...copy[at]!, content: `${copy[at]!.content ?? ""}\n\n${context}` };
+  return copy;
+}
+
 export class Agent {
   private history: ChatMessage[] = [];
   /** The caller's context, with speech routed into the transcript. */
@@ -94,7 +109,12 @@ export class Agent {
    * agent: the agent is built once and answers many, so anything captured at
    * construction would only ever apply to the first one.
    */
-  async ask(question: string, signal?: AbortSignal, forTurn?: ToolDef[]): Promise<void> {
+  async ask(
+    question: string,
+    signal?: AbortSignal,
+    forTurn?: ToolDef[],
+    context?: string,
+  ): Promise<void> {
     const { provider, onEntry } = this.options;
     // The set can change between questions — there is nothing worth offering
     // to check on a script that already compiles — and the agent is built once
@@ -102,6 +122,11 @@ export class Agent {
     const tools = forTurn ?? this.options.tools;
     const ctx = this.ctx;
 
+    // The question is remembered; the material gathered to answer it is not.
+    // A quoted lesson runs to a couple of thousand characters, and keeping
+    // them meant that after a few questions the window held mostly OLD
+    // lessons — which is how "can I ping them twice and diff the x,y?" got
+    // answered out of a paragraph about picking your robot's colour.
     this.history.push({ role: "user", content: question });
 
     let spoke = false;
@@ -111,7 +136,10 @@ export class Agent {
       let reply;
       try {
         reply = await provider.chat({
-          messages: [{ role: "system", content: this.systemPrompt }, ...this.trimmed()],
+          messages: [
+            { role: "system", content: this.systemPrompt },
+            ...withContext(this.trimmed(), context),
+          ],
           tools,
         });
       } catch (err) {

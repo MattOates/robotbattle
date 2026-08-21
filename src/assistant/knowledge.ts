@@ -258,6 +258,19 @@ const STOP_WORDS = new Set([
   "will", "with", "you", "your",
 ]);
 
+/**
+ * Does this question name anything of its own?
+ *
+ * "Can you give an example?" does not — it is only meaningful as a follow-up,
+ * and has to borrow its subject from the question before it. "Can I ping them
+ * twice and diff the x,y?" plainly does, and must never borrow, because a
+ * borrowed subject from three questions ago is how a question about tracking
+ * an enemy gets answered with "change the colour of your robot".
+ */
+export function hasSubject(question: string): boolean {
+  return keywords(question).length > 0;
+}
+
 function keywords(question: string): string[] {
   return question
     .toLowerCase()
