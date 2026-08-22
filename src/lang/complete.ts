@@ -40,6 +40,14 @@ export interface Suggestion {
 export interface CompletionResult {
   /** Document offset where the replaced text begins. */
   from: number;
+  /**
+   * Where it ends — the end of the word the cursor is in, not the cursor.
+   *
+   * Without it a suggestion accepted from the middle of a word leaves the rest
+   * of that word behind, and `for|ward` with `back` accepted spells
+   * `backward`: a real instruction, so nothing downstream complains.
+   */
+  to: number;
   options: Suggestion[];
 }
 
@@ -396,7 +404,7 @@ function matchEvent(words: readonly string[]): EventName | null {
 export function lineWordsAt(
   source: string,
   pos: number,
-): { words: string[]; from: number } | null {
+): { words: string[]; from: number; to: number } | null {
   const lineStart = source.lastIndexOf("\n", pos - 1) + 1;
   const prefix = source.slice(lineStart, pos);
   const tokens = scanLine(prefix);
@@ -421,8 +429,20 @@ export function lineWordsAt(
     else if (tok.kind === "punct") words.push(tok.text);
     else words.push(LITERAL); // a literal value
   }
-  return { words, from };
+  // `from`..`to` is the whole word the cursor sits in, which is the span
+  // anything typing one of these words for the reader has to replace. Not an
+  // insertion at the cursor: the words offered part-way through `chas` are
+  // alternatives to it, not things that follow it. And not a replacement up to
+  // the cursor either — click into the middle of `forward`, pick `back`, and
+  // the `ward` left behind spells a different instruction.
+  let to = pos;
+  while (to < source.length && WORD_CHARACTER.test(source[to]!)) to++;
+
+  return { words, from, to };
 }
+
+/** What counts as part of a name, matching the lexer. */
+const WORD_CHARACTER = /[A-Za-z0-9_]/;
 
 /**
  * Where the cursor is in the grammar, for the guide under the editor.
@@ -431,24 +451,24 @@ export function lineWordsAt(
  * inside a handler or a `can` block a line is an instruction, and out at the
  * top level it is a declaration.
  */
-export function pathAt(source: string, pos: number): (Path & { from: number }) | null {
+export function pathAt(
+  source: string,
+  pos: number,
+): (Path & { from: number; to: number }) | null {
   const here = lineWordsAt(source, pos);
   if (!here) return null;
   const start = contextAt(source, pos).inHandler ? "statement" : "topLevel";
   const path = pathFrom(start, here.words);
-  // `from` is where the word under the cursor begins, or the cursor itself when
-  // there is no part-written word there. Anything typing one of these words for
-  // the reader has to replace from there rather than insert at the cursor: the
-  // words offered when you are part-way through `chas` are alternatives to it,
-  // not things that follow it.
-  return path ? { ...path, from: here.from } : null;
+  return path ? { ...path, from: here.from, to: here.to } : null;
 }
 
 export function completeAt(source: string, pos: number, theme: Theme): CompletionResult | null {
   const here = lineWordsAt(source, pos);
   if (!here) return null;
   const options = suggest(here.words, source, pos, theme);
-  return options && options.length > 0 ? { from: here.from, options } : null;
+  return options && options.length > 0
+    ? { from: here.from, to: here.to, options }
+    : null;
 }
 
 /**
