@@ -44,6 +44,15 @@ interface Props {
 
 export function GrammarGuide({ source, pos, theme, viewRef, open, onOpen }: Props) {
   const path = useMemo(() => pathAt(source, pos), [source, pos]);
+  /**
+   * Alphabetical, in the reader's own words, which is the order the completion
+   * popup uses. The two are looking at the same list and disagreeing about the
+   * order would only make them look like different lists.
+   */
+  const words = useMemo(
+    () => (path?.words ?? []).map((w) => wordFor(w, theme)).sort((a, b) => a.localeCompare(b)),
+    [path, theme],
+  );
   // No diagram while the line could still be anything: `statement` covers every
   // instruction there is, and its picture is a wall of boxes that answers
   // nothing. The list of next words in the header is the useful answer there.
@@ -88,8 +97,8 @@ export function GrammarGuide({ source, pos, theme, viewRef, open, onOpen }: Prop
         </span>
         <span className="guide-title">{renderDoc(path.rule.title, theme)}</span>
         <span className="guide-hint">
-          {path.words.length > 0
-            ? `next: ${path.words.map((w) => wordFor(w, theme)).join(", ")}`
+          {words.length > 0
+            ? `next: ${words.join(", ")}`
             : path.wantsValue
               ? "a value goes here"
               : path.complete
@@ -108,16 +117,16 @@ export function GrammarGuide({ source, pos, theme, viewRef, open, onOpen }: Prop
               picture — `to` and `by` live inside the `to or by` rule, which
               draws as one box — so the chips are the one place every next word
               is reliably clickable. */}
-          {path.words.length > 0 ? (
+          {words.length > 0 ? (
             <div className="guide-words">
-              {path.words.map((word) => (
+              {words.map((word) => (
                 <button
                   key={word}
                   type="button"
                   className="guide-word"
                   onClick={() => type(word)}
                 >
-                  {wordFor(word, theme)}
+                  {word}
                 </button>
               ))}
             </div>

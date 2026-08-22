@@ -324,7 +324,7 @@ class AstBuilder extends Base {
   driveStmt(c: Children): Stmt {
     const pos = at(tok(c, "Drive"));
     const speed = this.visit(node(c, "expr")) as Expr;
-    const backwards = has(c, "Back") || has(c, "Backward");
+    const backwards = has(c, "Back");
     return {
       type: "action",
       action: "drive",

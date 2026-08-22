@@ -42,7 +42,9 @@ describe("what can come next", () => {
 
   it("knows `drive` takes a direction or goes straight to a value", () => {
     const path = after("drive")!;
-    expect(path.words.sort()).toEqual(["back", "backward", "forward"]);
+    // `backward` is the same word as `back`, folded by the lexer, so it is not
+    // offered twice.
+    expect(path.words.sort()).toEqual(["back", "forward"]);
     expect(path.wantsValue).toBe(true);
   });
 

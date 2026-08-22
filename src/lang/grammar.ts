@@ -335,7 +335,6 @@ class RoboScriptParser extends CstParser {
       this.OR([
         { ALT: () => this.CONSUME(kw("forward")) },
         { ALT: () => this.CONSUME(kw("back")) },
-        { ALT: () => this.CONSUME(kw("backward")) },
       ]),
     );
     this.SUBRULE(this.expr);

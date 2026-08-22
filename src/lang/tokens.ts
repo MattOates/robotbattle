@@ -37,7 +37,7 @@ const word = (name: string): TokenType => createToken({ name, pattern: Lexer.NA 
 const KEYWORDS = [
   "on", "end", "var", "set", "if", "else", "then", "loop", "for", "to",
   "repeat", "times", "break", "continue", "wait", "ticks", "tick", "drive",
-  "forward", "back", "backward", "stop", "turn", "chassis", "by", "fire",
+  "forward", "back", "stop", "turn", "chassis", "by", "fire",
   "turret", "aim", "at", "sweep", "is", "isnt", "not", "and", "or", "mod",
   "true", "false", "none", "me", "arena", "event", "name", "color", "skid",
   "steered", "start", "sense", "hit", "bullet", "robot", "wall", "missed",
