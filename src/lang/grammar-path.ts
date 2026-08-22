@@ -37,6 +37,12 @@ export interface Path {
   wantsValue: boolean;
   /** True when the line is finished and pressing return is what comes next. */
   complete: boolean;
+  /**
+   * True when `rule` is only the broad one the line started from, because the
+   * words so far have not committed to anything narrower. The diagram is not
+   * worth drawing then.
+   */
+  broad: boolean;
 }
 
 /**
@@ -63,6 +69,15 @@ interface State {
   frames: readonly Frame[];
   /** Terminals matched to get here. */
   done: readonly Syntax[];
+  /**
+   * The rules entered on the way to the last thing matched, outermost first.
+   *
+   * This is what makes the guide worth looking at. `statement` covers every
+   * instruction there is and its diagram is a wall of boxes; `turnStmt` is four
+   * boxes and answers the question. Knowing which rule the words so far have
+   * committed to is the difference between the two.
+   */
+  rules: readonly string[];
 }
 
 /** A state sitting on a terminal, ready to accept or refuse the next word. */
@@ -70,6 +85,15 @@ interface AtTerminal {
   terminal: Extract<Syntax, { kind: "word" | "placeholder" }>;
   rest: readonly Frame[];
   done: readonly Syntax[];
+  rules: readonly string[];
+  /**
+   * The rule references stepped through to reach this terminal.
+   *
+   * A diagram shows a rule as one box, so `turn ( to or by ) value` never draws
+   * `to` itself. Without these the box for `to or by` would sit unlit while the
+   * header said `to` was one of the things you could type next.
+   */
+  via: readonly Syntax[];
 }
 
 const byName = (): Map<string, RuleDoc> => {
@@ -108,6 +132,7 @@ function toTerminals(
   rules: Map<string, RuleDoc>,
   out: { terminals: AtTerminal[]; value: boolean; done: boolean },
   seen: ReadonlySet<string> = new Set(),
+  via: readonly Syntax[] = [],
 ): void {
   const [head, ...rest] = state.frames;
 
@@ -117,8 +142,12 @@ function toTerminals(
     return;
   }
 
-  const go = (frames: Frame[], nowSeen: ReadonlySet<string> = seen) =>
-    toTerminals({ frames, done: state.done }, rules, out, nowSeen);
+  const go = (
+    frames: Frame[],
+    nowSeen: ReadonlySet<string> = seen,
+    inside: readonly string[] = state.rules,
+    through: readonly Syntax[] = via,
+  ) => toTerminals({ frames, done: state.done, rules: inside }, rules, out, nowSeen, through);
 
   if (head.at === "again") {
     const repeat = head.node;
@@ -135,7 +164,7 @@ function toTerminals(
   switch (node.kind) {
     case "word":
     case "placeholder":
-      out.terminals.push({ terminal: node, rest, done: state.done });
+      out.terminals.push({ terminal: node, rest, done: state.done, rules: state.rules, via });
       return;
 
     case "rule": {
@@ -146,7 +175,12 @@ function toTerminals(
       if (seen.has(node.name)) return;
       const doc = rules.get(node.name);
       if (!doc) return;
-      go([{ at: "node", node: doc.syntax }, ...rest], new Set([...seen, node.name]));
+      go(
+        [{ at: "node", node: doc.syntax }, ...rest],
+        new Set([...seen, node.name]),
+        [...state.rules, node.name],
+        [...via, node],
+      );
       return;
     }
 
@@ -217,7 +251,7 @@ export function pathFrom(startRule: string, words: readonly string[]): Path | nu
   const rule = rules.get(startRule);
   if (!rule) return null;
 
-  let states: State[] = [{ frames: [{ at: "node", node: rule.syntax }], done: [] }];
+  let states: State[] = [{ frames: [{ at: "node", node: rule.syntax }], done: [], rules: [] }];
   const done = new Set<Syntax>();
 
   for (let i = 0; i < words.length; i++) {
@@ -232,7 +266,11 @@ export function pathFrom(startRule: string, words: readonly string[]): Path | nu
 
       for (const spot of out.terminals) {
         if (!accepts(spot.terminal, word)) continue;
-        reached.push({ frames: spot.rest, done: [...spot.done, spot.terminal] });
+        reached.push({
+          frames: spot.rest,
+          done: [...spot.done, spot.terminal],
+          rules: spot.rules,
+        });
       }
     }
 
@@ -264,13 +302,28 @@ export function pathFrom(startRule: string, words: readonly string[]): Path | nu
     if (out.done) complete = true;
     for (const spot of out.terminals) {
       next.add(spot.terminal);
+      for (const step of spot.via) next.add(step);
       if (spot.terminal.kind === "word" && !wordList.includes(spot.terminal.text)) {
         wordList.push(spot.terminal.text);
       }
     }
   }
 
-  return { rule, done, next, words: wordList, wantsValue, complete };
+  // The deepest rule every surviving branch agrees on. While several are alive
+  // — nothing typed yet, so `turn` and `drive` and `if` are all still possible
+  // — they agree on nothing, and the broad rule is the honest answer.
+  const shared = commonRules(states.map((s) => s.rules));
+  const innermost = shared.length > 0 ? rules.get(shared[shared.length - 1]!) : undefined;
+
+  return {
+    rule: innermost ?? rule,
+    broad: innermost === undefined,
+    done,
+    next,
+    words: wordList,
+    wantsValue,
+    complete,
+  };
 }
 
 /** Does this terminal accept that word? */
@@ -312,14 +365,14 @@ function afterValue(state: State, rules: Map<string, RuleDoc>): State[] {
     const [head, ...rest] = frames;
     if (head === undefined) return;
     if (head.at === "again") {
-      out.push({ frames, done: state.done });
+      out.push({ frames, done: state.done, rules: state.rules });
       return;
     }
     const node = head.node;
     switch (node.kind) {
       case "rule":
         if (VALUE_RULES.has(node.name)) {
-          out.push({ frames: rest, done: state.done });
+          out.push({ frames: rest, done: state.done, rules: state.rules });
           return;
         }
         if (seen.has(node.name)) return;
@@ -348,4 +401,21 @@ function afterValue(state: State, rules: Map<string, RuleDoc>): State[] {
   };
   walk(state.frames, new Set());
   return out;
+}
+
+/** The longest run of rules every branch entered, in the same order. */
+function commonRules(paths: readonly (readonly string[])[]): readonly string[] {
+  const [first, ...rest] = paths;
+  if (!first) return [];
+  let end = first.length;
+  for (const other of rest) {
+    end = Math.min(end, other.length);
+    for (let i = 0; i < end; i++) {
+      if (other[i] !== first[i]) {
+        end = i;
+        break;
+      }
+    }
+  }
+  return first.slice(0, end);
 }

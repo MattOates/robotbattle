@@ -3549,3 +3549,124 @@ button {
   border-color: var(--signal);
   transition: border-color 0.2s;
 }
+
+/* --- the grammar guide, under the editor -------------------------------- */
+
+.guide {
+  border-top: 1px solid var(--bezel);
+  background: var(--chassis);
+}
+
+.guide-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.guide-head:hover {
+  color: var(--ink);
+}
+
+.guide-caret {
+  color: var(--ink-muted);
+}
+
+.guide-title {
+  color: var(--readout);
+}
+
+/* The one line somebody gets without opening anything: what comes next. */
+.guide-hint {
+  color: var(--signal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guide-body {
+  padding: 0 10px 10px;
+}
+
+.guide-summary,
+.guide-note {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.guide-note {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.guide-diagram {
+  overflow-x: auto;
+}
+
+/* --- how a diagram shows where you are ---------------------------------- */
+
+/* Already typed: still legible, but plainly behind you. */
+.rr-done rect {
+  opacity: 0.45;
+}
+
+.rr-done text {
+  opacity: 0.5;
+}
+
+/* Could come next, and can be clicked to type it. */
+.rr-next rect {
+  fill: var(--signal-dim);
+  stroke: var(--signal);
+  stroke-width: 2;
+}
+
+.rr-next text {
+  fill: var(--ink-strong);
+}
+
+.guide-diagram [data-insert] {
+  cursor: pointer;
+}
+
+.guide-diagram [data-insert]:hover rect {
+  fill: var(--signal);
+}
+
+.guide-diagram [data-insert]:hover text {
+  fill: var(--chassis);
+}
+
+/* When the line could still be anything, the words themselves are the answer. */
+.guide-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.guide-word {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--panel-raised);
+  border: 1px solid var(--signal-dim);
+  border-radius: var(--radius);
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.guide-word:hover {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--chassis);
+}

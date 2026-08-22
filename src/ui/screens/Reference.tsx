@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { navigate } from "../router.js";
+import { Prose } from "../Prose.js";
 import { translate } from "../../learn/translate.js";
 import { EVENT_DOCS, renderDoc } from "../../lang/events.js";
 import { EVENT_NAMES } from "../../lang/ast.js";
@@ -33,26 +34,6 @@ import { phraseFor, wordFor, type Theme } from "../../lang/vocab.js";
 
 interface Props {
   theme: Theme;
-}
-
-/**
- * Backticked spans as real code, without pulling in a markdown renderer.
- *
- * The prose in `reference.ts`, `EVENT_DOCS` and the rest is written the way the
- * completion popup wants it — plain text with backticks — because that is where
- * most of it is also shown. Rendering it as markdown here would mean the two
- * places disagreed about what is allowed in it; this way a backtick means the
- * one thing everywhere.
- */
-function Prose({ text }: { text: string }) {
-  const parts = text.split("`");
-  return (
-    <>
-      {parts.map((part, i) =>
-        i % 2 === 1 ? <code key={i}>{part}</code> : <span key={i}>{part}</span>,
-      )}
-    </>
-  );
 }
 
 /** The page's own sections, including the ones that are not grammar. */

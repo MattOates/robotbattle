@@ -166,7 +166,23 @@ function line(out: Bits, x1: number, y1: number, x2: number, y2: number): void {
   out.push(`<path class="rr-line" d="M${x1} ${y1} L${x2} ${y2}"/>`);
 }
 
-function box(out: Bits, m: Measured, x: number, y: number, theme: Theme): void {
+/**
+ * Which parts of a rule the reader has already typed, and which could come
+ * next. Absent on the reference page, where nobody is part-way through a line.
+ */
+export interface Marks {
+  done: ReadonlySet<Syntax>;
+  next: ReadonlySet<Syntax>;
+}
+
+function box(
+  out: Bits,
+  m: Measured,
+  x: number,
+  y: number,
+  theme: Theme,
+  marks: Marks | undefined,
+): void {
   const node = m.node;
   const text =
     node.kind === "rule"
@@ -184,8 +200,18 @@ function box(out: Bits, m: Measured, x: number, y: number, theme: Theme): void {
   // listener on the page can act on any of them, rather than a listener per
   // box on a diagram that never changes.
   const link = node.kind === "rule" ? ` data-rule="${esc(node.name)}"` : "";
+  // A word that could come next is also a word you can click to type.
+  const isNext = marks?.next.has(node) ?? false;
+  const groupClass = [
+    node.kind === "rule" ? "rr-link" : "",
+    marks?.done.has(node) ? "rr-done" : "",
+    isNext ? "rr-next" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const insert = isNext && node.kind === "word" ? ` data-insert="${esc(text)}"` : "";
   out.push(
-    `<g${link}${node.kind === "rule" ? ' class="rr-link"' : ""}>`,
+    `<g${link}${insert}${groupClass ? ` class="${groupClass}"` : ""}>`,
     `<rect class="${cls}" x="${x}" y="${y}" width="${m.width}" height="${BOX}" rx="${
       rounded ? BOX / 2 : 3
     }"/>`,
@@ -194,7 +220,14 @@ function box(out: Bits, m: Measured, x: number, y: number, theme: Theme): void {
   );
 }
 
-function draw(out: Bits, m: Measured, x: number, y: number, theme: Theme): void {
+function draw(
+  out: Bits,
+  m: Measured,
+  x: number,
+  y: number,
+  theme: Theme,
+  marks: Marks | undefined,
+): void {
   const node = m.node;
   const mid = y + m.baseline;
   const right = x + m.width;
@@ -205,7 +238,7 @@ function draw(out: Bits, m: Measured, x: number, y: number, theme: Theme): void 
     case "word":
     case "placeholder":
     case "rule":
-      box(out, m, x, mid - BOX / 2, theme);
+      box(out, m, x, mid - BOX / 2, theme, marks);
       return;
 
     case "sequence": {
@@ -215,7 +248,7 @@ function draw(out: Bits, m: Measured, x: number, y: number, theme: Theme): void 
           line(out, cursor, mid, cursor + GAP, mid);
           cursor += GAP;
         }
-        draw(out, part, cursor, mid - part.baseline, theme);
+        draw(out, part, cursor, mid - part.baseline, theme, marks);
         cursor += part.width;
       });
       return;
@@ -230,7 +263,7 @@ function draw(out: Bits, m: Measured, x: number, y: number, theme: Theme): void 
         // them looked tidier in isolation and read worse: the first word of
         // each choice is what the eye scans down, and centring puts every one
         // of them in a different place.
-        draw(out, part, at, top, theme);
+        draw(out, part, at, top, theme, marks);
         line(out, at + part.width, partMid, at + wide, partMid);
 
         if (i === 0) {
@@ -259,7 +292,7 @@ function draw(out: Bits, m: Measured, x: number, y: number, theme: Theme): void 
 
     case "optional": {
       const inner = m.parts[0]!;
-      draw(out, inner, at, mid - inner.baseline, theme);
+      draw(out, inner, at, mid - inner.baseline, theme, marks);
       line(out, x, mid, at, mid);
       line(out, at + inner.width, mid, right, mid);
       // The way past, arching over the top, so the eye reads "or nothing".
@@ -269,7 +302,7 @@ function draw(out: Bits, m: Measured, x: number, y: number, theme: Theme): void 
 
     case "repeat": {
       const inner = m.parts[0]!;
-      draw(out, inner, at, mid - inner.baseline, theme);
+      draw(out, inner, at, mid - inner.baseline, theme, marks);
       line(out, x, mid, at, mid);
       line(out, at + inner.width, mid, right, mid);
 
@@ -280,7 +313,7 @@ function draw(out: Bits, m: Measured, x: number, y: number, theme: Theme): void 
       if (m.extra) {
         const sep = m.extra;
         const sx = x + (m.width - sep.width) / 2;
-        draw(out, sep, sx, under - sep.baseline, theme);
+        draw(out, sep, sx, under - sep.baseline, theme, marks);
         track(out, [
           [right, mid],
           [right - TURN, mid],
@@ -331,7 +364,11 @@ function bypass(out: Bits, x: number, right: number, mid: number, over: number):
  * path for no benefit. The caller sets it with `dangerouslySetInnerHTML`, which
  * is safe precisely because every word in it came from the grammar.
  */
-export function railroad(syntax: Syntax, theme: Theme = "mechanical"): string {
+export function railroad(
+  syntax: Syntax,
+  theme: Theme = "mechanical",
+  marks?: Marks,
+): string {
   const m = measure(syntax, theme);
   const width = m.width + PAD * 2 + 40;
   const height = m.height + PAD * 2;
@@ -342,7 +379,7 @@ export function railroad(syntax: Syntax, theme: Theme = "mechanical"): string {
   // than as a floating box.
   out.push(`<path class="rr-cap" d="M${PAD} ${mid - 6} L${PAD} ${mid + 6}"/>`);
   line(out, PAD, mid, PAD + 20, mid);
-  draw(out, m, PAD + 20, PAD, theme);
+  draw(out, m, PAD + 20, PAD, theme, marks);
   line(out, PAD + 20 + m.width, mid, width - PAD, mid);
   out.push(`<path class="rr-cap" d="M${width - PAD} ${mid - 6} L${width - PAD} ${mid + 6}"/>`);
 

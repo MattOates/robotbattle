@@ -20,6 +20,7 @@ import { EVENT_NAMES, type EventName } from "./ast.js";
 import { BUILTIN_SIGNATURES } from "./bytecode.js";
 import { ARENA_PROP_NAMES, ME_PROP_NAMES } from "./compiler.js";
 import { EVENT_DOCS, eventFields, renderDoc } from "./events.js";
+import { LITERAL, pathFrom, type Path } from "./grammar-path.js";
 import { scanLine } from "./scan.js";
 import { healthPropertyFor, phraseFor, wordFor, type Theme } from "./vocab.js";
 
@@ -513,8 +514,6 @@ export function contextAt(source: string, pos: number): Context {
 /** The words that say how often a block runs. */
 const COUNT_WORDS: ReadonlySet<string> = new Set(["every", "after", "before", "at"]);
 
-/** Stands in for a literal value in the word stream the phrase rules read. */
-const LITERAL = "\0";
 
 /**
  * How often — offered once the event has been named, because that is the point
@@ -580,7 +579,18 @@ function matchEvent(words: readonly string[]): EventName | null {
 // Completion
 // ---------------------------------------------------------------------------
 
-export function completeAt(source: string, pos: number, theme: Theme): CompletionResult | null {
+/**
+ * The words already typed on this line, canonical and with literals marked.
+ *
+ * Split out because two things need it: the completion popup, which asks what
+ * could come next, and the guide under the editor, which asks the same question
+ * and draws the answer. `null` means the cursor is somewhere neither should
+ * speak — inside a comment or a piece of text.
+ */
+export function lineWordsAt(
+  source: string,
+  pos: number,
+): { words: string[]; from: number } | null {
   const lineStart = source.lastIndexOf("\n", pos - 1) + 1;
   const prefix = source.slice(lineStart, pos);
   const tokens = scanLine(prefix);
@@ -605,9 +615,28 @@ export function completeAt(source: string, pos: number, theme: Theme): Completio
     else if (tok.kind === "punct") words.push(tok.text);
     else words.push(LITERAL); // a literal value
   }
+  return { words, from };
+}
 
-  const options = suggest(words, source, pos, theme);
-  return options && options.length > 0 ? { from, options } : null;
+/**
+ * Where the cursor is in the grammar, for the guide under the editor.
+ *
+ * The start rule is decided the same way the popup decides what to offer:
+ * inside a handler or a `can` block a line is an instruction, and out at the
+ * top level it is a declaration.
+ */
+export function pathAt(source: string, pos: number): Path | null {
+  const here = lineWordsAt(source, pos);
+  if (!here) return null;
+  const start = contextAt(source, pos).inHandler ? "statement" : "topLevel";
+  return pathFrom(start, here.words);
+}
+
+export function completeAt(source: string, pos: number, theme: Theme): CompletionResult | null {
+  const here = lineWordsAt(source, pos);
+  if (!here) return null;
+  const options = suggest(here.words, source, pos, theme);
+  return options && options.length > 0 ? { from: here.from, options } : null;
 }
 
 function suggest(
