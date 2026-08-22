@@ -284,6 +284,7 @@ function roboCompletions(theme: Theme) {
     if (!result) return null;
     return {
       from: result.from,
+      to: result.to,
       options: result.options.map(toCompletion),
       // Keep the popup open and filtering while a word is being typed.
       validFor: /^[A-Za-z_][A-Za-z0-9_]*$/,

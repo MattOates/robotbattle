@@ -218,3 +218,47 @@ describe("where a word the reader picks should go", () => {
     expect(path.words.sort()).toEqual(["by", "to"]);
   });
 });
+
+describe("the span a picked word replaces", () => {
+  /**
+   * Both ends matter, and each was wrong in turn. Replacing from the cursor
+   * leaves the front of the word; replacing to the cursor leaves the back of
+   * it, and `for|ward` with `back` picked spells `backward` — a real
+   * instruction, so nothing downstream complains.
+   */
+  const H = 'name "x"\nchassis tank\n';
+  const line = `${H}on tick\n  drive forward 60\nend\n`;
+
+  /** What the document becomes when `word` is picked at `pos`. */
+  const pick = (source: string, pos: number, word: string): string => {
+    const path = pathAt(source, pos)!;
+    return source.slice(0, path.from) + word + source.slice(path.to);
+  };
+
+  it("covers the whole word when the cursor is inside it", () => {
+    const at = line.indexOf("forward") + 3;
+    expect(pick(line, at, "back")).toContain("drive back 60");
+  });
+
+  it("covers it from the very start", () => {
+    const at = line.indexOf("forward");
+    expect(pick(line, at, "back")).toContain("drive back 60");
+  });
+
+  it("covers it from the very end", () => {
+    const at = line.indexOf("forward") + "forward".length;
+    expect(pick(line, at, "back")).toContain("drive back 60");
+  });
+
+  it("leaves what follows the word alone", () => {
+    const at = line.indexOf("forward") + 3;
+    expect(pick(line, at, "back")).toContain("60\nend");
+  });
+
+  it("replaces nothing when the cursor is on a space", () => {
+    const src = `${H}on tick\n  drive `;
+    const path = pathAt(src, src.length)!;
+    expect(path.from).toBe(src.length);
+    expect(path.to).toBe(src.length);
+  });
+});

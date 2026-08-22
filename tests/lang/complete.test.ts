@@ -369,3 +369,29 @@ describe("how often a block runs", () => {
     expect(labels).toContain("robot");
   });
 });
+
+describe("what an accepted suggestion replaces", () => {
+  /**
+   * The popup hands CodeMirror a span, and CodeMirror defaults the end of that
+   * span to the cursor. That is wrong in the middle of a word: accept `back`
+   * from inside `for|ward` and the `ward` stays, spelling `backward` — a real
+   * instruction, so nothing downstream complains and the mistake reaches the
+   * arena. The same span the guide uses is sent along instead.
+   */
+  const source = 'name "x"\nchassis tank\non tick\n  drive forward 60\nend\n';
+
+  it("covers the whole word the cursor is inside", () => {
+    const at = source.indexOf("forward") + 3;
+    const result = completeAt(source, at, "mechanical")!;
+    expect(source.slice(result.from, result.to)).toBe("forward");
+  });
+
+  it("covers nothing when there is no word under the cursor", () => {
+    // A word the cursor sits immediately after still counts as under it, the
+    // same as the popup has always treated it — so this needs a real gap.
+    const waiting = 'name "x"\nchassis tank\non tick\n  drive ';
+    const result = completeAt(waiting, waiting.length, "mechanical")!;
+    expect(result.from).toBe(waiting.length);
+    expect(result.to).toBe(waiting.length);
+  });
+});

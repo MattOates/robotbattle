@@ -74,11 +74,13 @@ export function GrammarGuide({ source, pos, theme, viewRef, open, onOpen }: Prop
     const spaced = completionKeepsGoing(word) ? `${word} ` : word;
     const at = view.state.selection.main.head;
 
-    // Replace from the start of the word being typed, not from the cursor.
-    // Half-way through `chas` the words offered are alternatives to it, so
-    // inserting would leave `chaschassis` — and the guide is the thing that
-    // decided `chas` was unfinished in the first place.
+    // Replace the whole word the cursor is in. The words offered are
+    // alternatives to it, so inserting would leave `chas chassis`, and
+    // replacing only as far as the cursor would leave the tail of a word
+    // clicked into the middle of — `for|ward` picking `back` spells
+    // `backward`, which is a different instruction.
     const from = Math.min(path.from, at);
+    const to = Math.max(path.to, at);
 
     // A space in front unless there is already one, so clicking two words in a
     // row does not produce `turnto`.
@@ -86,7 +88,7 @@ export function GrammarGuide({ source, pos, theme, viewRef, open, onOpen }: Prop
     const lead = from > 0 && before !== " " && before !== "\n" ? " " : "";
 
     view.dispatch({
-      changes: { from, to: at, insert: lead + spaced },
+      changes: { from, to, insert: lead + spaced },
       selection: { anchor: from + lead.length + spaced.length },
     });
     view.focus();
