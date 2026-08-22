@@ -38,20 +38,6 @@ interface ModeCard {
 
 const MODES: ModeCard[] = [
   {
-    screen: "learn",
-    title: "Learn",
-    blurb: "How it all works, and how to write a robot — one idea at a time, with examples you can change and run.",
-    needsPeople: false,
-  },
-  {
-    screen: "reference",
-    title: "Reference",
-    blurb:
-      "Every word the language has, what it takes, and what the world does with it — for when you know what you want and need to look it up.",
-    needsPeople: false,
-    foot: "Look something up",
-  },
-  {
     screen: "workshop",
     title: "Workshop",
     blurb:
@@ -76,6 +62,20 @@ const MODES: ModeCard[] = [
     title: "Trade",
     blurb: "Show each other your robots and swap copies — with permission, never without.",
     needsPeople: true,
+  },
+  {
+    screen: "learn",
+    title: "Learn",
+    blurb: "How it all works, and how to write a robot — one idea at a time, with examples you can change and run.",
+    needsPeople: false,
+  },
+  {
+    screen: "reference",
+    title: "Reference",
+    blurb:
+      "Every word the language has, what it takes, and what the world does with it — for when you know what you want and need to look it up.",
+    needsPeople: false,
+    foot: "Look something up",
   },
 ];
 
