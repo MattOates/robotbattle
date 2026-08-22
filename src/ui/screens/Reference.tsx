@@ -37,18 +37,23 @@ interface Props {
 }
 
 /** The page's own sections, including the ones that are not grammar. */
-type Tab = "syntax" | "events" | "values" | "world";
+type Tab = "syntax" | "events" | "functions" | "values" | "world";
 
 /**
- * Outermost first. Somebody arriving here wants to know what the world does
- * before what the words are: the arena and its numbers, then what your {robot}
- * gets told about, then how to say something about it, then what can be said.
+ * Outermost first, and the grammar last.
+ *
+ * Somebody arriving wants to know what the world does before what the words
+ * are: the arena and its numbers, then what your {robot} is told about, then
+ * the functions and values it can work with. Syntax goes at the end because it
+ * is the part you look up once you already know what you are trying to say, and
+ * it is the least inviting thing to land on first.
  */
 const TABS: readonly { id: Tab; label: string }[] = [
   { id: "world", label: "The world" },
   { id: "events", label: "Events" },
-  { id: "syntax", label: "Syntax" },
+  { id: "functions", label: "Functions" },
   { id: "values", label: "Values" },
+  { id: "syntax", label: "Syntax" },
 ];
 
 /** Which tab a rule's section is shown on. */
@@ -134,6 +139,7 @@ export function Reference({ theme }: Props) {
       <div className="learn-body prose" onClick={onClick}>
         {tab === "syntax" ? <Syntax theme={theme} /> : null}
         {tab === "events" ? <Events theme={theme} doc={doc} /> : null}
+        {tab === "functions" ? <Functions doc={doc} /> : null}
         {tab === "values" ? <Values theme={theme} doc={doc} /> : null}
         {tab === "world" ? <World theme={theme} doc={doc} /> : null}
       </div>
@@ -287,7 +293,24 @@ function Values({ theme, doc }: { theme: Theme; doc: (t: string) => string }) {
         ))}
       </dl>
 
-      <h3>Functions</h3>
+    </section>
+  );
+}
+
+// --- functions --------------------------------------------------------------
+
+/**
+ * Their own tab rather than a heading inside Values.
+ *
+ * There are thirteen of them and each takes a description, an argument list and
+ * an example, so as a section at the bottom of another page they were most of
+ * that page and easy to miss. A function is also the thing you come here
+ * knowing you want and needing the details of, which is what a tab is for.
+ */
+function Functions({ doc }: { doc: (t: string) => string }) {
+  return (
+    <section className="ref-section">
+      <h2>Functions</h2>
       <p>
         <Prose
           text={doc(
