@@ -122,15 +122,14 @@ export function Reference({ theme }: Props) {
   );
 
   return (
-    <div className="learn reference">
+    <div className="learn">
       <header className="screen-head">
-        <button type="button" className="back" onClick={() => navigate("menu")}>
-          Back
+        <button type="button" className="btn small" onClick={() => navigate("menu")}>
+          ← Menu
         </button>
-        <h1>Reference</h1>
-        <p className="screen-strap">
-          Every word the language has, read out of the parser itself.
-        </p>
+        <h2 className="screen-title">Reference</h2>
+        <span className="spacer" />
+        <span className="roster-meta">Read out of the parser itself</span>
       </header>
 
       <nav className="ref-tabs" aria-label="Reference sections">
