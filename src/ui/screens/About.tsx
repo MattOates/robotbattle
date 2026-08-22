@@ -30,9 +30,20 @@ interface Credit {
 const BUILT_WITH: Credit[] = [
   { name: "PixiJS", url: "https://pixijs.com", what: "the arena renderer" },
   { name: "CodeMirror", url: "https://codemirror.net", what: "the editor" },
+  {
+    name: "Chevrotain",
+    url: "https://chevrotain.io",
+    what: "the grammar the language is parsed by, and the reference generated from",
+  },
+  {
+    name: "WebLLM",
+    url: "https://webllm.mlc.ai",
+    what: "the helper in the Workshop, running on your own machine",
+  },
   { name: "Yjs", url: "https://yjs.dev", what: "shared editing that actually converges" },
   { name: "PeerJS", url: "https://peerjs.com", what: "introducing browsers to each other" },
   { name: "React", url: "https://react.dev", what: "the interface" },
+  { name: "react-markdown", url: "https://github.com/remarkjs/react-markdown", what: "the lessons" },
   { name: "Vite", url: "https://vite.dev", what: "the build" },
 ];
 
@@ -83,20 +94,10 @@ export function About({ theme, robotCount, storageBytes }: Props) {
             {brand.full} is free, has no accounts, and stores your {words.robotPlural} on your own
             machine. If you would like to help it keep going:
           </p>
-          {/* Trimmed from GitHub's suggested 225: the card's lower half is
-              empty, and a tall white slab reads badly on a dark page. */}
-          <div className="sponsor-card">
-            <iframe
-              src="https://github.com/sponsors/MattOates/card"
-              title="Sponsor MattOates on GitHub"
-              height="150"
-              width="600"
-              loading="lazy"
-              style={{ border: 0 }}
-            />
-          </div>
-          {/* Shown always, not only as a fallback: the card is an embed and can
-              be blocked, and an ask that silently disappears is no ask. */}
+          {/* A link rather than GitHub's sponsor card. The card is a white
+              slab on a dark page, it is a third-party frame on a page that
+              otherwise loads nothing from anywhere, and it can be blocked —
+              which left the link underneath doing the real work anyway. */}
           <p className="about-fallback">
             <a href={SPONSOR_URL} target="_blank" rel="noreferrer noopener">
               Sponsor MattOates on GitHub&nbsp;↗

@@ -2955,21 +2955,6 @@ button {
   color: var(--readout);
 }
 
-/* The sponsor card is a fixed-size embed, so it scrolls rather than pushing
-   the page sideways on a narrow screen. */
-.sponsor-card {
-  max-width: 100%;
-  overflow-x: auto;
-  margin: 4px 0 12px;
-}
-
-.sponsor-card iframe {
-  display: block;
-  max-width: 100%;
-  color-scheme: light;
-  border-radius: var(--radius);
-}
-
 .about-fallback {
   font-family: var(--font-mono);
   font-size: 12px;
