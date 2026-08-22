@@ -26,6 +26,14 @@ export interface Token {
   raw: string;
   line: number;
   col: number;
+  /**
+   * Where the token starts in the source, in characters.
+   *
+   * Line and column are what an error message wants; an offset is what
+   * anything mapping a cursor or a click back to the token under it wants, and
+   * reconstructing one from the other means re-scanning the source.
+   */
+  offset: number;
   /** Numeric value, for `number` tokens. */
   value?: number;
 }
@@ -48,10 +56,24 @@ export function tokenize(source: string): Token[] {
   let line = 1;
   let lineStart = 0;
 
-  const pos = (): SourcePos => ({ line, col: i - lineStart + 1 });
+  // Carries the offset alongside line and column. Everything that takes a
+  // `SourcePos` ignores the extra field; the lexer is the only place that
+  // knows it without counting characters again.
+  const pos = (): SourcePos & { offset: number } => ({
+    line,
+    col: i - lineStart + 1,
+    offset: i,
+  });
 
   const push = (kind: TokenKind, text: string, raw: string, at: SourcePos, value?: number) => {
-    const tok: Token = { kind, text, raw, line: at.line, col: at.col };
+    const tok: Token = {
+      kind,
+      text,
+      raw,
+      line: at.line,
+      col: at.col,
+      offset: (at as { offset?: number }).offset ?? 0,
+    };
     if (value !== undefined) tok.value = value;
     tokens.push(tok);
   };
@@ -98,7 +120,11 @@ export function tokenize(source: string): Token[] {
           "colours look like #ff8800 (red, green, blue) or the short form #f80",
         );
       }
-      push("color", "#" + hex.toLowerCase(), "#" + hex, at);
+      // The short form expands here, so that everything downstream sees one
+      // spelling of a colour and `raw` still holds the one that was typed.
+      const full =
+        hex.length === 3 ? hex[0]! + hex[0]! + hex[1]! + hex[1]! + hex[2]! + hex[2]! : hex;
+      push("color", "#" + full.toLowerCase(), "#" + hex, at);
       i = j;
       continue;
     }
@@ -198,8 +224,8 @@ export function tokenize(source: string): Token[] {
 
   // Always terminate the final statement, then EOF.
   if (tokens.length > 0 && tokens[tokens.length - 1]!.kind !== "newline") {
-    tokens.push({ kind: "newline", text: "\n", raw: "\n", line, col: i - lineStart + 1 });
+    tokens.push({ kind: "newline", text: "\n", raw: "\n", line, col: i - lineStart + 1, offset: i });
   }
-  tokens.push({ kind: "eof", text: "", raw: "", line, col: i - lineStart + 1 });
+  tokens.push({ kind: "eof", text: "", raw: "", line, col: i - lineStart + 1, offset: i });
   return tokens;
 }

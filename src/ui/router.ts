@@ -9,23 +9,13 @@
 
 import { useEffect, useState } from "react";
 
-export type ScreenName =
-  | "menu"
-  | "workshop"
-  | "arena"
-  | "tournament"
-  | "pair"
-  | "trade"
-  | "about"
-  | "learn";
-
-export interface Route {
-  screen: ScreenName;
-  /** Room code, for the modes that join one. */
-  room: string | null;
-}
-
-const SCREENS: ReadonlySet<string> = new Set<ScreenName>([
+/**
+ * Every screen, once. `ScreenName` is derived from the list rather than
+ * declared beside it, so adding a screen to one and not the other — which used
+ * to give a route that type-checked and silently fell back to the menu — is no
+ * longer possible.
+ */
+export const SCREENS = [
   "menu",
   "workshop",
   "arena",
@@ -34,7 +24,18 @@ const SCREENS: ReadonlySet<string> = new Set<ScreenName>([
   "trade",
   "about",
   "learn",
-]);
+  "reference",
+] as const;
+
+export type ScreenName = (typeof SCREENS)[number];
+
+export interface Route {
+  screen: ScreenName;
+  /** Room code, for the modes that join one. */
+  room: string | null;
+}
+
+const KNOWN: ReadonlySet<string> = new Set<string>(SCREENS);
 
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#\/?/, "");
@@ -43,7 +44,7 @@ export function parseRoute(hash: string): Route {
   // working rather than landing on the menu with no explanation.
   const name = screen.toLowerCase() === "pair" ? "workshop" : screen.toLowerCase();
   return {
-    screen: SCREENS.has(name) ? (name as ScreenName) : "menu",
+    screen: KNOWN.has(name) ? (name as ScreenName) : "menu",
     room: room ? decodeURIComponent(room).toUpperCase() : null,
   };
 }

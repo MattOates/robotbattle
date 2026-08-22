@@ -29,15 +29,14 @@ interface ModeCard {
   needsPeople: boolean;
   /** Marked on the card, so nobody picks it and then finds out. */
   underConstruction?: boolean;
+  /**
+   * What the card says at the bottom. Without it the line is a ternary that
+   * would tell somebody the reference has "3 in your library".
+   */
+  foot?: string;
 }
 
 const MODES: ModeCard[] = [
-  {
-    screen: "learn",
-    title: "Learn",
-    blurb: "How it all works, and how to write a robot — one idea at a time, with examples you can change and run.",
-    needsPeople: false,
-  },
   {
     screen: "workshop",
     title: "Workshop",
@@ -63,6 +62,20 @@ const MODES: ModeCard[] = [
     title: "Trade",
     blurb: "Show each other your robots and swap copies — with permission, never without.",
     needsPeople: true,
+  },
+  {
+    screen: "learn",
+    title: "Learn",
+    blurb: "How it all works, and how to write a robot — one idea at a time, with examples you can change and run.",
+    needsPeople: false,
+  },
+  {
+    screen: "reference",
+    title: "Reference",
+    blurb:
+      "Every word the language has, what it takes, and what the world does with it — for when you know what you want and need to look it up.",
+    needsPeople: false,
+    foot: "Look something up",
   },
 ];
 
@@ -130,9 +143,11 @@ export function Menu({ theme, robotCount }: Props) {
               </span>
               <span className="mode-blurb">{mode.blurb}</span>
               <span className="mode-foot">
-                {mode.underConstruction
-                  ? "Not playable yet — have a look at what is built"
-                  : mode.needsPeople
+                {mode.foot
+                  ? mode.foot
+                  : mode.underConstruction
+                    ? "Not playable yet — have a look at what is built"
+                    : mode.needsPeople
                     ? "Needs someone to play with"
                     : mode.screen === "learn"
                       ? "Start here"

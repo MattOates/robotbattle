@@ -56,24 +56,10 @@ export interface PropRef {
   prop: string;
 }
 
-/** Builtin functions, with their fixed arity. */
-export const BUILTIN_SIGNATURES: Readonly<Record<string, number>> = {
-  abs: 1,
-  min: 2,
-  max: 2,
-  random: 0,
-  randomint: 2,
-  sin: 1,
-  cos: 1,
-  sqrt: 1,
-  round: 1,
-  floor: 1,
-  ceil: 1,
-  distance: 4,
-  bearing: 2,
-};
-
-export const BUILTIN_NAMES: readonly string[] = Object.keys(BUILTIN_SIGNATURES);
+// The functions a script can call live in `builtins.ts`, with their arguments
+// and what each one is for. Re-exported here because this is where everything
+// that compiles or runs bytecode already looks for them.
+export { BUILTIN_NAMES, BUILTIN_SIGNATURES } from "./builtins.js";
 
 /** Compiled program, ready to run. */
 export interface Chunk {

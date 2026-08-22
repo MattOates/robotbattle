@@ -126,7 +126,11 @@ export function languageCard(theme: Theme): string {
     ...t.arena.map((s) => line(`arena.${s.label}`, s.detail)),
     "",
     "## Functions",
-    ...t.builtins.map((s) => line(`${s.label}()`, s.detail)),
+    // The label is the whole signature now — `distance(x1, y1, x2, y2)` — so it
+    // needs no brackets adding to it, and the argument names do enough of the
+    // explaining that the card can take the first sentence and leave the rest
+    // to the reference page. The card has a budget; the page does not.
+    ...t.builtins.map((s) => line(s.label, firstSentence(s.detail ?? ""))),
     "",
     "## Values",
     ...t.literals.map((s) => line(s.label, s.detail)),
@@ -151,6 +155,12 @@ export function languageCard(theme: Theme): string {
  * is, how far you can see, how much a shot hurts. Without them the advice is
  * shaped right and numbered by guesswork.
  */
+/** Up to the first full stop, which is where these summaries put the gist. */
+function firstSentence(text: string): string {
+  const end = text.indexOf(". ");
+  return end === -1 ? text : text.slice(0, end + 1);
+}
+
 export function worldFacts(theme: Theme): string {
   const cone = SENSE.halfAngle * 2;
   const beam = RADAR.halfAngle * 2;
@@ -245,7 +255,7 @@ export function briefCard(theme: Theme): string {
     `Events: ${EVENT_NAMES.map((n) => `on ${n}`).join(", ")}`,
     `Your state: ${t.me.map((s) => `me.${s.label}`).join(", ")}`,
     `The arena: ${t.arena.map((s) => `arena.${s.label}`).join(", ")}`,
-    `Functions: ${t.builtins.map((s) => `${s.label}()`).join(", ")}`,
+    `Functions: ${t.builtins.map((s) => s.label).join(", ")}`,
     `Values: ${names(t.literals)}`,
     "",
     "",

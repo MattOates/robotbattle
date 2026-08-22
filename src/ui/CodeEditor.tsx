@@ -7,13 +7,14 @@
  * can actually tell you.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { startCompletion } from "@codemirror/autocomplete";
 import { completionCompartment, completionExtension, roboExtensions } from "./roboscript-editor.js";
 import { checkScript } from "../sim/world.js";
 import type { Theme } from "../lang/vocab.js";
+import { GrammarGuide } from "./GrammarGuide.js";
 
 const readOnlyCompartment = new Compartment();
 
@@ -59,6 +60,12 @@ interface Props {
   /** Extra status text alongside the compile result, e.g. who else is editing. */
   statusSuffix?: React.ReactNode;
   /**
+   * Show the grammar guide under the editor. Off by default, so the previews
+   * and the read-only views of other people's robots do not grow a teaching
+   * strip nobody asked for.
+   */
+  guide?: boolean;
+  /**
    * The live editor, handed back so the shelf can drop a block into it.
    *
    * Going through the editor rather than through `source` is what makes an
@@ -94,10 +101,28 @@ export function CodeEditor({
   preview = false,
   copyable = false,
   statusSuffix,
+  guide = false,
   viewRef: exposedRef,
   onDrop,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * What the editor itself holds, for the guide.
+   *
+   * Taken from the editor rather than from the `source` prop, which travels out
+   * through the change handler and back in through the store and can therefore
+   * be a beat behind what is on screen. The guide has to describe the line the
+   * caret is actually on.
+   */
+  const [live, setLive] = useState<{ doc: string; pos: number }>({ doc: source, pos: 0 });
+  /**
+   * Open to begin with, and remembered. It teaches by being visible, so a
+   * beginner should not have to find it — and somebody who knows the language
+   * should not have to shut it twice.
+   */
+  const [guideOpen, setGuideOpen] = useState(
+    () => localStorage.getItem("rb.guide") !== "closed",
+  );
   const viewRef = useRef<EditorView | null>(null);
   // Read inside the update listener without re-creating the editor.
   const onChangeRef = useRef(onChange);
@@ -172,6 +197,14 @@ export function CodeEditor({
             if (update.docChanged) {
               onChangeRef.current(update.state.doc.toString());
             }
+            // The guide follows the caret, so it has to hear about a plain
+            // arrow-key move as well as about typing.
+            if (update.docChanged || update.selectionSet) {
+              setLive({
+                doc: update.state.doc.toString(),
+                pos: update.state.selection.main.head,
+              });
+            }
           }),
         ],
       }),
@@ -230,6 +263,19 @@ export function CodeEditor({
   return (
     <>
       <div className="code-editor" ref={hostRef} />
+      {guide ? (
+        <GrammarGuide
+          source={live.doc}
+          pos={live.pos}
+          theme={theme}
+          viewRef={viewRef}
+          open={guideOpen}
+          onOpen={(open) => {
+            setGuideOpen(open);
+            localStorage.setItem("rb.guide", open ? "open" : "closed");
+          }}
+        />
+      ) : null}
       <div className={`diagnostic ${check.ok ? "ok" : "error"}`} role="status">
         {check.ok ? (
           <>

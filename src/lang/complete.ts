@@ -17,8 +17,10 @@
  */
 
 import { EVENT_NAMES, type EventName } from "./ast.js";
-import { BUILTIN_SIGNATURES } from "./bytecode.js";
+import { BUILTINS, signatureOf, type Builtin } from "./builtins.js";
+import { ARENA_PROP_NAMES, ME_PROP_NAMES } from "./compiler.js";
 import { EVENT_DOCS, eventFields, renderDoc } from "./events.js";
+import { LITERAL, pathFrom, type Path } from "./grammar-path.js";
 import { scanLine } from "./scan.js";
 import { healthPropertyFor, phraseFor, wordFor, type Theme } from "./vocab.js";
 
@@ -45,162 +47,6 @@ export interface CompletionResult {
 // Documentation tables
 // ---------------------------------------------------------------------------
 
-const TOP_LEVEL: readonly Suggestion[] = [
-  {
-    label: "on",
-    kind: "keyword",
-    detail: "react to something",
-    info: "Starts a block that runs when something happens, like `on sense robot`.",
-  },
-  {
-    label: "name",
-    kind: "keyword",
-    detail: "what you're called",
-    info: 'Sets the label shown under your robot. `name "Sparky"`',
-  },
-  {
-    label: "chassis",
-    kind: "keyword",
-    detail: "which kind of robot",
-    info: "Picks how you move. A tank turns on the spot; a car is faster but has a turning circle.",
-  },
-  {
-    label: "color",
-    kind: "keyword",
-    detail: "your colour",
-    info: "Sets your colour on screen, like `color #ff8800`.",
-  },
-  {
-    label: "var",
-    kind: "keyword",
-    detail: "remember something",
-    info: "Makes a new variable you can change later. `var target = none`",
-  },
-  {
-    label: "can",
-    kind: "keyword",
-    detail: "teach yourself something",
-    info: "Names a block of instructions you can use more than once.\n\ncan dodge given hit by bullet\n  turn body by event.bearing + 90\nend\n\nSay `given <event>` and the block can read `event.` — and if you have no `on` block for that event, blocks like it become the handler, in the order you wrote them.",
-  },
-];
-
-const STATEMENTS: readonly Suggestion[] = [
-  {
-    label: "set",
-    kind: "keyword",
-    detail: "change a variable",
-    info: 'Changes a variable you already made. `set target = event.bearing`\nYou can also `set name = "hunting"` to change your label mid-match.',
-  },
-  {
-    label: "var",
-    kind: "keyword",
-    detail: "remember something",
-    info: "Makes a new variable. `var seen = 0`",
-  },
-  {
-    label: "if",
-    kind: "keyword",
-    detail: "only sometimes",
-    info: "Runs the lines inside only when something is true.\n\nif event.distance > 120\n  drive forward 90\nelse\n  drive forward 30\nend",
-  },
-  {
-    label: "loop",
-    kind: "keyword",
-    detail: "go round forever",
-    info: "Repeats until you `break` out of it.\n\nloop\n  turret.turn by 10\n  break if me.gunHeat is 0\nend",
-  },
-  {
-    label: "for",
-    kind: "keyword",
-    detail: "count up",
-    info: "Counts from one number to another.\n\nfor i = 1 to 4\n  turret.turn by 90\nend",
-  },
-  {
-    label: "repeat",
-    kind: "keyword",
-    detail: "a set number of times",
-    info: "Does something a fixed number of times.\n\nrepeat 3 times\n  fire\nend",
-  },
-  {
-    label: "break",
-    kind: "keyword",
-    detail: "leave the loop",
-    info: "Jumps out of the loop you are inside. `break if target isnt none`",
-  },
-  {
-    label: "continue",
-    kind: "keyword",
-    detail: "skip to the next go",
-    info: "Skips the rest of this time round the loop and starts the next one.",
-  },
-  {
-    label: "do",
-    kind: "keyword",
-    detail: "run one of your blocks",
-    info: "Runs a block you made with `can`. `do dodge`\nIf the block was given something, hand it over: `do shove with 3`",
-  },
-  {
-    label: "wait",
-    kind: "keyword",
-    detail: "pause a moment",
-    info: "Pauses this block for a while. There are 30 ticks in a second. `wait 5 ticks`",
-  },
-];
-
-/** Actions, whose words change with the theme. */
-function actionSuggestions(theme: Theme): Suggestion[] {
-  const drive = wordFor("drive", theme);
-  const turret = wordFor("turret", theme);
-  const fire = wordFor("fire", theme);
-  const body = wordFor("chassis", theme);
-  const radar = wordFor("radar", theme);
-  const ping = wordFor("ping", theme);
-  return [
-    {
-      label: drive,
-      kind: "action",
-      detail: "move",
-      info: `How hard to push, from 0 to 100. \`${drive} forward 80\` or \`${drive} back 40\`.\nYou keep going until you say otherwise.`,
-    },
-    {
-      label: "stop",
-      kind: "action",
-      detail: "stop moving",
-      info: "Cuts the throttle. Careful: a car cannot steer once it has stopped.",
-    },
-    {
-      label: "turn",
-      kind: "action",
-      detail: "point somewhere",
-      info: `Turns the whole robot. \`turn ${body} by 90\` turns 90 degrees from where you are now; \`turn ${body} to 0\` turns to face a fixed direction.`,
-    },
-    {
-      label: turret,
-      kind: "action",
-      detail: "aim the gun",
-      info: `The ${turret} turns on its own, separately from your body, so you can drive one way and aim another.\n\n${turret}.aim at event.bearing\n${turret}.sweep 45\n${turret}.turn to 0`,
-    },
-    {
-      label: fire,
-      kind: "action",
-      detail: "shoot",
-      info: `Shoots, if the gun has cooled down. Power 1 to 3: stronger shots hurt more but fly slower. \`${fire} 2\``,
-    },
-    {
-      label: radar,
-      kind: "action",
-      detail: "aim the long look",
-      info: `The ${radar} turns on its own, separately from your body and your ${turret}. It looks three times as far as your sense cone but only a fifth as wide, so you have to point it somewhere on purpose.\n\n${radar}.aim at event.bearing\n${radar}.sweep 60\n${radar}.turn to 0`,
-    },
-    {
-      label: ping,
-      kind: "action",
-      detail: "look down the beam",
-      info: `Sends the beam out where the ${radar} points, once. If it finds someone you get \`on ${ping} robot\`; if it does not, \`on ${ping} wall\` tells you how much room is that way. There is a short wait before you can ${ping} again — check \`me.pingHeat\`.`,
-    },
-  ];
-}
-
 interface PropDoc {
   name: string;
   detail: string;
@@ -212,70 +58,65 @@ interface PropDoc {
   themed?: string;
 }
 
-const ME_PROPS: readonly PropDoc[] = [
-  { name: "x", detail: "Where you are across the arena." },
-  { name: "y", detail: "Where you are down the arena." },
-  { name: "heading", detail: "The direction your body is facing, in degrees." },
-  { name: "speed", detail: "How fast you are going right now." },
-  { name: "health", detail: "How much {health} you have left, out of 100." },
-  { name: "turret", detail: "Where the {turret} points, compared to straight ahead." },
-  { name: "gunHeat", detail: "Above 0 means the gun is still cooling and cannot fire." },
-  { name: "radar", detail: "Where the {radar} points, compared to straight ahead." },
-  { name: "pingHeat", detail: "Ticks left before you can {ping} again. 0 means ready." },
-  {
-    name: "fuel",
+/**
+ * What each property is for, keyed by the compiler's list of them.
+ *
+ * The names live in `compiler.ts`, which is the code that accepts or refuses
+ * them; only the prose lives here. Keying the record on that list means a
+ * property added to the language and not described here is a type error rather
+ * than a property nobody is ever offered.
+ */
+type PropDocs<K extends string> = Readonly<Record<K, Omit<PropDoc, "name">>>;
+
+const ME_PROP_DOCS: PropDocs<(typeof ME_PROP_NAMES)[number]> = {
+  x: { detail: "Where you are across the arena." },
+  y: { detail: "Where you are down the arena." },
+  heading: { detail: "The direction your body is facing, in degrees." },
+  speed: { detail: "How fast you are going right now." },
+  health: { detail: "How much {health} you have left, out of 100." },
+  turret: { detail: "Where the {turret} points, compared to straight ahead." },
+  gunHeat: { detail: "Above 0 means the gun is still cooling and cannot fire." },
+  radar: { detail: "Where the {radar} points, compared to straight ahead." },
+  pingHeat: { detail: "Ticks left before you can {ping} again. 0 means ready." },
+  fuel: {
     detail:
       "How much {fuel} is in your tank, out of 100. Moving, turning, {fire} and {ping} spend it; driving over {fuel} refills it. At empty you are slow, not dead.",
   },
-  {
-    name: "aiming",
+  aiming: {
     detail:
       "1 while a shot is waiting for the {turret} to come round to where you aimed it. Aiming again now only moves the goal and makes it wait longer.",
   },
-  {
-    name: "slope",
+  slope: {
     themed: "slope",
     detail:
       "How hard the {ground} is right where you are, 0 flat to 100 as bad as it gets. Costs nothing to check \u2014 you can always feel what you are standing on.",
   },
-  {
-    name: "uphill",
+  uphill: {
     themed: "uphill",
     detail:
       "Which way the {ground} gets harder, compared to straight ahead. Going that way is slow and expensive.",
   },
-  {
-    name: "downhill",
+  downhill: {
     themed: "downhill",
     detail:
       "Which way the {ground} gets easier, compared to straight ahead. Going that way is quick and nearly free.",
   },
-  { name: "ammo", detail: "1 when you are ready to fire, 0 when you are not." },
-  { name: "score", detail: "How many robots you have destroyed." },
-];
-
-const ARENA_PROPS: readonly PropDoc[] = [
-  { name: "width", detail: "How wide the arena is." },
-  { name: "height", detail: "How tall the arena is." },
-  { name: "time", detail: "How many ticks the match has been running." },
-  { name: "robots", detail: "How many {robots} are still alive, including you." },
-];
-
-const BUILTIN_DOCS: Readonly<Record<string, string>> = {
-  abs: "Makes a number positive. abs(-5) is 5.",
-  min: "The smaller of two numbers.",
-  max: "The larger of two numbers.",
-  random: "A random number between 0 and 1.",
-  randomint: "A random whole number between two values, both included.",
-  sin: "The sine of an angle in degrees.",
-  cos: "The cosine of an angle in degrees.",
-  sqrt: "The square root of a number.",
-  round: "Rounds to the nearest whole number.",
-  floor: "Rounds down to a whole number.",
-  ceil: "Rounds up to a whole number.",
-  distance: "How far apart two points are. distance(x1, y1, x2, y2)",
-  bearing: "The direction from one point to another. bearing(x, y)",
+  ammo: { detail: "1 when you are ready to fire, 0 when you are not." },
+  score: { detail: "How many robots you have destroyed." },
 };
+
+const ARENA_PROP_DOCS: PropDocs<(typeof ARENA_PROP_NAMES)[number]> = {
+  width: { detail: "How wide the arena is." },
+  height: { detail: "How tall the arena is." },
+  time: { detail: "How many ticks the match has been running." },
+  robots: { detail: "How many {robots} are still alive, including you." },
+};
+
+const ME_PROPS: readonly PropDoc[] = ME_PROP_NAMES.map((name) => ({ name, ...ME_PROP_DOCS[name] }));
+const ARENA_PROPS: readonly PropDoc[] = ARENA_PROP_NAMES.map((name) => ({
+  name,
+  ...ARENA_PROP_DOCS[name],
+}));
 
 const LITERALS: readonly Suggestion[] = [
   { label: "true", kind: "value", detail: "yes" },
@@ -305,38 +146,6 @@ export const PALETTE: readonly { hex: string; name: string }[] = [
   { hex: "#f5f0e6", name: "white" },
   { hex: "#8a8f98", name: "grey" },
 ];
-
-/** Words after which a value is expected, so we offer expressions. */
-const EXPECTS_VALUE = new Set([
-  "=",
-  "(",
-  ",",
-  "if",
-  "and",
-  "or",
-  "not",
-  "mod",
-  "+",
-  "-",
-  "*",
-  "/",
-  "<",
-  ">",
-  "<=",
-  ">=",
-  "is",
-  "isnt",
-  "to",
-  "by",
-  "at",
-  "forward",
-  "back",
-  "sweep",
-  "fire",
-  "repeat",
-  "wait",
-  "drive",
-]);
 
 // ---------------------------------------------------------------------------
 // Where are we?
@@ -402,18 +211,28 @@ export function referenceTables(theme: Theme): {
   builtins: Suggestion[];
   literals: Suggestion[];
 } {
+  // All five word lists come from the grammar, so a new instruction reaches the
+  // assistant's language card without anybody remembering to add it there.
+  const words = (rule: string) =>
+    (pathFrom(rule, [])?.words ?? []).map((w) => wordSuggestion(w, theme, rule));
+  const actions = words("action");
+  const actionLabels = new Set(actions.map((a) => a.label));
+
   return {
-    keywords: [...TOP_LEVEL],
-    statements: [...STATEMENTS],
-    actions: actionSuggestions(theme),
-    turret: turretMembers(theme),
-    radar: radarMembers(theme),
+    keywords: words("topLevel"),
+    // `statement` covers the actions too, and they are listed separately.
+    statements: words("statement").filter((s) => !actionLabels.has(s.label)),
+    actions,
+    turret: words("turretMember"),
+    radar: words("radarMember"),
     me: propSuggestions(ME_PROPS, theme),
     arena: propSuggestions(ARENA_PROPS, theme),
-    builtins: Object.entries(BUILTIN_DOCS).map(([label, detail]) => ({
-      label,
+    // The signature, so the assistant's card says `distance(x1, y1, x2, y2)`
+    // rather than the name on its own and a sentence about it.
+    builtins: Object.entries(BUILTINS).map(([label, fn]) => ({
+      label: signatureOf(label),
       kind: "function" as const,
-      detail,
+      detail: fn.summary,
     })),
     literals: [...LITERALS],
   };
@@ -501,8 +320,6 @@ export function contextAt(source: string, pos: number): Context {
 /** The words that say how often a block runs. */
 const COUNT_WORDS: ReadonlySet<string> = new Set(["every", "after", "before", "at"]);
 
-/** Stands in for a literal value in the word stream the phrase rules read. */
-const LITERAL = "\0";
 
 /**
  * How often — offered once the event has been named, because that is the point
@@ -568,7 +385,18 @@ function matchEvent(words: readonly string[]): EventName | null {
 // Completion
 // ---------------------------------------------------------------------------
 
-export function completeAt(source: string, pos: number, theme: Theme): CompletionResult | null {
+/**
+ * The words already typed on this line, canonical and with literals marked.
+ *
+ * Split out because two things need it: the completion popup, which asks what
+ * could come next, and the guide under the editor, which asks the same question
+ * and draws the answer. `null` means the cursor is somewhere neither should
+ * speak — inside a comment or a piece of text.
+ */
+export function lineWordsAt(
+  source: string,
+  pos: number,
+): { words: string[]; from: number } | null {
   const lineStart = source.lastIndexOf("\n", pos - 1) + 1;
   const prefix = source.slice(lineStart, pos);
   const tokens = scanLine(prefix);
@@ -593,9 +421,296 @@ export function completeAt(source: string, pos: number, theme: Theme): Completio
     else if (tok.kind === "punct") words.push(tok.text);
     else words.push(LITERAL); // a literal value
   }
+  return { words, from };
+}
 
-  const options = suggest(words, source, pos, theme);
-  return options && options.length > 0 ? { from, options } : null;
+/**
+ * Where the cursor is in the grammar, for the guide under the editor.
+ *
+ * The start rule is decided the same way the popup decides what to offer:
+ * inside a handler or a `can` block a line is an instruction, and out at the
+ * top level it is a declaration.
+ */
+export function pathAt(source: string, pos: number): Path | null {
+  const here = lineWordsAt(source, pos);
+  if (!here) return null;
+  const start = contextAt(source, pos).inHandler ? "statement" : "topLevel";
+  return pathFrom(start, here.words);
+}
+
+export function completeAt(source: string, pos: number, theme: Theme): CompletionResult | null {
+  const here = lineWordsAt(source, pos);
+  if (!here) return null;
+  const options = suggest(here.words, source, pos, theme);
+  return options && options.length > 0 ? { from: here.from, options } : null;
+}
+
+/**
+ * What each word means, keyed by the word the language calls it.
+ *
+ * *Which* words get offered is not decided here — that comes from walking the
+ * grammar, so the popup can only ever suggest something the parser accepts, and
+ * an instruction added to the language appears without anybody remembering to
+ * add it. What is decided here is what each one *says*, which no grammar knows.
+ *
+ * A word with no entry is still offered, just without a description. That is
+ * deliberate: a new instruction turning up undocumented is better than a new
+ * instruction the popup pretends does not exist.
+ */
+const WORD_DOCS: Readonly<Record<string, { detail: string; info?: string; kind?: SuggestionKind }>> =
+  {
+    // --- the top level ---
+    on: {
+      detail: "react to something",
+      info: "Starts a block that runs when something happens, like `on sense robot`.",
+    },
+    name: {
+      detail: "what you're called",
+      info: 'Sets the label shown under your robot. `name "Sparky"`',
+    },
+    chassis: {
+      detail: "which kind of robot",
+      info: "Picks how you move. A tank turns on the spot; a car is faster but has a turning circle.",
+    },
+    color: { detail: "your colour", info: "Sets your colour on screen, like `color #ff8800`." },
+    can: {
+      detail: "teach yourself something",
+      info: "Names a block of instructions you can use more than once.\n\ncan dodge given hit by bullet\n  turn body by event.bearing + 90\nend\n\nSay `given <event>` and the block can read `event.` — and if you have no `on` block for that event, blocks like it become the handler, in the order you wrote them.",
+    },
+
+    // --- the two bodies ---
+    skid: {
+      detail: "turns on the spot",
+      info: "Slower, but it can spin where it stands and drive in any direction immediately.",
+    },
+    steered: {
+      detail: "faster, but has a turning circle",
+      info: "Much faster in a straight line, but it steers like a car: it cannot turn at all unless it is moving.",
+    },
+
+    // --- instructions ---
+    var: { detail: "remember something", info: "Makes a new variable. `var seen = 0`" },
+    set: {
+      detail: "change a variable",
+      info: 'Changes a variable you already made. `set target = event.bearing`\nYou can also `set name = "hunting"` to change your label mid-match.',
+    },
+    if: {
+      detail: "only sometimes",
+      info: "Runs the lines inside only when something is true.\n\nif event.distance > 120\n  drive forward 90\nelse\n  drive forward 30\nend",
+    },
+    loop: {
+      detail: "go round forever",
+      info: "Repeats until you `break` out of it.\n\nloop\n  turret.turn by 10\n  break if me.gunHeat is 0\nend",
+    },
+    for: {
+      detail: "count up",
+      info: "Counts from one number to another.\n\nfor i = 1 to 4\n  turret.turn by 90\nend",
+    },
+    repeat: {
+      detail: "a set number of times",
+      info: "Does something a fixed number of times.\n\nrepeat 3 times\n  fire\nend",
+    },
+    break: {
+      detail: "leave the loop",
+      info: "Jumps out of the loop you are inside. `break if target isnt none`",
+    },
+    continue: {
+      detail: "skip to the next go",
+      info: "Skips the rest of this time round the loop and starts the next one.",
+    },
+    do: {
+      detail: "run one of your blocks",
+      info: "Runs a block you made with `can`. `do dodge`\nIf the block was given something, hand it over: `do shove with 3`",
+    },
+    wait: {
+      detail: "pause a moment",
+      info: "Pauses this block for a while. There are 30 ticks in a second. `wait 5 ticks`",
+    },
+
+    // --- actions ---
+    drive: {
+      detail: "move",
+      info: "How hard to push, from 0 to 100. `{drive} forward 80` or `{drive} back 40`.\nYou keep going until you say otherwise.",
+      kind: "action",
+    },
+    stop: {
+      detail: "stop moving",
+      info: "Cuts the throttle. Careful: a car cannot steer once it has stopped.",
+      kind: "action",
+    },
+    turn: {
+      detail: "point somewhere",
+      info: "Turns the whole robot. `turn {chassis} by 90` turns 90 degrees from where you are now; `turn {chassis} to 0` turns to face a fixed direction.",
+      kind: "action",
+    },
+    turret: {
+      detail: "aim the gun",
+      info: "The {turret} turns on its own, separately from your body, so you can drive one way and aim another.\n\n{turret}.aim at event.bearing\n{turret}.sweep 45\n{turret}.turn to 0",
+      kind: "action",
+    },
+    fire: {
+      detail: "shoot",
+      info: "Shoots, if the gun has cooled down. Power 1 to 3: stronger shots hurt more but fly slower. `{fire} 2`",
+      kind: "action",
+    },
+    radar: {
+      detail: "aim the long look",
+      info: "The {radar} turns on its own, separately from your body and your {turret}. It looks three times as far as your sense cone but only a fifth as wide, so you have to point it somewhere on purpose.\n\n{radar}.aim at event.bearing\n{radar}.sweep 60\n{radar}.turn to 0",
+      kind: "action",
+    },
+    ping: {
+      detail: "look down the beam",
+      info: "Sends the beam out where the {radar} points, once. If it finds someone you get `on {ping} robot`; if it does not, `on {ping} wall` tells you how much room is that way. There is a short wait before you can {ping} again — check `me.pingHeat`.",
+      kind: "action",
+    },
+
+    // --- the same words, on an instrument rather than on the robot ---
+    "turretMember:aim": {
+      detail: "point at a bearing",
+      info: "`{turret}.aim at event.bearing` points the gun at whatever an event just told you about.",
+    },
+    "turretMember:turn": {
+      detail: "to or by an angle",
+      info: "`{turret}.turn to 0` faces a fixed direction; `{turret}.turn by 10` nudges it round.",
+    },
+    "turretMember:sweep": {
+      detail: "search back and forth",
+      info: "`{turret}.sweep 45` swings the gun side to side to look for someone, and keeps doing it while you drive.",
+    },
+    "turretMember:fire": {
+      detail: "shoot",
+      info: "The same as `{fire}` on its own — the gun is the thing that shoots either way.",
+    },
+    "radarMember:aim": {
+      detail: "point at a bearing",
+      info: "`{radar}.aim at event.bearing` points the beam at whatever an event just told you about.",
+    },
+    "radarMember:turn": {
+      detail: "to or by an angle",
+      info: "`{radar}.turn to 0` faces a fixed direction; `{radar}.turn by 10` nudges it round.",
+    },
+    "radarMember:sweep": {
+      detail: "search back and forth",
+      info: "`{radar}.sweep 60` swings the beam side to side, so a {ping} finds someone you were not already pointed at.",
+    },
+    "radarMember:ping": {
+      detail: "look down the beam",
+      info: "Sends the beam out once, wherever it is pointing. Check `me.pingHeat` for when you can go again.",
+    },
+
+    // --- the words that shape an action ---
+    forward: { detail: "0 to 100" },
+    back: { detail: "0 to 100" },
+    to: { detail: "to a fixed direction", info: "A compass direction, whichever way you are facing." },
+    by: { detail: "by this many degrees", info: "This far from wherever you are pointing now." },
+    at: {
+      detail: "at a bearing",
+      info: "Aims relative to your body, so `{turret}.aim at event.bearing` points straight at what you just sensed.",
+    },
+    aim: { detail: "point it at a direction" },
+    sweep: { detail: "swing it by an amount" },
+    times: { detail: "how many goes" },
+    ticks: { detail: "how long to wait" },
+    tick: { detail: "how long to wait" },
+    then: { detail: "reads better, changes nothing" },
+    else: { detail: "otherwise" },
+    with: {
+      detail: "things to hand it",
+      info: "Names what the block is given: `can shove with effort`.\nGive it a starting value — `with effort=2` — and the block can also run on its own.",
+    },
+    given: {
+      detail: "which event it is for",
+      info: "Says what the block works on, so it can read `event.`: `can dodge given hit by bullet`.\nWith no `on` block for that event, blocks like it become the handler.",
+    },
+  };
+
+/**
+ * One word, ready to show, in the reader's own vocabulary.
+ *
+ * Alphabetical is how these come out, and that is a decision rather than a
+ * default. A curated order needs somebody to place every new word and is a
+ * second thing to keep in step with the language; a predictable one can be
+ * learnt, so after a while you know where to look without reading.
+ */
+function wordSuggestion(word: string, theme: Theme, rule: string): Suggestion {
+  // Keyed by rule first, because the same word is not always the same thing:
+  // `turn` on its own turns the whole robot, and `turret.turn` turns the gun.
+  const doc = WORD_DOCS[`${rule}:${word}`] ?? WORD_DOCS[word];
+  const label = wordFor(word, theme);
+  return {
+    label,
+    kind: doc?.kind ?? "keyword",
+    detail: doc?.detail ?? "",
+    ...(doc?.info ? { info: renderDoc(doc.info, theme) } : {}),
+  };
+}
+
+/**
+ * What the grammar says could come next, as suggestions.
+ *
+ * This is the whole point of the exercise. It used to be an eleven-case
+ * `switch (words.join(" "))` transcribing the action grammar by hand, which
+ * could disagree with the parser without anything noticing and had to be edited
+ * every time the language grew.
+ */
+
+function fromGrammar(
+  path: Path,
+  source: string,
+  ctx: Context,
+  theme: Theme,
+): Suggestion[] | null {
+  // Where the grammar wants a name or a colour rather than a fixed word, it is
+  // the script that knows which ones exist, not the grammar.
+  const placeholders = new Set(
+    [...path.next].flatMap((n) => (n.kind === "placeholder" ? [n.text] : [])),
+  );
+  if (placeholders.has("colour")) {
+    return PALETTE.map((c) => ({ label: c.hex, kind: "color" as const, detail: c.name }));
+  }
+  if (placeholders.has("name")) {
+    if (path.rule.name === "doStmt") return routineSuggestions(source, ctx, theme);
+    if (path.rule.name === "setStmt") return assignableSuggestions(source);
+  }
+
+  const offered = path.words
+    .map((word) => wordSuggestion(word, theme, path.rule.name))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  return offered.length > 0 ? offered : null;
+}
+
+/** The `can` blocks that would actually work where the cursor is. */
+function routineSuggestions(source: string, ctx: Context, theme: Theme): Suggestion[] {
+  // One that says `given hit by bullet` has no meaning inside `on tick`.
+  const { routines, handled } = routinesIn(source);
+  return routines
+    .filter((r) => r.given === null || r.given === ctx.event)
+    .map((r): Suggestion => ({
+      label: r.name,
+      kind: "action",
+      // "run it with `do`" is not news to someone who has just typed `do`.
+      detail: routineNote(r, handled, theme) || (r.params.length > 0 ? "takes something" : ""),
+      info: r.params.length
+        ? `Give it: ${r.params.join(", ")}\n\ndo ${r.name} with ...`
+        : `Runs the \`can ${r.name}\` block here.`,
+    }));
+}
+
+/** What a `set` can be pointed at. */
+function assignableSuggestions(source: string): Suggestion[] {
+  return [
+    {
+      label: "name",
+      kind: "property",
+      detail: "your label on screen",
+      info: 'Changes the text under your robot, so you can see what it is thinking. `set name = "hunting"`',
+    },
+    ...variablesIn(source).map((v): Suggestion => ({
+      label: v,
+      kind: "variable",
+      detail: "your variable",
+    })),
+  ];
 }
 
 function suggest(
@@ -613,9 +728,10 @@ function suggest(
     if (obj === "me") return propSuggestions(ME_PROPS, theme);
     if (obj === "arena") return propSuggestions(ARENA_PROPS, theme);
     if (obj === "event") return eventFieldSuggestions(ctx.event, theme);
-    if (obj === "turret") return turretMembers(theme);
-    if (obj === "radar") return radarMembers(theme);
-    return null;
+    // `turret.` and `radar.` are not property access at all — what follows is
+    // an instruction, and the grammar knows which ones. Falling through to it
+    // is what keeps that list from being written down twice.
+    if (obj !== "turret" && obj !== "radar") return null;
   }
 
   // --- how often, once the event has been named ---
@@ -657,185 +773,34 @@ function suggest(
     return clauses;
   }
 
-  // --- exact phrase rules for the action grammar ---
-  const phrase = words.join(" ");
-  const body = wordFor("chassis", theme);
-  switch (phrase) {
-    case "chassis":
-      return [
-        {
-          label: wordFor("skid", theme),
-          kind: "keyword",
-          detail: "turns on the spot",
-          info: "Slower, but it can spin where it stands and drive in any direction immediately.",
-        },
-        {
-          label: wordFor("steered", theme),
-          kind: "keyword",
-          detail: "faster, but has a turning circle",
-          info: "Much faster in a straight line, but it steers like a car: it cannot turn at all unless it is moving.",
-        },
-      ];
-    case "color":
-      return PALETTE.map((c) => ({
-        label: c.hex,
-        kind: "color" as const,
-        detail: c.name,
-      }));
-    case "drive":
-      return [
-        { label: "forward", kind: "keyword", detail: "0 to 100" },
-        { label: "back", kind: "keyword", detail: "0 to 100" },
-      ];
-    case "turn":
-      return [
-        { label: body, kind: "keyword", detail: "turn the whole robot" },
-        { label: "to", kind: "keyword", detail: "to a fixed direction" },
-        { label: "by", kind: "keyword", detail: "by this many degrees" },
-      ];
-    // `body` was canonicalised to `chassis` by the scanner, so this one rule
-    // covers both `turn body …` and `turn chassis …`.
-    case "turn chassis":
-      return byOrTo("Turn to a fixed compass direction", "Turn this far from where you are now");
-    case "turret . turn":
-      return byOrTo("Point the gun at a fixed direction", "Swing the gun this far");
-    case "radar . turn":
-      return byOrTo("Point the beam at a fixed direction", "Swing the beam this far");
-    case "radar . aim":
-      return [
-        {
-          label: "at",
-          kind: "keyword",
-          detail: "at a bearing",
-          info: `Aims relative to your body, so \`${wordFor("radar", theme)}.aim at event.bearing\` points the beam at whatever an event just told you about.`,
-        },
-      ];
-    case "turret . aim":
-      return [
-        {
-          label: "at",
-          kind: "keyword",
-          detail: "at a bearing",
-          info: "Aims relative to your body, so `turret.aim at event.bearing` points straight at what you just sensed.",
-        },
-      ];
-    case "do": {
-      // Only the blocks that would actually work here: one that says
-      // `given hit by bullet` has no meaning inside `on tick`.
-      const { routines, handled } = routinesIn(source);
-      return routines
-        .filter((r) => r.given === null || r.given === ctx.event)
-        .map((r): Suggestion => ({
-          label: r.name,
-          kind: "action",
-          // "run it with `do`" is not news to someone who has just typed `do`.
-          detail: routineNote(r, handled, theme) || (r.params.length > 0 ? "takes something" : ""),
-          info: r.params.length
-            ? `Give it: ${r.params.join(", ")}\n\ndo ${r.name} with ...`
-            : `Runs the \`can ${r.name}\` block here.`,
-        }));
-    }
-    case "set":
-      return [
-        {
-          label: "name",
-          kind: "property",
-          detail: "your label on screen",
-          info: 'Changes the text under your robot, so you can see what it is thinking. `set name = "hunting"`',
-        },
-        ...variablesIn(source).map((v): Suggestion => ({
-          label: v,
-          kind: "variable",
-          detail: "your variable",
-        })),
-      ];
-    default:
-      break;
-  }
+  // --- what the grammar says can come next ---
+  const path = pathFrom(ctx.inHandler ? "statement" : "topLevel", words);
+  const offered = path ? fromGrammar(path, source, ctx, theme) : null;
 
-  // --- a value is expected ---
-  if (tail !== undefined && EXPECTS_VALUE.has(tail)) {
-    const values = expressionSuggestions(source, ctx.event, theme);
-    if (tail === "fire") {
-      return [
-        { label: "1", kind: "value", detail: "weak, but fast" },
-        { label: "2", kind: "value", detail: "middling" },
-        { label: "3", kind: "value", detail: "strong, but slow" },
-        ...values,
-      ];
-    }
-    return values;
-  }
+  // A value can go where the grammar says one can, and often a word can go
+  // there too — `drive 60` and `drive forward 60` are both real, so both are
+  // offered, words first because they are the shape-specific hint.
+  const values =
+    path?.wantsValue === true
+      ? tail === "fire"
+        ? [
+            { label: "1", kind: "value" as const, detail: "weak, but fast" },
+            { label: "2", kind: "value" as const, detail: "middling" },
+            { label: "3", kind: "value" as const, detail: "strong, but slow" },
+            ...expressionSuggestions(source, ctx.event, theme),
+          ]
+        : expressionSuggestions(source, ctx.event, theme)
+      : [];
 
-  // --- start of a line ---
-  if (words.length === 0) {
-    if (!ctx.inHandler) return [...TOP_LEVEL];
-    return [...actionSuggestions(theme), ...STATEMENTS];
-  }
-
-  return null;
+  const all = [...(offered ?? []), ...values];
+  return all.length > 0 ? all : null;
 }
 
-function byOrTo(toInfo: string, byInfo: string): Suggestion[] {
-  return [
-    { label: "to", kind: "keyword", detail: "a fixed direction", info: toInfo },
-    { label: "by", kind: "keyword", detail: "this many degrees", info: byInfo },
-  ];
-}
-
-function turretMembers(theme: Theme): Suggestion[] {
-  const turret = wordFor("turret", theme);
-  return [
-    {
-      label: "aim",
-      kind: "action",
-      detail: "point at a bearing",
-      info: `\`${turret}.aim at event.bearing\` points the gun at whatever an event just told you about.`,
-    },
-    {
-      label: "turn",
-      kind: "action",
-      detail: "to or by an angle",
-      info: `\`${turret}.turn to 0\` faces a fixed direction; \`${turret}.turn by 10\` nudges it round.`,
-    },
-    {
-      label: "sweep",
-      kind: "action",
-      detail: "search back and forth",
-      info: `\`${turret}.sweep 45\` swings the gun side to side to look for someone, and keeps doing it while you drive.`,
-    },
-  ];
-}
-
-function radarMembers(theme: Theme): Suggestion[] {
-  const radar = wordFor("radar", theme);
-  const ping = wordFor("ping", theme);
-  return [
-    {
-      label: "aim",
-      kind: "action",
-      detail: "point at a bearing",
-      info: `\`${radar}.aim at event.bearing\` points the beam at whatever an event just told you about — useful for keeping a distant target while you drive.`,
-    },
-    {
-      label: "turn",
-      kind: "action",
-      detail: "to or by an angle",
-      info: `\`${radar}.turn to 0\` faces a fixed direction; \`${radar}.turn by 10\` nudges it round.`,
-    },
-    {
-      label: "sweep",
-      kind: "action",
-      detail: "search back and forth",
-      info: `\`${radar}.sweep 60\` swings the beam side to side while you drive. ${ping} as it goes and you will find people long before they are in your cone.`,
-    },
-    {
-      label: ping,
-      kind: "action",
-      detail: "look down the beam now",
-      info: `Same as writing \`${ping}\` on its own.`,
-    },
-  ];
+/** What the popup shows when a function is highlighted. */
+function builtinInfo(shown: string, fn: Builtin): string {
+  const signature = `${shown}(${fn.params.map((p) => p.name).join(", ")})`;
+  const args = fn.params.map((p) => `${p.name} — ${p.detail}`).join("\n");
+  return [signature, "", fn.summary, ...(args ? ["", args] : []), "", fn.example].join("\n");
 }
 
 function propSuggestions(props: readonly PropDoc[], theme: Theme): Suggestion[] {
@@ -851,6 +816,21 @@ function propSuggestions(props: readonly PropDoc[], theme: Theme): Suggestion[] 
     kind: "property" as const,
     detail: renderDoc(p.detail, theme),
   }));
+}
+
+/**
+ * The same properties the popup offers, for a page that lists them all.
+ *
+ * Exported so the reference does not repeat the themed-label rule — that
+ * `health` becomes `vitality` and `turret` becomes whatever the biological
+ * world calls it — which is the kind of small duplication that ends with the
+ * documentation and the editor disagreeing about what a property is called.
+ */
+export function propertyReference(theme: Theme): {
+  me: Suggestion[];
+  arena: Suggestion[];
+} {
+  return { me: propSuggestions(ME_PROPS, theme), arena: propSuggestions(ARENA_PROPS, theme) };
 }
 
 /**
@@ -949,12 +929,18 @@ function expressionSuggestions(
     { label: "arena", kind: "property", detail: "the world around you" },
   );
 
-  for (const name of Object.keys(BUILTIN_SIGNATURES)) {
+  for (const [name, fn] of Object.entries(BUILTINS)) {
+    // `randomInt` reads better than `randomint`, and the language does not care
+    // which you type — but the heading in the popup has to match the label
+    // above it or it looks like a different function.
+    const shown = name === "randomint" ? "randomInt" : name;
     out.push({
-      label: name === "randomint" ? "randomInt" : name,
+      label: shown,
       kind: "function",
-      detail: `${BUILTIN_SIGNATURES[name]} value${BUILTIN_SIGNATURES[name] === 1 ? "" : "s"}`,
-      ...(BUILTIN_DOCS[name] ? { info: BUILTIN_DOCS[name] } : {}),
+      // The shape rather than a count. "4 values" told you nothing about which
+      // four, which for `distance` is the only question worth answering.
+      detail: signatureOf(name).slice(name.length),
+      info: builtinInfo(shown, fn),
     });
   }
 

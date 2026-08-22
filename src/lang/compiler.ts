@@ -46,30 +46,51 @@ const ACTION_ARITY: Readonly<Record<ActionKind, number>> = {
 };
 
 /** Properties a script may read, per object. */
-const ME_PROPS = new Set([
+/**
+ * Properties a script may read, spelled the way they are written.
+ *
+ * Lists rather than sets, because the names are shown to people as well as
+ * checked against. The lexer lowercases before anything gets here, so matching
+ * is done on a lowered copy — but the hint that lists them was printing that
+ * lowered copy, telling somebody who wrote `me.wobble` that they could have
+ * `gunheat` and `pingheat`. Those are not the names: the editor suggests
+ * `gunHeat`, the lessons write `gunHeat`, and only this one error said
+ * otherwise.
+ */
+/**
+ * The properties `me.` and `arena.` offer, in the order they are suggested.
+ *
+ * Exported because the completion popup used to keep its own copy with the
+ * prose attached, and a property that existed in one list and not the other
+ * either never got suggested or got suggested and then refused.
+ */
+export const ME_PROP_NAMES = [
   "x",
   "y",
   "heading",
   "speed",
   "health",
   "turret",
-  "gunheat",
+  "gunHeat",
   "ammo",
   "score",
   "radar",
-  "pingheat",
+  "pingHeat",
   "fuel",
   "aiming",
   "slope",
   "uphill",
   "downhill",
-]);
-const ARENA_PROPS = new Set(["width", "height", "time", "robots"]);
+] as const;
+export const ARENA_PROP_NAMES = ["width", "height", "time", "robots"] as const;
+
+const ME_PROPS = new Set<string>(ME_PROP_NAMES.map((n) => n.toLowerCase()));
+const ARENA_PROPS = new Set<string>(ARENA_PROP_NAMES.map((n) => n.toLowerCase()));
 // `event` has no fixed shape: what it carries depends on which handler you are
 // in, so it is validated against EVENT_DOCS rather than one flat list.
 
 /** Default firing power when a script writes a bare `fire`. */
-const DEFAULT_FIRE_POWER = 2;
+export const DEFAULT_FIRE_POWER = 2;
 
 /**
  * Default ping power when a script writes a bare `ping`.
@@ -820,10 +841,11 @@ class Compiler {
         }
         const valid = e.obj === "me" ? ME_PROPS : ARENA_PROPS;
         if (!valid.has(e.prop.toLowerCase())) {
+          const names = e.obj === "me" ? ME_PROP_NAMES : ARENA_PROP_NAMES;
           throw new RoboScriptError(
             `\`${e.obj}\` doesn't have anything called \`${e.prop}\``,
             e.pos,
-            `${e.obj} has: ${[...valid].join(", ")}`,
+            `${e.obj} has: ${names.join(", ")}`,
           );
         }
         this.emit(Op.LOAD_PROP, this.propIndex({ obj: e.obj, prop: e.prop.toLowerCase() }), e.pos);

@@ -27,6 +27,16 @@ export interface NewsEntry {
 /** Newest first, which is the order they are shown in. */
 export const NEWS: readonly NewsEntry[] = [
   {
+    date: "2026-08-22",
+    title: "A book of the rules",
+    body: "There is a Reference next to Learn now. Learn takes one idea at a time; the Reference is for when you already know what you want and need to look it up \u2014 every word the language has, drawn as a little map of what may follow what, with what each event tells you, what every function takes, and the numbers behind the world: how long a tick is, how far you can see, how much a shot hurts.",
+  },
+  {
+    date: "2026-08-22",
+    title: "The editor shows you the way",
+    body: "Under the Workshop editor there is a strip that follows what you are typing. It names the instruction you are part-way through, says what it is for, and lights up the words that could come next \u2014 and you can click one to type it. It reads the same rules the game uses to run your script, so it can never offer you something that would not work.",
+  },
+  {
     date: "2026-08-21",
     title: "Someone to ask",
     body: "There is a helper in the Workshop now, in a tray that pulls out from the right. Ask it what a word does, what your {robot} does when something happens to it, or for an example you can copy, and it answers out of the lessons. It reads your script and it never changes it \u2014 it shows you what to type and leaves the typing to you. It runs on your own machine, so nothing you write is sent anywhere, and it downloads nothing until you ask it to.",

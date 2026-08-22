@@ -769,6 +769,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                   collab={collab}
                   readOnly={inSession && !editable}
                   onChange={inSession ? () => undefined : updateSource}
+                  guide={editable || !inSession}
                   viewRef={editorViewRef}
                   onDrop={onEditorDrop}
                 />

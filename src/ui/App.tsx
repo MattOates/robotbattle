@@ -23,6 +23,9 @@ const Tournament = lazy(() =>
 );
 const Trade = lazy(() => import("./screens/Trade.js").then((m) => ({ default: m.Trade })));
 const Learn = lazy(() => import("./screens/Learn.js").then((m) => ({ default: m.Learn })));
+const Reference = lazy(() =>
+  import("./screens/Reference.js").then((m) => ({ default: m.Reference })),
+);
 const About = lazy(() => import("./screens/About.js").then((m) => ({ default: m.About })));
 
 /** Screens where the second path segment is a room code rather than a page id. */
@@ -112,6 +115,8 @@ export function App() {
       {route.screen === "learn" ? (
         <Learn theme={profile.theme} lessonId={route.room} />
       ) : null}
+
+      {route.screen === "reference" ? <Reference theme={profile.theme} /> : null}
 
       {route.screen === "about" ? (
         <About

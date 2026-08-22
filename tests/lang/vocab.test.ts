@@ -80,3 +80,9 @@ describe("themed vocabulary", () => {
     expect(bio.result.finalHash).toBe(mech.result.finalHash);
   });
 });
+
+describe("spellings that are not themes", () => {
+  it("accepts `colour` as `color`", () => {
+    expect(parse('name "x"\nchassis tank\ncolour #f80\n').color).toBe("#ff8800");
+  });
+});

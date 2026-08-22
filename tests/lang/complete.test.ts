@@ -159,37 +159,53 @@ end
 });
 
 describe("the action grammar", () => {
-  it("offers directions after drive", () => {
-    expect(at("on tick\n  drive |\nend\n")).toEqual(["forward", "back"]);
+  /**
+   * These come from walking the grammar rather than from a list written here,
+   * which changed three things worth naming.
+   *
+   * They are alphabetical. A curated order needs somebody to place every new
+   * word and is a second thing to keep in step with the language; a predictable
+   * one can be learnt, so after a while you know where to look without reading.
+   *
+   * Where a value is legal as well as a word, the values are offered too —
+   * `drive 60` and `turret.aim 90` are real instructions, and the popup used to
+   * pretend otherwise.
+   *
+   * And `turret.fire` now appears, because it is a real instruction. It was
+   * left out by hand before, which meant the reference documented something the
+   * editor denied.
+   */
+  it("offers directions after drive, and values, since both are allowed", () => {
+    expect(at("on tick\n  drive |\nend\n").slice(0, 2)).toEqual(["back", "forward"]);
   });
 
   it("offers to and by after turn body", () => {
-    expect(at("on tick\n  turn body |\nend\n")).toEqual(["to", "by"]);
+    expect(at("on tick\n  turn body |\nend\n")).toEqual(["by", "to"]);
   });
 
   it("offers the turret's abilities after a dot", () => {
-    expect(at("on tick\n  turret.|\nend\n")).toEqual(["aim", "turn", "sweep"]);
+    expect(at("on tick\n  turret.|\nend\n")).toEqual(["aim", "fire", "sweep", "turn"]);
   });
 
-  it("offers `at` after turret.aim", () => {
-    expect(at("on tick\n  turret.aim |\nend\n")).toEqual(["at"]);
+  it("offers `at` after turret.aim, and the values `at` is optional in front of", () => {
+    expect(at("on tick\n  turret.aim |\nend\n")[0]).toBe("at");
   });
 
   it("offers the radar's abilities after a dot", () => {
-    expect(at("on tick\n  radar.|\nend\n")).toEqual(["aim", "turn", "sweep", "ping"]);
+    expect(at("on tick\n  radar.|\nend\n")).toEqual(["aim", "ping", "sweep", "turn"]);
   });
 
   it("offers the eyespot's abilities in the other world", () => {
     expect(at("on tick\n  eyespot.|\nend\n", "biological")).toEqual([
       "aim",
-      "turn",
-      "sweep",
       "peek",
+      "sweep",
+      "turn",
     ]);
   });
 
   it("offers `at` after radar.aim", () => {
-    expect(at("on tick\n  radar.aim |\nend\n")).toEqual(["at"]);
+    expect(at("on tick\n  radar.aim |\nend\n")[0]).toBe("at");
   });
 
   it("suggests firing powers", () => {
@@ -197,7 +213,7 @@ describe("the action grammar", () => {
   });
 
   it("offers the two chassis kinds", () => {
-    expect(at("chassis |")).toEqual(["tank", "car"]);
+    expect(at("chassis |")).toEqual(["car", "tank"]);
   });
 
   it("offers a colour palette", () => {
@@ -207,7 +223,8 @@ describe("the action grammar", () => {
 
 describe("position awareness", () => {
   it("offers declarations at the top level", () => {
-    expect(at("|")).toEqual(["on", "name", "chassis", "color", "var", "can"]);
+    // Alphabetical, like every other list the grammar drives.
+    expect(at("|")).toEqual(["can", "chassis", "color", "name", "on", "var"]);
   });
 
   it("offers actions inside a handler", () => {
