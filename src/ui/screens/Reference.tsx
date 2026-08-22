@@ -19,7 +19,7 @@ import { Prose } from "../Prose.js";
 import { translate } from "../../learn/translate.js";
 import { EVENT_DOCS, renderDoc } from "../../lang/events.js";
 import { EVENT_NAMES } from "../../lang/ast.js";
-import { BUILTIN_SIGNATURES } from "../../lang/bytecode.js";
+import { BUILTINS, signatureOf } from "../../lang/builtins.js";
 import {
   ruleDoc,
   rulesIn,
@@ -296,16 +296,35 @@ function Values({ theme, doc }: { theme: Theme; doc: (t: string) => string }) {
           )}
         />
       </p>
-      <dl className="ref-fields">
-        {Object.entries(BUILTIN_SIGNATURES).map(([name, arity]) => (
-          <div key={name}>
-            <dt>
-              <code>{`${name}(${arity === 0 ? "" : Array.from({ length: arity }, (_, i) => String.fromCharCode(97 + i)).join(", ")})`}</code>
-            </dt>
-            <dd>{`${arity} value${arity === 1 ? "" : "s"}.`}</dd>
-          </div>
-        ))}
-      </dl>
+      {Object.entries(BUILTINS).map(([name, fn]) => (
+        <article key={name} className="ref-rule">
+          <h4>
+            <code>{signatureOf(name)}</code>
+          </h4>
+          <p>
+            <Prose text={fn.summary} />
+          </p>
+          {fn.params.length > 0 ? (
+            <dl className="ref-fields">
+              {fn.params.map((param) => (
+                <div key={param.name}>
+                  <dt>
+                    <code>{param.name}</code>
+                  </dt>
+                  <dd>
+                    <Prose text={param.detail} />
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="ref-none">Takes nothing — the brackets stay empty.</p>
+          )}
+          <pre className="ref-example">
+            <code>{fn.example}</code>
+          </pre>
+        </article>
+      ))}
     </section>
   );
 }

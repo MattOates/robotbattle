@@ -17,7 +17,7 @@
  */
 
 import { EVENT_NAMES, type EventName } from "./ast.js";
-import { BUILTIN_SIGNATURES } from "./bytecode.js";
+import { BUILTINS, signatureOf, type Builtin } from "./builtins.js";
 import { ARENA_PROP_NAMES, ME_PROP_NAMES } from "./compiler.js";
 import { EVENT_DOCS, eventFields, renderDoc } from "./events.js";
 import { LITERAL, pathFrom, type Path } from "./grammar-path.js";
@@ -117,22 +117,6 @@ const ARENA_PROPS: readonly PropDoc[] = ARENA_PROP_NAMES.map((name) => ({
   name,
   ...ARENA_PROP_DOCS[name],
 }));
-
-const BUILTIN_DOCS: Readonly<Record<string, string>> = {
-  abs: "Makes a number positive. abs(-5) is 5.",
-  min: "The smaller of two numbers.",
-  max: "The larger of two numbers.",
-  random: "A random number between 0 and 1.",
-  randomint: "A random whole number between two values, both included.",
-  sin: "The sine of an angle in degrees.",
-  cos: "The cosine of an angle in degrees.",
-  sqrt: "The square root of a number.",
-  round: "Rounds to the nearest whole number.",
-  floor: "Rounds down to a whole number.",
-  ceil: "Rounds up to a whole number.",
-  distance: "How far apart two points are. distance(x1, y1, x2, y2)",
-  bearing: "The direction from one point to another. bearing(x, y)",
-};
 
 const LITERALS: readonly Suggestion[] = [
   { label: "true", kind: "value", detail: "yes" },
@@ -243,10 +227,12 @@ export function referenceTables(theme: Theme): {
     radar: words("radarMember"),
     me: propSuggestions(ME_PROPS, theme),
     arena: propSuggestions(ARENA_PROPS, theme),
-    builtins: Object.entries(BUILTIN_DOCS).map(([label, detail]) => ({
-      label,
+    // The signature, so the assistant's card says `distance(x1, y1, x2, y2)`
+    // rather than the name on its own and a sentence about it.
+    builtins: Object.entries(BUILTINS).map(([label, fn]) => ({
+      label: signatureOf(label),
       kind: "function" as const,
-      detail,
+      detail: fn.summary,
     })),
     literals: [...LITERALS],
   };
@@ -810,6 +796,13 @@ function suggest(
   return all.length > 0 ? all : null;
 }
 
+/** What the popup shows when a function is highlighted. */
+function builtinInfo(shown: string, fn: Builtin): string {
+  const signature = `${shown}(${fn.params.map((p) => p.name).join(", ")})`;
+  const args = fn.params.map((p) => `${p.name} — ${p.detail}`).join("\n");
+  return [signature, "", fn.summary, ...(args ? ["", args] : []), "", fn.example].join("\n");
+}
+
 function propSuggestions(props: readonly PropDoc[], theme: Theme): Suggestion[] {
   return props.map((p) => ({
     label:
@@ -936,12 +929,18 @@ function expressionSuggestions(
     { label: "arena", kind: "property", detail: "the world around you" },
   );
 
-  for (const name of Object.keys(BUILTIN_SIGNATURES)) {
+  for (const [name, fn] of Object.entries(BUILTINS)) {
+    // `randomInt` reads better than `randomint`, and the language does not care
+    // which you type — but the heading in the popup has to match the label
+    // above it or it looks like a different function.
+    const shown = name === "randomint" ? "randomInt" : name;
     out.push({
-      label: name === "randomint" ? "randomInt" : name,
+      label: shown,
       kind: "function",
-      detail: `${BUILTIN_SIGNATURES[name]} value${BUILTIN_SIGNATURES[name] === 1 ? "" : "s"}`,
-      ...(BUILTIN_DOCS[name] ? { info: BUILTIN_DOCS[name] } : {}),
+      // The shape rather than a count. "4 values" told you nothing about which
+      // four, which for `distance` is the only question worth answering.
+      detail: signatureOf(name).slice(name.length),
+      info: builtinInfo(shown, fn),
     });
   }
 
