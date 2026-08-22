@@ -9,11 +9,19 @@
 
 import { describe, expect, it } from "vitest";
 import { parser } from "../../src/lang/grammar.js";
-import { ANNOTATIONS, ruleDocs, rulesIn, SECTIONS, syntaxLine } from "../../src/lang/reference.js";
+import {
+  ANNOTATIONS,
+  ruleDocs,
+  rulesIn,
+  SECTIONS,
+  syntaxLine,
+  type Syntax,
+} from "../../src/lang/reference.js";
+import { railroad } from "../../src/ui/railroad.js";
 import { EVENT_DOCS } from "../../src/lang/events.js";
 import { EVENT_NAMES } from "../../src/lang/ast.js";
 import { checkScript } from "../../src/sim/world.js";
-import { THEMES, type Theme } from "../../src/lang/vocab.js";
+import { THEMES, wordFor, type Theme } from "../../src/lang/vocab.js";
 
 describe("every rule is accounted for", () => {
   const names = Object.keys(parser.getGAstProductions());
@@ -107,6 +115,43 @@ describe("the syntax lines", () => {
     for (const rule of ruleDocs()) {
       const line = syntaxLine(rule.syntax, theme);
       expect(line, rule.name).not.toBe("");
+    }
+  });
+
+  it("spells the diagram in the same words as the line above it", () => {
+    // The two are generated separately, and disagreeing is worse than either
+    // being wrong alone: the page would show `tank` and `skid` for the same
+    // thing, an inch apart. Only the fixed words are compared — placeholders
+    // and rule labels are descriptions, not things anybody types.
+    const fixed = (s: Syntax): string[] => {
+      switch (s.kind) {
+        case "word":
+          return [s.text];
+        case "placeholder":
+        case "rule":
+          return [];
+        case "sequence":
+        case "choice":
+          return s.of.flatMap(fixed);
+        case "optional":
+          return fixed(s.of);
+        case "repeat":
+          return [...fixed(s.of), ...(s.separator ? fixed(s.separator) : [])];
+      }
+    };
+
+    for (const theme of Object.keys(THEMES) as Theme[]) {
+      for (const rule of ruleDocs()) {
+        const svg = railroad(rule.syntax, theme);
+        const line = syntaxLine(rule.syntax, theme);
+        for (const word of fixed(rule.syntax)) {
+          const spelt = wordFor(word, theme);
+          // `<>` and `<=` reach the SVG escaped, as any text in markup must.
+          const inSvg = spelt.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          expect(svg, `${rule.name} diagram in ${theme}: ${spelt}`).toContain(`>${inSvg}<`);
+          expect(line, `${rule.name} line in ${theme}: ${spelt}`).toContain(spelt);
+        }
+      }
     }
   });
 

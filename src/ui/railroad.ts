@@ -15,6 +15,7 @@
  */
 
 import { labelOf, type Syntax } from "../lang/reference.js";
+import { wordFor, type Theme } from "../lang/vocab.js";
 
 /** Space around and inside things, in SVG units. */
 const PAD = 10;
@@ -42,7 +43,7 @@ function labelWidth(text: string): number {
   return Math.max(BOX + PAD, text.length * CHAR + PAD * 2);
 }
 
-function measure(node: Syntax): Measured {
+function measure(node: Syntax, theme: Theme): Measured {
   const leaf = (width: number): Measured => ({
     node,
     width,
@@ -53,13 +54,14 @@ function measure(node: Syntax): Measured {
 
   switch (node.kind) {
     case "word":
+      return leaf(labelWidth(wordFor(node.text, theme)));
     case "placeholder":
       return leaf(labelWidth(node.text));
     case "rule":
       return leaf(labelWidth(labelOf(node.name)));
 
     case "sequence": {
-      const parts = node.of.map(measure);
+      const parts = node.of.map((part) => measure(part, theme));
       const baseline = Math.max(...parts.map((p) => p.baseline));
       const below = Math.max(...parts.map((p) => p.height - p.baseline));
       return {
@@ -72,7 +74,7 @@ function measure(node: Syntax): Measured {
     }
 
     case "choice": {
-      const parts = node.of.map(measure);
+      const parts = node.of.map((part) => measure(part, theme));
       // Every branch is drawn to the same width so the joins line up, and the
       // through-line stays on the first branch — the one a reader takes if they
       // read the diagram like a sentence.
@@ -83,7 +85,7 @@ function measure(node: Syntax): Measured {
     }
 
     case "optional": {
-      const inner = measure(node.of);
+      const inner = measure(node.of, theme);
       // A bypass line above, so the eye reads "or nothing".
       return {
         node,
@@ -95,8 +97,8 @@ function measure(node: Syntax): Measured {
     }
 
     case "repeat": {
-      const inner = measure(node.of);
-      const extra = node.separator ? measure(node.separator) : undefined;
+      const inner = measure(node.of, theme);
+      const extra = node.separator ? measure(node.separator, theme) : undefined;
       // The return path runs underneath, and carries the separator if there is
       // one — which is exactly what a comma between parameters is.
       const back = Math.max(BOX, extra?.height ?? 0) + LANE;
@@ -164,9 +166,17 @@ function line(out: Bits, x1: number, y1: number, x2: number, y2: number): void {
   out.push(`<path class="rr-line" d="M${x1} ${y1} L${x2} ${y2}"/>`);
 }
 
-function box(out: Bits, m: Measured, x: number, y: number): void {
+function box(out: Bits, m: Measured, x: number, y: number, theme: Theme): void {
   const node = m.node;
-  const text = node.kind === "rule" ? labelOf(node.name) : (node as { text: string }).text;
+  const text =
+    node.kind === "rule"
+      ? labelOf(node.name)
+      : node.kind === "word"
+        ? // A fixed word is spelt in the player's own vocabulary, the same as
+          // the one-line form above it. Without this the line said `tank` and
+          // the diagram under it said `skid`.
+          wordFor(node.text, theme)
+        : (node as { text: string }).text;
   const rounded = node.kind !== "rule";
   const cls =
     node.kind === "word" ? "rr-word" : node.kind === "placeholder" ? "rr-placeholder" : "rr-rule";
@@ -184,7 +194,7 @@ function box(out: Bits, m: Measured, x: number, y: number): void {
   );
 }
 
-function draw(out: Bits, m: Measured, x: number, y: number): void {
+function draw(out: Bits, m: Measured, x: number, y: number, theme: Theme): void {
   const node = m.node;
   const mid = y + m.baseline;
   const right = x + m.width;
@@ -195,7 +205,7 @@ function draw(out: Bits, m: Measured, x: number, y: number): void {
     case "word":
     case "placeholder":
     case "rule":
-      box(out, m, x, mid - BOX / 2);
+      box(out, m, x, mid - BOX / 2, theme);
       return;
 
     case "sequence": {
@@ -205,7 +215,7 @@ function draw(out: Bits, m: Measured, x: number, y: number): void {
           line(out, cursor, mid, cursor + GAP, mid);
           cursor += GAP;
         }
-        draw(out, part, cursor, mid - part.baseline);
+        draw(out, part, cursor, mid - part.baseline, theme);
         cursor += part.width;
       });
       return;
@@ -220,7 +230,7 @@ function draw(out: Bits, m: Measured, x: number, y: number): void {
         // them looked tidier in isolation and read worse: the first word of
         // each choice is what the eye scans down, and centring puts every one
         // of them in a different place.
-        draw(out, part, at, top);
+        draw(out, part, at, top, theme);
         line(out, at + part.width, partMid, at + wide, partMid);
 
         if (i === 0) {
@@ -249,7 +259,7 @@ function draw(out: Bits, m: Measured, x: number, y: number): void {
 
     case "optional": {
       const inner = m.parts[0]!;
-      draw(out, inner, at, mid - inner.baseline);
+      draw(out, inner, at, mid - inner.baseline, theme);
       line(out, x, mid, at, mid);
       line(out, at + inner.width, mid, right, mid);
       // The way past, arching over the top, so the eye reads "or nothing".
@@ -259,7 +269,7 @@ function draw(out: Bits, m: Measured, x: number, y: number): void {
 
     case "repeat": {
       const inner = m.parts[0]!;
-      draw(out, inner, at, mid - inner.baseline);
+      draw(out, inner, at, mid - inner.baseline, theme);
       line(out, x, mid, at, mid);
       line(out, at + inner.width, mid, right, mid);
 
@@ -270,7 +280,7 @@ function draw(out: Bits, m: Measured, x: number, y: number): void {
       if (m.extra) {
         const sep = m.extra;
         const sx = x + (m.width - sep.width) / 2;
-        draw(out, sep, sx, under - sep.baseline);
+        draw(out, sep, sx, under - sep.baseline, theme);
         track(out, [
           [right, mid],
           [right - TURN, mid],
@@ -321,8 +331,8 @@ function bypass(out: Bits, x: number, right: number, mid: number, over: number):
  * path for no benefit. The caller sets it with `dangerouslySetInnerHTML`, which
  * is safe precisely because every word in it came from the grammar.
  */
-export function railroad(syntax: Syntax): string {
-  const m = measure(syntax);
+export function railroad(syntax: Syntax, theme: Theme = "mechanical"): string {
+  const m = measure(syntax, theme);
   const width = m.width + PAD * 2 + 40;
   const height = m.height + PAD * 2;
   const out: Bits = [];
@@ -332,7 +342,7 @@ export function railroad(syntax: Syntax): string {
   // than as a floating box.
   out.push(`<path class="rr-cap" d="M${PAD} ${mid - 6} L${PAD} ${mid + 6}"/>`);
   line(out, PAD, mid, PAD + 20, mid);
-  draw(out, m, PAD + 20, PAD);
+  draw(out, m, PAD + 20, PAD, theme);
   line(out, PAD + 20 + m.width, mid, width - PAD, mid);
   out.push(`<path class="rr-cap" d="M${width - PAD} ${mid - 6} L${width - PAD} ${mid + 6}"/>`);
 

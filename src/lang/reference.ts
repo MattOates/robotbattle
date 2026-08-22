@@ -140,36 +140,36 @@ export const SECTIONS: readonly { name: SectionName; title: string; blurb: strin
     name: "program",
     title: "The shape of a program",
     blurb:
-      "A script is a list of blocks. Nothing runs at the top level — you say what your {robot} is called and what it is made of, and everything else goes inside a block that waits for something to happen.",
+      "A script is a list of blocks. Nothing happens out at the top level: you say what your {robot} is called and what it is built from, and everything else goes inside a block that waits for something to happen.",
   },
   {
     name: "events",
     title: "Events",
     blurb:
-      "An `on` block runs when its event happens, and only then. This is the part of RoboScript most unlike other languages: there is no main loop you write, and no way to make one. `on tick` is as close as it gets, and it runs once per tick and then stops.",
+      "An `on` block runs when its event happens, and only then. Your {robot} does not work through the script from top to bottom. It waits, and things that happen wake up the blocks that match them. `on tick` is the closest thing to doing something all the time: it runs once every tick, then stops until the next one.",
   },
   {
     name: "cadence",
     title: "How often a block runs",
     blurb:
-      "Scheduling belongs to the block, not to control flow. `every`, `after`, `before` and `at` count how many times the event has happened and decide whether this is one of the times the block should run.",
+      "Sometimes you want a block to run now and again rather than every single time. `every`, `after`, `before` and `at` count how many times the event has happened, and let the block run only on the times you pick.",
   },
   {
     name: "statements",
     title: "Instructions",
-    blurb: "What goes inside a block, one per line.",
+    blurb: "What goes inside a block, one instruction to a line.",
   },
   {
     name: "actions",
     title: "Things your {robot} can do",
     blurb:
-      "Actions are the instructions that reach the world. Most cost time or {fuel}, and a block that asks for two contradictory things in one tick gets the last one.",
+      "Actions are the instructions that change something in the arena. Most of them cost time or {fuel}. If a block asks for two different things in the same tick, the last one is the one that happens.",
   },
   {
     name: "values",
     title: "Values",
     blurb:
-      "What you can put where a number goes: literals, variables, what your {robot} can sense about itself and the arena, and arithmetic on those.",
+      "Anywhere a number goes, you can put one of these: a plain number, a variable, something your {robot} can sense about itself or the arena, or a sum made out of them.",
   },
 ];
 
@@ -185,108 +185,101 @@ export const ANNOTATIONS: Readonly<Record<string, Annotation>> = {
   program: {
     label: "script",
     title: "A whole script",
-    summary: "Blank lines are free. Everything else is a declaration or a block.",
+    summary: "Blank lines do not matter. Everything else is either a setting or a block.",
     section: "program",
   },
   topLevel: {
     label: "declaration",
     title: "What goes at the outermost level",
-    summary:
-      "Six things, and no instructions among them. An action written out here has nothing to run it.",
+    summary: "Only these six things can go out here, and none of them are instructions. An instruction on its own out here has nothing to run it.",
     section: "program",
   },
   nameDecl: {
     label: "name",
     title: "name",
-    summary: "The label shown under your {robot}. You can change it mid-match with `set name`.",
+    summary: "The label shown under your {robot}. You can change it during a match with `set name`.",
     section: "program",
     example: 'name "Sparky"',
   },
   chassisDecl: {
     label: "chassis",
     title: "chassis",
-    summary:
-      "`skid` turns on the spot and can drive in any direction at once, but is slower. `steered` is much faster in a straight line and cannot turn at all unless it is already moving.",
+    summary: "There are two to pick from. The first can spin on the spot and set off in any direction, but it is slower. The second is much faster in a straight line, but it steers like a car and cannot turn at all unless it is already moving.",
     section: "program",
     example: "chassis skid",
   },
   colorDecl: {
     label: "colour",
     title: "color",
-    summary:
-      "Six hex characters after the `#`, or three as a shorthand. `colour` is accepted too.",
+    summary: "The colour of your {robot}. Six letters and numbers after the `#`, or three as a shortcut. You can spell it `colour` if you prefer.",
     section: "program",
     example: "color #ff8800",
   },
   varDecl: {
     label: "var",
     title: "var",
-    summary:
-      "Makes a variable. Written at the top level it is remembered between blocks and between ticks; written inside a block it lasts until that block finishes.",
+    summary: "Makes a variable, which is somewhere to remember a number. Out at the top level it lasts the whole match. Inside a block it is forgotten as soon as the block finishes.",
     section: "program",
     example: "var target = 0",
   },
   handler: {
     label: "on block",
     title: "on",
-    summary: "Runs the block when the event happens.",
+    summary: "Runs the instructions inside it whenever that event happens.",
     section: "events",
     example: "on sense robot\n  fire 2\nend",
   },
   routine: {
     label: "can block",
     title: "can",
-    summary:
-      "Teaches your {robot} something it can be told to `do`. With `given`, it can also read `event.` — and if no `on` block claims that event, blocks like it become the handler.",
+    summary: "Gives a set of instructions a name, so you can `do` them from anywhere. Add `given` and the block can read `event.` as well.",
     section: "program",
     example: "can shove with power = 2\n  fire power\nend",
   },
   params: {
     label: "given names",
     title: "What a block is given",
-    summary:
-      "Names, separated by commas. Ones with a starting value have to come last, so leaving them out at a `do` is never ambiguous.",
+    summary: "The names your block wants to be given, separated by commas. Any with a starting value have to come last.",
     section: "program",
   },
   param: { label: "given name",
-    title: "One of them", summary: "A name, and optionally what it is when not supplied.", section: "plumbing" },
+    title: "One of them", summary: "A name, and what to use when nobody gives it one.", section: "plumbing" },
   countClauses: {
     label: "how often",
     title: "every, after, before, at",
-    summary:
-      "Filters on the count of how many times the event has happened. Order carries no meaning. `at` pins the count exactly and goes on its own.",
+    summary: "Counts how many times the event has happened and decides whether to run this time. You can use more than one together. `at` picks one exact time, so it goes on its own.",
     section: "cadence",
     example: "on tick every 30 after 60",
   },
   countValue: {
     label: "count",
     title: "The number",
-    summary: "A plain whole number, 1 or more. It cannot be worked out as you go.",
+    summary: "A whole number, 1 or more. You have to write it in \u2014 it cannot be worked out while the match is running.",
     section: "cadence",
   },
   eventName: { label: "event",
-    title: "The event", summary: "One to three words naming what happened.", section: "events" },
+    title: "The event", summary: "Which event the block is for.", section: "events" },
   eventWord: { label: "event word",
     title: "One word of it", summary: "", section: "plumbing" },
   block: { label: "instructions",
-    title: "A block's contents", summary: "Instructions, one per line.", section: "plumbing" },
+    title: "A block's contents", summary: "The instructions inside a block, one to a line.", section: "plumbing" },
   statement: {
     label: "instruction",
     title: "One instruction",
-    summary: "Everything that can go on a line inside a block.",
+    summary: "Everything you can put on a line inside a block.",
     section: "statements",
   },
   setStmt: {
     label: "set",
     title: "set",
-    summary: "Changes a variable that already exists. `set name` changes your label.",
+    summary: "Changes a variable you already made. `set name` changes your label.",
     section: "statements",
     example: "set target = event.bearing",
   },
   ifStmt: {
     label: "if",
     title: "if",
-    summary: "Runs the block only when the condition is true. `then` is optional decoration.",
+    summary: "Runs the instructions only if the test is true. You can write `then` if it reads better.",
     section: "statements",
     example: "if me.health < 30\n  drive back 60\nend",
   },
@@ -295,72 +288,68 @@ export const ANNOTATIONS: Readonly<Record<string, Annotation>> = {
   loopStmt: {
     label: "loop",
     title: "loop",
-    summary:
-      "Repeats until something breaks out. It does not span ticks — a loop with no `break` costs your {robot} the rest of its thinking time.",
+    summary: "Goes round and round until something breaks out of it. It all happens inside one tick, so a loop with no `break` uses up your thinking time.",
     section: "statements",
     example: "loop\n  break if me.gunHeat is 0\nend",
   },
   forStmt: {
     label: "for",
     title: "for",
-    summary: "Counts from one number up to another, inclusive.",
+    summary: "Counts from one number up to another, including both ends.",
     section: "statements",
     example: "for i = 1 to 4\n  turret.sweep 90\nend",
   },
   repeatStmt: {
     label: "repeat",
     title: "repeat",
-    summary: "Runs the block a fixed number of times. `times` is optional decoration.",
+    summary: "Does the same thing a set number of times. You can write `times` if it reads better.",
     section: "statements",
     example: "repeat 3 times\n  fire 1\nend",
   },
   breakStmt: {
     label: "break",
     title: "break",
-    summary: "Leaves the loop. `break if` leaves it only when the condition holds.",
+    summary: "Leaves the loop. `break if` only leaves when the test is true.",
     section: "statements",
     example: "break if me.speed is 0",
   },
   continueStmt: {
     label: "continue",
     title: "continue",
-    summary: "Skips the rest of this time round the loop and starts the next.",
+    summary: "Skips the rest of this time round the loop and starts the next one.",
     section: "statements",
   },
   waitStmt: {
     label: "wait",
     title: "wait",
-    summary:
-      "Stops here and carries on in the next tick. The only instruction that spans ticks, and the reason a block can be written as a sequence at all.",
+    summary: "Stops here and carries on in a later tick. It is the only instruction that waits.",
     section: "statements",
     example: "wait 15 ticks",
   },
   doStmt: {
     label: "do",
     title: "do",
-    summary: "Runs a `can` block, optionally giving it values.",
+    summary: "Runs a `can` block, giving it any values it asks for.",
     section: "statements",
     example: "do shove with 3",
   },
   action: {
     label: "action",
     title: "An action",
-    summary: "The instructions that reach the world rather than the script.",
+    summary: "The instructions that make your {robot} actually do something.",
     section: "actions",
   },
   driveStmt: {
     label: "drive",
     title: "drive",
-    summary:
-      "Sets how hard to push, from -100 to 100. `back` is the same as a negative amount. `stop` is `drive 0`.",
+    summary: "How hard to push, from -100 to 100. `back` is the same as a minus number, and `stop` is the same as 0.",
     section: "actions",
     example: "drive forward 80",
   },
   turnStmt: {
     label: "turn",
     title: "turn",
-    summary:
-      "`to` is a compass heading; `by` is a number of degrees from where you are now. Both are requests — how fast you actually turn depends on the chassis and the ground.",
+    summary: "`to` turns to a compass direction. `by` turns that many degrees from wherever you are now. Turning takes time, and rough ground slows it down.",
     section: "actions",
     example: "turn to 90",
   },
@@ -369,69 +358,66 @@ export const ANNOTATIONS: Readonly<Record<string, Annotation>> = {
   turretStmt: {
     label: "turret",
     title: "turret",
-    summary: "Points the {turret}. `at` is optional decoration on `aim`.",
+    summary: "Points the {turret}. You can write `at` after `aim` if it reads better.",
     section: "actions",
     example: "turret.aim at event.bearing",
   },
   turretMember: {
     label: "turret action",
     title: "What a {turret} can do",
-    summary:
-      "`turn` moves it relative to the body, `aim` points it at a heading regardless of which way you are facing, `sweep` swings it by an amount.",
+    summary: "`turn` moves it round from where your body is pointing. `aim` points it at a compass direction whichever way you are facing. `sweep` swings it by an amount.",
     section: "actions",
   },
   radarStmt: {
     label: "radar",
     title: "radar",
-    summary: "Points the {radar}, or {ping}s with it.",
+    summary: "Points the {radar}, or sends a {ping} with it.",
     section: "actions",
     example: "radar.sweep 45",
   },
   radarMember: {
     label: "radar action",
     title: "What a {radar} can do",
-    summary: "The same three as the {turret}, plus `ping`.",
+    summary: "The same three as the {turret}, and `ping` as well.",
     section: "actions",
   },
   fireStmt: {
     label: "fire",
     title: "fire",
-    summary:
-      "Power from 1 to 3, defaulting to 2. More power does more damage, travels slower and heats the gun for longer.",
+    summary: "Fires a shot. The power is 1, 2 or 3, and it is 2 if you do not say.",
     section: "actions",
     example: "fire 3",
   },
   pingStmt: {
     label: "ping",
     title: "ping",
-    summary:
-      "Sends a pulse and reports what it hits as `on ping`. Everyone else can hear that you did it.",
+    summary: "Sends out a pulse. Whatever it finds comes back to you as `on ping`. Everyone else can hear it too.",
     section: "actions",
     example: "ping",
   },
   expr: { label: "value",
     title: "A value", summary: "Anything that works out to a number.", section: "values" },
   orExpr: { label: "or",
-    title: "or", summary: "True when either side is.", section: "values" },
+    title: "or", summary: "True if either side is true.", section: "values" },
   andExpr: { label: "and",
-    title: "and", summary: "True when both sides are.", section: "values" },
+    title: "and", summary: "True only if both sides are true.", section: "values" },
   notExpr: { label: "not",
-    title: "not", summary: "Turns true into false and back.", section: "values" },
+    title: "not", summary: "Swaps true for false, and false for true.", section: "values" },
   compareExpr: {
     label: "comparison",
     title: "Comparisons",
-    summary: "`is` and `=` mean the same thing. `isnt` and `is not` are both the opposite.",
+    summary: "`is` and `=` mean the same thing. So do `isnt` and `is not`.",
     section: "values",
     example: "me.fuel < 20",
   },
   compareOp: { label: "compare with",
     title: "The comparison", summary: "", section: "plumbing" },
   addExpr: { label: "sum",
-    title: "+ and -", summary: "Added left to right.", section: "values" },
+    title: "+ and -", summary: "Worked out from left to right.", section: "values" },
   mulExpr: {
     label: "product",
     title: "*, / and mod",
-    summary: "Bound tighter than `+` and `-`. `mod` is the remainder after dividing.",
+    summary: "These happen before `+` and `-`. `mod` is the remainder left over after dividing.",
     section: "values",
   },
   unaryExpr: { label: "negation",
@@ -439,14 +425,13 @@ export const ANNOTATIONS: Readonly<Record<string, Annotation>> = {
   primary: {
     label: "simple value",
     title: "The smallest values",
-    summary: "Numbers, text, colours, true and false, brackets, and everything below.",
+    summary: "Numbers, words in quotes, colours, `true` and `false`, brackets, and everything below.",
     section: "values",
   },
   propRef: {
     label: "sensed value",
     title: "me, arena and event",
-    summary:
-      "What your {robot} can sense. `me.` is always available, `arena.` is the match, and `event.` only exists inside a block that has an event and carries different fields depending on which.",
+    summary: "What your {robot} can tell about itself and about the match. `me.` always works. `arena.` is about the match. `event.` only works inside a block that has an event, and carries different things depending on which event it is.",
     section: "values",
     example: "me.heading",
   },
@@ -581,33 +566,33 @@ export function simulationFacts(theme: Theme): FactGroup[] {
     {
       title: "Time",
       blurb:
-        "Everything happens on a tick. Your blocks run once each tick, in the order the events came in, and whatever they set takes effect when they finish.",
+        "Everything in the arena happens on a tick. Each tick, your blocks run in the order the events arrived, and whatever they decide takes effect once they have all finished.",
       facts: [
         {
           label: "Ticks per second",
           value: String(TICK_RATE),
-          note: `So \`wait ${TICK_RATE / 2} ticks\` is half a second.`,
+          note: `So \`wait ${TICK_RATE / 2} ticks\` waits half a second.`,
         },
         {
           label: "Thinking time",
           value: `${OPS_PER_TICK} steps a tick`,
-          note: "Thinking is free and the same for everybody, but it is not unlimited: a loop with no way out costs you the rest of the tick.",
+          note: "Thinking is free, and everybody gets the same amount. It is not unlimited though: a loop that never finishes uses up the whole tick, and your {robot} gets nothing else done before the next one.",
         },
       ],
     },
     {
       title: "The arena",
-      blurb: "The same size every match, with walls that hurt to hit.",
+      blurb: "Every match uses the same arena. The walls hurt if you drive into them.",
       facts: [
         {
           label: "Size",
           value: `${ARENA_SIZE.width} × ${ARENA_SIZE.height}`,
-          note: "`arena.width` and `arena.height` say so, so a script never has to hard-code it.",
+          note: "`arena.width` and `arena.height` tell you, so you never have to type the numbers into your script.",
         },
         {
           label: `Your ${w("chassis")}`,
           value: `${ROBOT_RADIUS * 2} across`,
-          note: "The same circle for both chassis, so neither is a smaller target.",
+          note: "Both chassis are exactly the same size, so neither one is harder to hit.",
         },
         {
           label: `Starting ${w("health")}`,
@@ -618,53 +603,53 @@ export function simulationFacts(theme: Theme): FactGroup[] {
     },
     {
       title: "Seeing",
-      blurb: `Two instruments, deliberately different rather than one better than the other. The cone is always on; the ${w("radar")} only looks where you point it.`,
+      blurb: `You have two ways of finding other {robots}, and they are good at different things. The cone is always watching. The ${w("radar")} only looks where you point it.`,
       facts: [
         {
           label: "Sense cone",
           value: `${SENSE.halfAngle * 2}° wide, ${SENSE.range} far`,
-          note: "Always on, costs nothing, and fires `on sense` by itself.",
+          note: "It works by itself and costs nothing. When something comes into it, your `on sense` block runs.",
         },
         {
           label: `${w("radar")} beam`,
           value: `${RADAR.halfAngle * 2}° wide, ${RADAR.range} far`,
-          note: `Three times the reach and a fifth of the width — it finds things far outside the cone, but only exactly where it is pointed.`,
+          note: `Three times as far as the cone and a fifth as wide, so it finds things much further away, but only exactly where you aim it.`,
         },
         {
           label: `${w("ping")} cooldown`,
           value: `${RADAR.cooldown} ticks`,
-          note: "`me.pingHeat` counts down to 0. Everyone else can hear that you pinged.",
+          note: "`me.pingHeat` counts down to 0, and you can go again when it gets there. Everyone else can hear you do it.",
         },
         {
           label: `${w("radar")} slew`,
           value: `${RADAR.slewRate}°/s`,
-          note: "Pointing it is not instant, so aim early.",
+          note: "It takes time to swing round, so point it before you need it.",
         },
       ],
     },
     {
       title: "Shooting",
-      blurb: "Power trades damage against speed, and heat against how soon you can fire again.",
+      blurb: "A stronger shot hurts more, but it travels more slowly and the gun takes longer to cool down afterwards.",
       facts: [
         {
           label: "Power",
           value: `${TURRET.minPower} to ${TURRET.maxPower}`,
-          note: `A bare \`${w("fire")}\` means ${DEFAULT_FIRE_POWER}.`,
+          note: `A bare \`${w("fire")}\` on its own means ${DEFAULT_FIRE_POWER}.`,
         },
         {
           label: "Damage",
           value: `${BULLET.damagePerPower} per power`,
-          note: `So a full-power shot takes ${BULLET.damagePerPower * TURRET.maxPower} off ${MAX_HEALTH}.`,
+          note: `A full power shot takes ${BULLET.damagePerPower * TURRET.maxPower} off ${MAX_HEALTH}.`,
         },
         {
           label: "Speed",
           value: `${BULLET.baseSpeed} less ${BULLET.speedPerPower} per power`,
-          note: "Stronger shots are slower, so they are easier to drive out of the way of.",
+          note: "Stronger shots are slower, which makes them easier to drive out of the way of.",
         },
         {
           label: `${w("turret")} slew`,
           value: `${TURRET.slewRate}°/s`,
-          note: "A committed shot waits for the gun to come round to where you aimed it — that is what `me.aiming` is telling you.",
+          note: "When you fire, the shot waits until the gun has turned to where you aimed it. `me.aiming` is 1 for as long as it is waiting.",
         },
       ],
     },
@@ -672,17 +657,17 @@ export function simulationFacts(theme: Theme): FactGroup[] {
       // Capitalised here because the word comes from the vocabulary, where it
       // is a word in a sentence rather than a heading.
       title: capitalise(w("fuel")),
-      blurb: `Only actuated work costs ${w("fuel")}: driving, turning, slewing, ${w("fire")} and ${w("ping")}. Thinking is free.`,
+      blurb: `Moving, turning, ${w("fire")} and ${w("ping")} all use ${w("fuel")}. Thinking and watching are free.`,
       facts: [
         {
           label: "Tank",
           value: String(MAX_FUEL),
-          note: `\`me.${w("fuel")}\` reads it. Driving over ${w("fuel")} refills it.`,
+          note: `\`me.${w("fuel")}\` tells you how much is left. Driving over ${w("fuel")} refills it.`,
         },
         {
           label: "At empty",
           value: `${Math.round(FUEL.floorFactor * 100)}% of normal`,
-          note: "Running dry is a brownout, never a death — you are slow, not finished.",
+          note: "Running out will not finish you off. You just get very slow until you find some more.",
         },
       ],
     },

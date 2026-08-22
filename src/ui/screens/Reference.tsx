@@ -58,11 +58,16 @@ function Prose({ text }: { text: string }) {
 /** The page's own sections, including the ones that are not grammar. */
 type Tab = "syntax" | "events" | "values" | "world";
 
+/**
+ * Outermost first. Somebody arriving here wants to know what the world does
+ * before what the words are: the arena and its numbers, then what your {robot}
+ * gets told about, then how to say something about it, then what can be said.
+ */
 const TABS: readonly { id: Tab; label: string }[] = [
-  { id: "syntax", label: "Syntax" },
-  { id: "events", label: "Events" },
-  { id: "values", label: "Values" },
   { id: "world", label: "The world" },
+  { id: "events", label: "Events" },
+  { id: "syntax", label: "Syntax" },
+  { id: "values", label: "Values" },
 ];
 
 /** Which tab a rule's section is shown on. */
@@ -73,7 +78,7 @@ function tabFor(section: string): Tab {
 }
 
 export function Reference({ theme }: Props) {
-  const [tab, setTab] = useState<Tab>("syntax");
+  const [tab, setTab] = useState<Tab>(TABS[0]!.id);
   const [wanted, setWanted] = useState<string | null>(null);
   const doc = (text: string) => renderDoc(text, theme);
 
@@ -129,7 +134,7 @@ export function Reference({ theme }: Props) {
         </button>
         <h2 className="screen-title">Reference</h2>
         <span className="spacer" />
-        <span className="roster-meta">Read out of the parser itself</span>
+        <span className="roster-meta">Look anything up</span>
       </header>
 
       <nav className="ref-tabs" aria-label="Reference sections">
@@ -187,7 +192,7 @@ function Syntax({ theme }: { theme: Theme }) {
  * repeat, which is exactly what a line of brackets is worst at.
  */
 function Rule({ rule, theme }: { rule: RuleDoc; theme: Theme }) {
-  const svg = useMemo(() => railroad(rule.syntax), [rule.syntax]);
+  const svg = useMemo(() => railroad(rule.syntax, theme), [rule.syntax, theme]);
   return (
     <article className="ref-rule" id={`rule-${rule.name}`}>
       <h3>{renderDoc(rule.title, theme)}</h3>
@@ -218,9 +223,14 @@ function Events({ theme, doc }: { theme: Theme; doc: (t: string) => string }) {
 
       <h3>Every event</h3>
       <p>
-        Inside a block, <code>event.</code> carries whatever that event knows.
-        The fields differ, which is why asking for one the event has not got is
-        refused when the script is compiled rather than quietly read as 0.
+        <Prose
+          text={doc(
+            "Inside a block, `event.` tells you about the thing that just happened. " +
+              "Different events know different things, so asking one for something it " +
+              "has not got is a mistake — and your {robot} will point it out before the " +
+              "match starts, rather than quietly using 0.",
+          )}
+        />
       </p>
       {[...EVENT_NAMES].map((name) => {
         const info = EVENT_DOCS[name];
@@ -243,7 +253,8 @@ function Events({ theme, doc }: { theme: Theme; doc: (t: string) => string }) {
               </dl>
             ) : (
               <p className="ref-none">
-                Carries nothing — there is no <code>event.</code> to read here.
+                This event does not bring anything with it, so there is no{" "}
+                <code>event.</code> to read.
               </p>
             )}
           </article>
@@ -297,9 +308,12 @@ function Values({ theme, doc }: { theme: Theme; doc: (t: string) => string }) {
 
       <h3>Functions</h3>
       <p>
-        The complete list. Anything else with brackets after it is refused, with
-        these named — so a misspelling is caught rather than treated as a
-        variable.
+        <Prose
+          text={doc(
+            "These are all the functions there are. If you use a name that is not on " +
+              "this list, your {robot} will not start, and it will show you this list.",
+          )}
+        />
       </p>
       <dl className="ref-fields">
         {Object.entries(BUILTIN_SIGNATURES).map(([name, arity]) => (
@@ -323,9 +337,9 @@ function World({ theme, doc }: { theme: Theme; doc: (t: string) => string }) {
     <section className="ref-section">
       <h2>How the world works</h2>
       <p>
-        The language says what you can ask for. These say what happens when you
-        do — read out of the simulation's own constants, so tuning the balance
-        rewrites this page rather than dating it.
+        Your instructions say what you would like to happen. This page is what
+        actually happens: how fast time goes, how far you can see, and how much
+        a shot hurts.
       </p>
       {groups.map((group) => (
         <article key={group.title} className="ref-facts">
