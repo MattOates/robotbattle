@@ -431,11 +431,17 @@ export function lineWordsAt(
  * inside a handler or a `can` block a line is an instruction, and out at the
  * top level it is a declaration.
  */
-export function pathAt(source: string, pos: number): Path | null {
+export function pathAt(source: string, pos: number): (Path & { from: number }) | null {
   const here = lineWordsAt(source, pos);
   if (!here) return null;
   const start = contextAt(source, pos).inHandler ? "statement" : "topLevel";
-  return pathFrom(start, here.words);
+  const path = pathFrom(start, here.words);
+  // `from` is where the word under the cursor begins, or the cursor itself when
+  // there is no part-written word there. Anything typing one of these words for
+  // the reader has to replace from there rather than insert at the cursor: the
+  // words offered when you are part-way through `chas` are alternatives to it,
+  // not things that follow it.
+  return path ? { ...path, from: here.from } : null;
 }
 
 export function completeAt(source: string, pos: number, theme: Theme): CompletionResult | null {

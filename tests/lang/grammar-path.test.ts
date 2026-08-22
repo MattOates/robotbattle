@@ -11,6 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 import { LITERAL, pathFrom } from "../../src/lang/grammar-path.js";
+import { pathAt } from "../../src/lang/complete.js";
 import { checkScript } from "../../src/sim/world.js";
 
 /** `pathFrom` on a statement, from words written the way the scanner does. */
@@ -180,4 +181,40 @@ describe("everything it offers actually compiles", () => {
       }
     },
   );
+});
+
+describe("where a word the reader picks should go", () => {
+  /**
+   * The guide and the popup both offer words, and both have to replace the word
+   * being typed rather than add to it. Half-way through `chas` the words offered
+   * are alternatives to it, so inserting at the cursor leaves `chaschassis` —
+   * and it is `pathAt` that decided `chas` was unfinished in the first place.
+   */
+  const H = 'name "x"\nchassis tank\n';
+
+  it("points at the start of a part-written word", () => {
+    const src = `${H}on tick\n  tur`;
+    expect(pathAt(src, src.length)?.from).toBe(src.length - 3);
+  });
+
+  it("points at the cursor when there is no word under it", () => {
+    const src = `${H}on tick\n  turn `;
+    expect(pathAt(src, src.length)?.from).toBe(src.length);
+  });
+
+  it("treats a finished word with no space after it as still being typed", () => {
+    // Which is why replacing matters: `turn chassis` with the cursor at the end
+    // offers `chassis` itself among the alternatives.
+    const src = `${H}on tick\n  turn chassis`;
+    const path = pathAt(src, src.length)!;
+    expect(path.from).toBe(src.length - "chassis".length);
+    expect(path.words).toContain("chassis");
+  });
+
+  it("has committed the word once a space follows it", () => {
+    const src = `${H}on tick\n  turn chassis `;
+    const path = pathAt(src, src.length)!;
+    expect(path.from).toBe(src.length);
+    expect(path.words.sort()).toEqual(["by", "to"]);
+  });
 });

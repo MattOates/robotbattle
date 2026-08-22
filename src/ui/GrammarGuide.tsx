@@ -70,16 +70,24 @@ export function GrammarGuide({ source, pos, theme, viewRef, open, onOpen }: Prop
 
   const type = (word: string) => {
     const view = viewRef.current;
-    if (!view) return;
+    if (!view || !path) return;
     const spaced = completionKeepsGoing(word) ? `${word} ` : word;
     const at = view.state.selection.main.head;
-    // A space in front unless the line already ends in one, so clicking two
-    // words in a row does not produce `turnto`.
-    const before = view.state.sliceDoc(Math.max(0, at - 1), at);
-    const lead = at > 0 && before !== " " && before !== "\n" ? " " : "";
+
+    // Replace from the start of the word being typed, not from the cursor.
+    // Half-way through `chas` the words offered are alternatives to it, so
+    // inserting would leave `chaschassis` — and the guide is the thing that
+    // decided `chas` was unfinished in the first place.
+    const from = Math.min(path.from, at);
+
+    // A space in front unless there is already one, so clicking two words in a
+    // row does not produce `turnto`.
+    const before = view.state.sliceDoc(Math.max(0, from - 1), from);
+    const lead = from > 0 && before !== " " && before !== "\n" ? " " : "";
+
     view.dispatch({
-      changes: { from: at, insert: lead + spaced },
-      selection: { anchor: at + lead.length + spaced.length },
+      changes: { from, to: at, insert: lead + spaced },
+      selection: { anchor: from + lead.length + spaced.length },
     });
     view.focus();
   };
