@@ -122,15 +122,46 @@ type Bits = string[];
 const esc = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-function line(out: Bits, x1: number, y1: number, x2: number, y2: number): void {
-  out.push(`<path class="rr-line" d="M${x1} ${y1} L${x2} ${y2}"/>`);
+/**
+ * A run of track through a list of waypoints, with its own rounded corners.
+ *
+ * Every segment is horizontal or vertical, so a corner is always a quarter
+ * turn, and the radius shrinks to fit whichever of the two segments is shorter.
+ * Placing the straights and the curves separately — which is how this was
+ * written first — means every joint is an arithmetic claim that the two ends
+ * meet, and the diagrams were full of the places where they did not.
+ */
+function track(out: Bits, points: readonly [number, number][]): void {
+  if (points.length < 2) return;
+
+  const parts: string[] = [`M${points[0]![0]} ${points[0]![1]}`];
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const [px, py] = points[i - 1]!;
+    const [cx, cy] = points[i]!;
+    const [nx, ny] = points[i + 1]!;
+
+    const inLen = Math.hypot(cx - px, cy - py);
+    const outLen = Math.hypot(nx - cx, ny - cy);
+    const r = Math.min(TURN, inLen / 2, outLen / 2);
+
+    // Stop short of the corner, curve through it, carry on.
+    const ax = cx - Math.sign(cx - px) * r;
+    const ay = cy - Math.sign(cy - py) * r;
+    const bx = cx + Math.sign(nx - cx) * r;
+    const by = cy + Math.sign(ny - cy) * r;
+
+    parts.push(`L${ax} ${ay}`, `Q${cx} ${cy} ${bx} ${by}`);
+  }
+
+  const last = points[points.length - 1]!;
+  parts.push(`L${last[0]} ${last[1]}`);
+  out.push(`<path class="rr-line" d="${parts.join(" ")}"/>`);
 }
 
-/** A quarter-circle corner, used everywhere a track changes direction. */
-function corner(out: Bits, x: number, y: number, dx: number, dy: number): void {
-  out.push(
-    `<path class="rr-line" d="M${x} ${y} Q${x + dx} ${y} ${x + dx} ${y + dy}"/>`,
-  );
+/** A straight run, which is just a track with two points. */
+function line(out: Bits, x1: number, y1: number, x2: number, y2: number): void {
+  out.push(`<path class="rr-line" d="M${x1} ${y1} L${x2} ${y2}"/>`);
 }
 
 function box(out: Bits, m: Measured, x: number, y: number): void {
@@ -156,6 +187,9 @@ function box(out: Bits, m: Measured, x: number, y: number): void {
 function draw(out: Bits, m: Measured, x: number, y: number): void {
   const node = m.node;
   const mid = y + m.baseline;
+  const right = x + m.width;
+  /** Where an inner box sits, leaving room for the tracks either side of it. */
+  const at = x + TURN * 2;
 
   switch (node.kind) {
     case "word":
@@ -165,42 +199,48 @@ function draw(out: Bits, m: Measured, x: number, y: number): void {
       return;
 
     case "sequence": {
-      let at = x;
+      let cursor = x;
       m.parts.forEach((part, i) => {
         if (i > 0) {
-          line(out, at, mid, at + GAP, mid);
-          at += GAP;
+          line(out, cursor, mid, cursor + GAP, mid);
+          cursor += GAP;
         }
-        draw(out, part, at, mid - part.baseline);
-        at += part.width;
+        draw(out, part, cursor, mid - part.baseline);
+        cursor += part.width;
       });
       return;
     }
 
     case "choice": {
-      const right = x + m.width;
+      const wide = Math.max(...m.parts.map((p) => p.width));
       let top = y;
       m.parts.forEach((part, i) => {
-        const inner = x + TURN * 2;
         const partMid = top + part.baseline;
-        const wide = Math.max(...m.parts.map((p) => p.width));
-        const offset = inner + (wide - part.width) / 2;
-        draw(out, part, offset, top);
-        line(out, inner, partMid, offset, partMid);
-        line(out, offset + part.width, partMid, inner + wide, partMid);
+        // Branches start at the same x and are padded on the right. Centring
+        // them looked tidier in isolation and read worse: the first word of
+        // each choice is what the eye scans down, and centring puts every one
+        // of them in a different place.
+        draw(out, part, at, top);
+        line(out, at + part.width, partMid, at + wide, partMid);
+
         if (i === 0) {
-          // The first branch is the straight-through one.
-          line(out, x, mid, inner, mid);
-          line(out, inner + wide, mid, right, mid);
+          // The first branch is the one the through-line runs along.
+          line(out, x, mid, at, mid);
+          line(out, at + wide, mid, right, mid);
         } else {
-          // Everything else drops off the main line and comes back to it.
-          corner(out, x, mid, TURN, TURN);
-          line(out, x + TURN, mid + TURN, x + TURN, partMid - TURN);
-          corner(out, x + TURN, partMid - TURN, TURN, TURN);
-          corner(out, right - TURN, partMid, TURN, -TURN);
-          line(out, right, partMid - TURN, right, mid + TURN);
-          corner(out, right - TURN, mid + TURN, TURN, -TURN);
-          line(out, x + TURN * 2, partMid, inner, partMid);
+          // The rest drop off the main line and come back to it.
+          track(out, [
+            [x, mid],
+            [x + TURN, mid],
+            [x + TURN, partMid],
+            [at, partMid],
+          ]);
+          track(out, [
+            [at + wide, partMid],
+            [right - TURN, partMid],
+            [right - TURN, mid],
+            [right, mid],
+          ]);
         }
         top += part.height + LANE;
       });
@@ -209,74 +249,68 @@ function draw(out: Bits, m: Measured, x: number, y: number): void {
 
     case "optional": {
       const inner = m.parts[0]!;
-      const right = x + m.width;
-      const at = x + TURN * 2;
       draw(out, inner, at, mid - inner.baseline);
       line(out, x, mid, at, mid);
       line(out, at + inner.width, mid, right, mid);
-      // The bypass, arching over the top.
-      const over = y + BOX / 2;
-      corner(out, x, mid, TURN, -TURN);
-      line(out, x + TURN, mid - TURN, x + TURN, over + TURN);
-      corner(out, x + TURN, over + TURN, TURN, -TURN);
-      line(out, x + TURN * 2, over, right - TURN * 2, over);
-      out.push(
-        `<path class="rr-line" d="M${right - TURN * 2} ${over} Q${right - TURN} ${over} ${
-          right - TURN
-        } ${over + TURN}"/>`,
-      );
-      line(out, right - TURN, over + TURN, right - TURN, mid - TURN);
-      out.push(
-        `<path class="rr-line" d="M${right - TURN} ${mid - TURN} Q${right - TURN} ${mid} ${right} ${mid}"/>`,
-      );
+      // The way past, arching over the top, so the eye reads "or nothing".
+      bypass(out, x, right, mid, y + BOX / 2);
       return;
     }
 
     case "repeat": {
       const inner = m.parts[0]!;
-      const right = x + m.width;
-      const at = x + TURN * 2;
       draw(out, inner, at, mid - inner.baseline);
       line(out, x, mid, at, mid);
       line(out, at + inner.width, mid, right, mid);
 
-      // The way back round, underneath, with the separator on it if there is
-      // one — `a , b , c` is one item and a comma, going round twice.
-      const under = mid + inner.height - inner.baseline + LANE + BOX / 2;
-      corner(out, right, mid, -TURN, TURN);
-      line(out, right - TURN, mid + TURN, right - TURN, under - TURN);
-      corner(out, right - TURN, under - TURN, -TURN, TURN);
-      corner(out, x + TURN, under, -TURN, -TURN);
-      line(out, x + TURN, under - TURN, x + TURN, mid + TURN);
-      corner(out, x + TURN, mid + TURN, -TURN, -TURN);
+      // The way back round, underneath. If there is a separator it sits on that
+      // return path, which is exactly what a comma between parameters is: the
+      // thing you pass through on your way to going round again.
+      const under = mid + (inner.height - inner.baseline) + LANE + BOX / 2;
       if (m.extra) {
         const sep = m.extra;
         const sx = x + (m.width - sep.width) / 2;
         draw(out, sep, sx, under - sep.baseline);
-        line(out, x + TURN * 2, under, sx, under);
-        line(out, sx + sep.width, under, right - TURN * 2, under);
+        track(out, [
+          [right, mid],
+          [right - TURN, mid],
+          [right - TURN, under],
+          [sx + sep.width, under],
+        ]);
+        track(out, [
+          [sx, under],
+          [x + TURN, under],
+          [x + TURN, mid],
+          [x, mid],
+        ]);
       } else {
-        line(out, x + TURN * 2, under, right - TURN * 2, under);
+        track(out, [
+          [right, mid],
+          [right - TURN, mid],
+          [right - TURN, under],
+          [x + TURN, under],
+          [x + TURN, mid],
+          [x, mid],
+        ]);
       }
 
-      if (node.least === 0) {
-        // None will do, so there is a way past the whole thing as well.
-        const over = y + BOX / 2;
-        line(out, x + TURN, mid - TURN, x + TURN, over + TURN);
-        corner(out, x + TURN, over + TURN, TURN, -TURN);
-        line(out, x + TURN * 2, over, right - TURN * 2, over);
-        line(out, right - TURN, over + TURN, right - TURN, mid - TURN);
-        out.push(
-          `<path class="rr-line" d="M${x} ${mid} Q${x + TURN} ${mid} ${x + TURN} ${mid - TURN}"/>`,
-          `<path class="rr-line" d="M${right - TURN * 2} ${over} Q${right - TURN} ${over} ${
-            right - TURN
-          } ${over + TURN}"/>`,
-          `<path class="rr-line" d="M${right - TURN} ${mid - TURN} Q${right - TURN} ${mid} ${right} ${mid}"/>`,
-        );
-      }
+      // None will do, so there is also a way past the whole thing.
+      if (node.least === 0) bypass(out, x, right, mid, y + BOX / 2);
       return;
     }
   }
+}
+
+/** The arch over the top that skips whatever is on the main line. */
+function bypass(out: Bits, x: number, right: number, mid: number, over: number): void {
+  track(out, [
+    [x, mid],
+    [x + TURN, mid],
+    [x + TURN, over],
+    [right - TURN, over],
+    [right - TURN, mid],
+    [right, mid],
+  ]);
 }
 
 /**
