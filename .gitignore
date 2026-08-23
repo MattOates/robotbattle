@@ -10,3 +10,4 @@ dist/
 # Generated site output
 docs/play/
 _site/
+dist-skill/
