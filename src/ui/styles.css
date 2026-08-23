@@ -3003,6 +3003,35 @@ button {
   padding-bottom: 80px;
 }
 
+/*
+ * A lesson is two things at once, and they want different widths.
+ *
+ * The prose wants a reading measure — somewhere around 90 characters, which is
+ * what the 860px above is. The playground wants as much room as it can get: it
+ * is an editor and an arena side by side, and inside a reading column the
+ * editor was left about 360px, which is not enough to see a line of RoboScript
+ * without it wrapping.
+ *
+ * So the article gets the wider bound and hands the reading measure back to
+ * each block individually. Only the playground opts out, which keeps every
+ * decision about width in one place rather than scattered over the blocks.
+ *
+ * Scoped to `.learn-body.prose` on purpose: the lesson INDEX is a `.learn-body`
+ * without `.prose`, and a list of chapters has no reason to be wide.
+ */
+.learn-body.prose {
+  max-width: 1280px;
+}
+
+.learn-body.prose > * {
+  max-width: 860px;
+  margin-inline: auto;
+}
+
+.learn-body.prose > .playground {
+  max-width: none;
+}
+
 .learn-lead {
   font-family: var(--font-mono);
   font-size: 13px;
@@ -3162,7 +3191,9 @@ button {
 
 .playground {
   display: grid;
-  grid-template-columns: 1fr minmax(300px, 480px);
+  /* The arena has a fixed aspect and stops being more legible past a point, so
+     it is capped and the editor takes whatever else is going. */
+  grid-template-columns: 1fr minmax(300px, 520px);
   gap: 12px;
   margin: 0 0 22px;
   border: 1px solid var(--bezel-light);
