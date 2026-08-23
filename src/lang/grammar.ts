@@ -326,6 +326,7 @@ class RoboScriptParser extends CstParser {
       { ALT: () => this.SUBRULE(this.radarStmt) },
       { ALT: () => this.SUBRULE(this.fireStmt) },
       { ALT: () => this.SUBRULE(this.pingStmt) },
+      { ALT: () => this.SUBRULE(this.broadcastStmt) },
     ]);
   });
 
@@ -430,6 +431,22 @@ class RoboScriptParser extends CstParser {
   pingStmt = this.RULE("pingStmt", () => {
     this.CONSUME(kw("ping"));
     this.OPTION(() => this.SUBRULE(this.expr));
+  });
+
+  /**
+   * `broadcast "help"` — say one thing to every robot in the arena.
+   *
+   * The message is not optional, unlike the power on `fire` and `ping`. There
+   * is no sensible default for what to say.
+   *
+   * Note that `radio`, the event this pairs with, is NOT a keyword. It arrives
+   * through `eventWord`'s `Ident` alternative exactly as `fuel` and `slope` do,
+   * so `var radio = 0` is still a legal thing to write and the language reserves
+   * one word here rather than two.
+   */
+  broadcastStmt = this.RULE("broadcastStmt", () => {
+    this.CONSUME(kw("broadcast"));
+    this.SUBRULE(this.expr);
   });
 
   // --- expressions ---------------------------------------------------------

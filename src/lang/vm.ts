@@ -15,6 +15,7 @@
 
 import { Op, type Chunk, type PropRef, type Value } from "./bytecode.js";
 import { BUILTIN_NAMES } from "./bytecode.js";
+import { PACK_SEPARATOR } from "./builtins.js";
 import { atan2Deg, cosDeg, hypot, sinDeg } from "../sim/math.js";
 
 /** Payload delivered with an event, read via `event.<prop>`. */
@@ -105,14 +106,35 @@ export class Vm {
     return this.queue.some((e) => e.name === event);
   }
 
-  enqueue(name: string, payload: EventPayload): void {
-    if (!this.handles(name)) return;
+  /**
+   * Hand this robot an event to deal with.
+   *
+   * `lowPriority` is for the radio, and only for the radio. Everything else in
+   * the arena is something that happened TO this robot — it was shot, it hit a
+   * wall, something came into its cone — and under overload the newest of those
+   * is the useful kind, so a full queue drops its oldest to make room. A
+   * broadcast is different in kind: it is somebody else talking, there may be
+   * one from every robot alive in the same tick, and it must never be able to
+   * push `hit by bullet` out of the queue. A chatty enemy would otherwise be
+   * able to deafen you to being shot, which is a weapon nobody designed.
+   *
+   * So a low-priority event takes a free slot if there is one and is *refused*
+   * if there is not. Refused, not dropped: the caller is told so by the return
+   * value and keeps the message, which is how a broadcast comes back on a later
+   * tick instead of vanishing. See `deliverRadio`.
+   *
+   * @returns whether the event was taken.
+   */
+  enqueue(name: string, payload: EventPayload, lowPriority = false): boolean {
+    if (!this.handles(name)) return false;
     if (this.queue.length >= MAX_QUEUE) {
+      if (lowPriority) return false;
       // Drop the oldest: under overload, recent information is the useful kind.
       this.queue.shift();
       this.eventsDropped++;
     }
     this.queue.push({ name, payload });
+    return true;
   }
 
   /**
@@ -218,6 +240,15 @@ export class Vm {
           case Op.CALL:
             this.callBuiltin(BUILTIN_NAMES[arg]!, stack);
             break;
+
+          case Op.CALL_N: {
+            // The count was pushed last, so it comes off first; what remains on
+            // top of the stack is exactly the arguments, in source order.
+            const count = Math.max(0, Math.floor(toNum(stack.pop() ?? null)));
+            const args = stack.splice(stack.length - count, count);
+            this.callVariadic(BUILTIN_NAMES[arg]!, args, stack);
+            break;
+          }
 
           case Op.ADD: {
             const b = stack.pop() ?? null;
@@ -348,6 +379,24 @@ export class Vm {
     return budget;
   }
 
+  /**
+   * The one call shape whose argument count is decided by the caller.
+   *
+   * Kept apart from `callBuiltin` rather than folded into it, because every
+   * other builtin knowing its own arity is what makes that switch readable —
+   * each case pops exactly what it needs and nothing has to consult a table.
+   */
+  private callVariadic(name: string, args: Value[], stack: Value[]): void {
+    switch (name) {
+      case "pack":
+        stack.push(args.map(toText).join(PACK_SEPARATOR));
+        return;
+      default:
+        stack.push(null);
+        return;
+    }
+  }
+
   private callBuiltin(name: string, stack: Value[]): void {
     switch (name) {
       case "abs":
@@ -402,6 +451,29 @@ export class Vm {
         stack.push(hypot(x2 - x1, y2 - y1));
         return;
       }
+      case "field": {
+        const slot = Math.floor(toNum(stack.pop() ?? null));
+        const message = toText(stack.pop() ?? null);
+        // Counting from 1, because this is read by people who have not
+        // programmed before and "the first one" is 1 to everybody else alive.
+        // Out of range is empty text rather than an error: a message from
+        // somebody else is not something a script can be sure of the shape of,
+        // and dying because an enemy sent you a short one would be absurd.
+        const parts = message === "" ? [] : message.split(PACK_SEPARATOR);
+        stack.push(parts[slot - 1] ?? "");
+        return;
+      }
+      case "fieldcount": {
+        const message = toText(stack.pop() ?? null);
+        stack.push(message === "" ? 0 : message.split(PACK_SEPARATOR).length);
+        return;
+      }
+      case "number":
+        stack.push(toNum(stack.pop() ?? null));
+        return;
+      case "text":
+        stack.push(toText(stack.pop() ?? null));
+        return;
       case "bearing": {
         const y = toNum(stack.pop() ?? null);
         const x = toNum(stack.pop() ?? null);

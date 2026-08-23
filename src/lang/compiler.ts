@@ -20,7 +20,7 @@ import type {
 import { EVENT_DOCS, eventFields } from "./events.js";
 import {
   BUILTIN_NAMES,
-  BUILTIN_SIGNATURES,
+  arityOf,
   Op,
   type Chunk,
   type PropRef,
@@ -43,6 +43,10 @@ const ACTION_ARITY: Readonly<Record<ActionKind, number>> = {
   radarAim: 1,
   radarSweep: 1,
   ping: 1,
+  // No default, unlike `fire` and `ping`. Those have an obvious amount to mean
+  // by a bare word; a broadcast with nothing to say is a mistake worth telling
+  // somebody about.
+  broadcast: 1,
 };
 
 /** Properties a script may read, per object. */
@@ -81,8 +85,9 @@ export const ME_PROP_NAMES = [
   "slope",
   "uphill",
   "downhill",
+  "team",
 ] as const;
-export const ARENA_PROP_NAMES = ["width", "height", "time", "robots"] as const;
+export const ARENA_PROP_NAMES = ["width", "height", "time", "robots", "teams"] as const;
 
 const ME_PROPS = new Set<string>(ME_PROP_NAMES.map((n) => n.toLowerCase()));
 const ARENA_PROPS = new Set<string>(ARENA_PROP_NAMES.map((n) => n.toLowerCase()));
@@ -885,21 +890,33 @@ class Compiler {
         return;
       }
       case "call": {
-        const arity = BUILTIN_SIGNATURES[e.name];
-        if (arity === undefined) {
+        const arity = arityOf(e.name);
+        if (arity === null) {
           throw new RoboScriptError(
             `I don't know a function called \`${e.name}\``,
             e.pos,
             `you can use: ${BUILTIN_NAMES.join(", ")}`,
           );
         }
-        if (e.args.length !== arity) {
+        if (e.args.length < arity.least || e.args.length > arity.most) {
+          const wanted =
+            arity.least === arity.most
+              ? `${arity.least} value${arity.least === 1 ? "" : "s"}`
+              : `${arity.least} to ${arity.most} values`;
           throw new RoboScriptError(
-            `\`${e.name}\` needs ${arity} value${arity === 1 ? "" : "s"}, but got ${e.args.length}`,
+            `\`${e.name}\` needs ${wanted}, but got ${e.args.length}`,
             e.pos,
           );
         }
         for (const a of e.args) this.expr(a);
+        if (arity.least !== arity.most) {
+          // The count travels with the call, since the builtin no longer knows
+          // it. Pushed last so the VM can pop it first and then take exactly
+          // that many off the stack.
+          this.emit(Op.PUSH, this.constIndex(e.args.length), e.pos);
+          this.emit(Op.CALL_N, BUILTIN_NAMES.indexOf(e.name), e.pos);
+          return;
+        }
         this.emit(Op.CALL, BUILTIN_NAMES.indexOf(e.name), e.pos);
         return;
       }

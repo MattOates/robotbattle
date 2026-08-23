@@ -49,6 +49,15 @@ const LOADED_WORDS = [
   "flagellum",
   "ciliate",
   "flagellate",
+  // Added with the radio. A machine broadcasts on the radio; an organism
+  // releases a scent — and a shared paragraph that says either one outright is
+  // telling half its readers about the wrong world.
+  "radio",
+  "signal",
+  "broadcast",
+  "release",
+  "scent",
+  "pheromone",
 ];
 
 export interface ProseWarning {

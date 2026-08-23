@@ -59,7 +59,18 @@ describe("the language card", () => {
     // extra three and a half gigabytes were downloaded for — but still under
     // half the window, so the script, two quoted lessons and the conversation
     // all still fit beside it.
-    expect(approxTokens).toBeLessThan(1900);
+    //
+    // Nudged from 1900 when teams and the radio arrived: a whole event, an
+    // action, five functions, two properties and a field on six existing
+    // events, none of which the card can leave out without the Tutor
+    // confidently denying they exist. It very nearly fitted anyway, because the
+    // same change stopped the handler list repeating `event.` in front of all
+    // ninety-odd field names.
+    //
+    // Half the window is 2048, and that is the figure that actually matters.
+    // The number below is meant to keep a real margin under it, not to be a
+    // size the card is entitled to grow into.
+    expect(approxTokens).toBeLessThan(1950);
   });
 
   it.each(themes)("only names words the lexer accepts in the %s world", (theme) => {

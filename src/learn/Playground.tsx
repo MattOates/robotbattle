@@ -60,6 +60,19 @@ interface Props {
    * each visit.
    */
   maze?: boolean;
+  /**
+   * How many copies of the reader's own script take the field, on one side.
+   *
+   * For the lessons where one robot cannot show the idea at all. A flock of one
+   * does not flock, and a robot that calls out what it has found has nobody to
+   * call to — so the reader edits one script and watches a whole side of them
+   * change together, which is the only way those lessons demonstrate anything.
+   *
+   * Above 1 the copies share a team, and they have to: a robot that identifies
+   * its own side by `me.team` would otherwise give every copy a different name
+   * for the flock, and they would ignore each other completely.
+   */
+  copies?: number;
 }
 
 const ARENA = { width: 460, height: 320 } as const;
@@ -67,6 +80,7 @@ const ARENA = { width: 460, height: 320 } as const;
 export function Playground({
   source,
   opponents,
+  copies = 1,
   theme,
   cones = false,
   fuel = false,
@@ -88,8 +102,13 @@ export function Playground({
   const check = checkScript(code);
 
   const others = useMemo(() => {
-    const wanted = opponents.split(",").filter(Boolean);
-    return SAMPLE_BOTS.filter((bot) => wanted.includes(bot.id));
+    // Mapped rather than filtered, so `opponents=hunter,hunter` really is two
+    // Hunters. Filtering the sample list could only ever yield one of each.
+    return opponents
+      .split(",")
+      .filter(Boolean)
+      .map((id) => SAMPLE_BOTS.find((bot) => bot.id === id))
+      .filter((bot): bot is (typeof SAMPLE_BOTS)[number] => bot !== undefined);
   }, [opponents]);
 
   // Only built when the script compiles: `createWorld` parses, so handing it a
@@ -105,20 +124,28 @@ export function Playground({
 
   const manifest = useMemo<MatchManifest | null>(() => {
     if (!check.ok) return null;
-    return makeManifest(
-      [{ source: code }, ...others.map((bot) => ({ source: bot.source }))],
-      {
-        seed,
-        width: ARENA.width,
-        height: ARENA.height,
-        maxTicks: 30 * 45,
-        fuel: fuel ? FUEL_PRESETS.arena : FUEL_PRESETS.off,
-        terrain: terrain ? TERRAIN_PRESETS.arena : TERRAIN_PRESETS.off,
-        walls,
-      },
-    );
+    // At one copy this is exactly the arena every existing lesson builds: no
+    // teams stated, so nothing that was tuned against it moves.
+    const side = Math.max(1, Math.min(6, Math.floor(copies)));
+    const entries =
+      side > 1
+        ? [
+            ...Array.from({ length: side }, () => ({ source: code, team: 0 })),
+            ...others.map((bot) => ({ source: bot.source, team: 1 })),
+          ]
+        : [{ source: code }, ...others.map((bot) => ({ source: bot.source }))];
+    return makeManifest(entries, {
+      seed,
+      width: ARENA.width,
+      height: ARENA.height,
+      maxTicks: 30 * 45,
+      fuel: fuel ? FUEL_PRESETS.arena : FUEL_PRESETS.off,
+      terrain: terrain ? TERRAIN_PRESETS.arena : TERRAIN_PRESETS.off,
+      walls,
+      ...(side > 1 ? { friendlyFire: false } : {}),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seed, others, fuel, terrain, walls]);
+  }, [seed, others, copies, fuel, terrain, walls]);
 
   const play = () => {
     if (!check.ok) return;

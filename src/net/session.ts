@@ -66,6 +66,8 @@ export class Session {
       isHost: this.transport.isHost,
       ready: false,
       robot: this.robot ? { name: this.robot.name, color: this.robot.color } : null,
+      // Nobody is on a side until a host puts them on one.
+      team: null,
     };
     this.roster = [self];
     if (this.transport.isHost && this.robot) {
@@ -178,6 +180,26 @@ export class Session {
     this.publish();
   }
 
+  /**
+   * Ask to be put on a side, or set somebody's side if you are the host.
+   *
+   * `peerId` defaults to yourself. A guest naming somebody else is simply
+   * ignored, since the message it sends carries no target — the host reads the
+   * side off whoever sent it.
+   */
+  setTeam(team: number | null, peerId?: PeerId): void {
+    const target = peerId ?? this.transport.selfId;
+    if (this.transport.isHost) {
+      const peer = this.roster.find((p) => p.id === target);
+      if (peer) peer.team = team;
+      this.publishRoster();
+    } else if (target === this.transport.selfId) {
+      this.selfInfo().team = team;
+      this.send("all", { t: "team", team });
+    }
+    this.publish();
+  }
+
   /** Host only: tell the room why something is or is not happening. */
   setNotice(text: string | null): void {
     this.notice = text;
@@ -188,14 +210,24 @@ export class Session {
   }
 
   /** Full robot entries, host-side, for building a manifest. */
-  entries(): Array<{ peerId: PeerId; displayName: string; robot: RobotEntry }> {
+  entries(): Array<{
+    peerId: PeerId;
+    displayName: string;
+    robot: RobotEntry;
+    team?: number;
+  }> {
     return [...this.robotsByPeer.entries()]
-      .map(([peerId, robot]) => ({
-        peerId,
-        displayName:
-          this.roster.find((p) => p.id === peerId)?.displayName ?? "Unknown",
-        robot,
-      }))
+      .map(([peerId, robot]) => {
+        const peer = this.roster.find((p) => p.id === peerId);
+        return {
+          peerId,
+          displayName: peer?.displayName ?? "Unknown",
+          robot,
+          // Left off entirely when nobody is on a side, so a free-for-all
+          // manifest is byte-identical to one built before teams existed.
+          ...(peer?.team !== null && peer?.team !== undefined ? { team: peer.team } : {}),
+        };
+      })
       // Stable order so every peer builds the identical manifest.
       .sort((a, b) => a.peerId.localeCompare(b.peerId));
   }
@@ -230,6 +262,7 @@ export class Session {
       isHost: false,
       ready: false,
       robot: null,
+      team: null,
     };
     this.roster.push(created);
     return created;
@@ -277,6 +310,19 @@ export class Session {
         return;
       }
 
+      case "team": {
+        // A request, not an announcement — the host owns the roster, so a guest
+        // asking to change sides is the same shape as a guest saying it is
+        // ready, and a guest that made the change locally would simply be
+        // overwritten by the next roster.
+        if (!this.transport.isHost) return;
+        const asked = message.team;
+        this.ensurePeer(from).team =
+          typeof asked === "number" && Number.isInteger(asked) && asked >= 0 ? asked : null;
+        this.publishRoster();
+        return;
+      }
+
       case "roster": {
         // Only the host is believed about membership.
         if (this.transport.isHost) return;
@@ -286,6 +332,12 @@ export class Session {
           isHost: p.isHost === true,
           ready: p.ready === true,
           robot: p.robot ?? null,
+          // Clamped like every other number off the wire: a side has to be a
+          // whole one, and the host is the only one believed about it.
+          team:
+            typeof p.team === "number" && Number.isInteger(p.team) && p.team >= 0
+              ? p.team
+              : null,
         }));
         this.publish();
         return;
@@ -315,6 +367,8 @@ export class Session {
       isHost: this.transport.isHost,
       ready: false,
       robot: this.robot ? { name: this.robot.name, color: this.robot.color } : null,
+      // Nobody is on a side until a host puts them on one.
+      team: null,
     };
     this.roster.unshift(created);
     return created;

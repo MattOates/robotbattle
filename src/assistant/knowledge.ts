@@ -66,9 +66,15 @@ export function languageCard(theme: Theme): string {
   const turret = wordFor("turret", theme);
   const radar = wordFor("radar", theme);
 
+  // The `event.` prefix is said once in the heading below rather than on all
+  // ninety-odd fields. Spelling it out every time cost about a hundred tokens —
+  // more than a whole section of this card — to repeat a word the very next
+  // line already explains, and the budget here is real: this has to fit beside
+  // the tool definitions, the player's script and the conversation in a 4096
+  // token window.
   const events = EVENT_NAMES.map((name) => {
     const fields = eventFields(name).map((f) => f.name);
-    const carries = fields.length ? ` (event.${fields.join(", event.")})` : "";
+    const carries = fields.length ? ` (${fields.join(", ")})` : "";
     return `- on ${name}${carries} — ${sentence(renderDoc(EVENT_DOCS[name].summary, theme))}`;
   });
 
@@ -99,6 +105,7 @@ export function languageCard(theme: Theme): string {
     ...t.keywords.map((s) => line(s.label, s.detail)),
     "",
     "## Handlers (`on <event> ... end`)",
+    "Each handler is listed with what it carries, read as `event.<name>` inside it.",
     ...events,
     "",
     "## How often a handler runs",

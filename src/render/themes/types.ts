@@ -21,6 +21,18 @@ export interface ArenaTheme {
   /** Text colours for the label under each robot. */
   labelColor: number;
   labelStroke: number;
+  /**
+   * One colour per side, indexed by team number.
+   *
+   * Deliberately not used to tint the robots themselves: a player picks their
+   * own colour and it is how they recognise their robot. The side is a ring and
+   * a number instead, so both facts are on screen at once.
+   *
+   * Chosen to stay apart from each other at a glance and from the arena behind
+   * them — but the number under the robot is what actually says which side it
+   * is, because two of these will always look close to somebody.
+   */
+  teamColors: readonly number[];
 
   senseConeColor: number;
   senseConeAlpha: number;

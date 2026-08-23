@@ -26,6 +26,7 @@ import {
   MAX_HEALTH,
   OPS_PER_TICK,
   RADAR,
+  RADIO,
   ROBOT_RADIUS,
   SENSE,
   TICK_RATE,
@@ -395,6 +396,14 @@ export const ANNOTATIONS: Readonly<Record<string, Annotation>> = {
     section: "actions",
     example: "ping",
   },
+  broadcastStmt: {
+    label: "broadcast",
+    title: "broadcast",
+    summary:
+      `Says one thing to every {robot} in the {arena} at once. They all get it as \`on radio\`, and none of them are told it was you \u2014 so if your side needs to know, say so in the message. You can speak again every ${RADIO.cooldown} ticks.`,
+    section: "actions",
+    example: 'broadcast "help"',
+  },
   expr: { label: "value",
     title: "A value", summary: "Anything that works out to a number.", section: "values" },
   orExpr: { label: "or",
@@ -483,6 +492,45 @@ function readRules(): RuleDoc[] {
       ...annotation,
     };
   });
+}
+
+/**
+ * Every fixed word that appears in the rules of one section.
+ *
+ * The editor's highlighter used to keep its own hand-written copy of these,
+ * and the copy drifted the moment the language grew: `broadcast` shipped
+ * rendering as somebody's variable name because a second list nobody
+ * remembered had to be edited too. That is the exact failure this file's
+ * opening comment describes, so the highlighter reads the grammar instead.
+ *
+ * Words only — placeholders are shapes rather than words, and a rule name is a
+ * reference to somewhere else.
+ */
+export function wordsIn(section: SectionName): Set<string> {
+  const found = new Set<string>();
+  const walk = (s: Syntax): void => {
+    switch (s.kind) {
+      case "word":
+        found.add(s.text);
+        return;
+      case "placeholder":
+      case "rule":
+        return;
+      case "sequence":
+      case "choice":
+        for (const part of s.of) walk(part);
+        return;
+      case "optional":
+        walk(s.of);
+        return;
+      case "repeat":
+        walk(s.of);
+        if (s.separator) walk(s.separator);
+        return;
+    }
+  };
+  for (const rule of rulesIn(section)) walk(rule.syntax);
+  return found;
 }
 
 /** Which rule, if any, a name belongs to. */
@@ -624,6 +672,32 @@ export function simulationFacts(theme: Theme): FactGroup[] {
           label: `${w("radar")} slew`,
           value: `${RADAR.slewRate}°/s`,
           note: "It takes time to swing round, so point it before you need it.",
+        },
+      ],
+    },
+    {
+      title: "Talking",
+      blurb: `The one thing you can do that reaches the whole {arena} at once. Every {robot} still alive hears every ${w("broadcast")}, and none of them are told who sent it \u2014 so saying who you are, without also telling the other side, is left to you.`,
+      facts: [
+        {
+          label: `${w("broadcast")} cooldown`,
+          value: `${RADIO.cooldown} ticks`,
+          note: "Asking sooner is simply ignored, exactly like firing a gun that has not cooled. It costs nothing to try.",
+        },
+        {
+          label: "Message length",
+          value: `${RADIO.maxLength} characters`,
+          note: "Anything longer is cut. `pack` puts several things into one message and `field` takes them back out.",
+        },
+        {
+          label: "Delivery",
+          value: `${RADIO.maxPerTick} a tick`,
+          note: `Nothing is lost by arriving at a busy moment: what does not fit waits in your own inbox and comes on a later tick, in the order it was sent. You will hold ${RADIO.inbox} before the oldest starts falling off the end.`,
+        },
+        {
+          label: "Cost",
+          value: `${RADIO.fuel} ${w("fuel")} to speak`,
+          note: "Listening is free, on purpose. If hearing cost anything, shouting at somebody would be a way to drain their tank rather than a way to tell them something.",
         },
       ],
     },

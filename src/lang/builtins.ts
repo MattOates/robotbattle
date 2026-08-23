@@ -28,10 +28,31 @@ export interface BuiltinParam {
   detail: string;
 }
 
+/**
+ * What `pack` puts between the things it joins, and what `field` splits on.
+ *
+ * A vertical bar because it is the character least likely to turn up inside
+ * something a player actually wants to send — names, tags and numbers do not
+ * contain it, and it needs no escaping when typed. Exported so the summaries
+ * below quote it rather than spelling it out twice.
+ */
+export const PACK_SEPARATOR = "|";
+
 export interface Builtin {
   /** What the function does, in a sentence. */
   summary: string;
   params: readonly BuiltinParam[];
+  /**
+   * Takes any number of arguments, from one up to `maxArgs`.
+   *
+   * The rest of the table has an arity that is simply `params.length`, which is
+   * why there is no separate list of arities to disagree with the docs. A
+   * variadic one still lists its parameters — they are what the popup shows —
+   * but the count is checked as a range instead.
+   */
+  variadic?: true;
+  /** Ceiling on a variadic call, so one line cannot blow the stack budget. */
+  maxArgs?: number;
   /**
    * A whole expression using it, which a test compiles. Documentation that
    * does not run is worse than none.
@@ -125,6 +146,47 @@ export const BUILTINS: Readonly<Record<string, Builtin>> = {
     ],
     example: "bearing(arena.width / 2 - me.x, arena.height / 2 - me.y)",
   },
+  // ---- messages ----
+  // `broadcast` carries one value, and a useful message is nearly always
+  // several things at once: who it is from, what kind of news it is, and where.
+  // These five put several values into one piece of text and take them back out
+  // again. Note that `+` already joins text, so only the taking-apart is
+  // genuinely new — but a `pack` that matches `field` means the two ends cannot
+  // disagree about the separator.
+  pack: {
+    summary: `Joins several things into one message, with a \`${PACK_SEPARATOR}\` between them. Take them back out with \`field\`.`,
+    params: [
+      { name: "first", detail: "The first thing to put in." },
+      { name: "rest", detail: "As many more as you like, up to seven in all." },
+    ],
+    variadic: true,
+    maxArgs: 8,
+    example: 'pack("red", me.x, me.y)',
+  },
+  field: {
+    summary: `Pulls one thing back out of a packed message. The first one is 1. A slot that is not there comes out as empty text.`,
+    params: [
+      { name: "message", detail: "A message made by `pack`." },
+      { name: "slot", detail: "Which one you want, counting from 1." },
+    ],
+    example: 'field(pack("red", me.x), 1)',
+  },
+  fieldcount: {
+    summary: "How many things a packed message has in it. An empty message has none.",
+    params: [{ name: "message", detail: "A message made by `pack`." }],
+    example: 'fieldcount(pack("red", me.x))',
+  },
+  number: {
+    summary:
+      "Turns a piece of text into a number. Useful for doing sums with something that arrived in a message; anything that is not a number comes out as 0.",
+    params: [{ name: "text", detail: "A piece of text, usually out of `field`." }],
+    example: 'number(field(pack("red", me.x), 2))',
+  },
+  text: {
+    summary: "Turns a number into a piece of text. Useful for building a message by hand.",
+    params: [{ name: "value", detail: "Anything at all." }],
+    example: "text(me.health)",
+  },
 };
 
 /**
@@ -138,9 +200,29 @@ export const BUILTIN_SIGNATURES: Readonly<Record<string, number>> = Object.fromE
   Object.entries(BUILTINS).map(([name, fn]) => [name, fn.params.length]),
 );
 
+/**
+ * How many arguments a call may carry: an exact count, or a range.
+ *
+ * Routines already work this way — `can chase with power, times = 2` accepts a
+ * range — so a builtin that does the same is the language being consistent with
+ * itself rather than growing a new idea.
+ */
+export function arityOf(name: string): { least: number; most: number } | null {
+  const fn = BUILTINS[name];
+  if (!fn) return null;
+  if (fn.variadic) return { least: 1, most: fn.maxArgs ?? 8 };
+  return { least: fn.params.length, most: fn.params.length };
+}
+
 /** `distance(x1, y1, x2, y2)` — the shape, for a heading or a popup. */
 export function signatureOf(name: string): string {
   const fn = BUILTINS[name];
   if (!fn) return `${name}()`;
+  // A variadic one shows an ellipsis rather than pretending its last parameter
+  // is a single value, since `pack(first, rest)` would be a lie about `pack`.
+  if (fn.variadic) {
+    const first = fn.params[0]?.name ?? "value";
+    return `${name}(${first}, ...)`;
+  }
   return `${name}(${fn.params.map((p) => p.name).join(", ")})`;
 }

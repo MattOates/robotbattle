@@ -105,3 +105,7 @@ end
 
 Now it turns to face whatever it noticed, and because the cone follows the
 body, facing something keeps it in view. That is the beginning of hunting.
+
+In a team match the same event also carries `event.friend`, which is true when
+whatever you noticed is on your side. There is a whole lesson on that later, but
+the short version is: check it before you do anything hostile.

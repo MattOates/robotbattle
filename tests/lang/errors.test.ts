@@ -136,7 +136,7 @@ const PARSER: Case[] = [
     what: "invents an event",
     source: `${H}on wobble\n  stop\nend\n`,
     message: "`wobble` isn't an event I can tell you about",
-    hint: "events are: start, tick, sense robot, sense bullet, sense wall, sense fuel, ping robot, ping fuel, ping wall, ping slope, ping ridge, hit wall, hit robot, hit by bullet, bullet hit, bullet missed, robot destroyed",
+    hint: "events are: start, tick, sense robot, sense bullet, sense wall, sense fuel, ping robot, ping fuel, ping wall, ping slope, ping ridge, hit wall, hit robot, hit by bullet, bullet hit, bullet missed, robot destroyed, radio",
   },
   {
     what: "forgets the `end`",
@@ -340,13 +340,13 @@ const COMPILER: Case[] = [
     what: "reads a property that does not exist",
     source: `${H}var x = 0\non tick\n  set x = me.wobble\nend\n`,
     message: "`me` doesn't have anything called `wobble`",
-    hint: "me has: x, y, heading, speed, health, turret, gunHeat, ammo, score, radar, pingHeat, fuel, aiming, slope, uphill, downhill",
+    hint: "me has: x, y, heading, speed, health, turret, gunHeat, ammo, score, radar, pingHeat, fuel, aiming, slope, uphill, downhill, team",
   },
   {
     what: "calls a function that does not exist",
     source: `${H}var x = 0\non tick\n  set x = wobble(1)\nend\n`,
     message: "I don't know a function called `wobble`",
-    hint: "you can use: abs, min, max, random, randomint, sin, cos, sqrt, round, floor, ceil, distance, bearing",
+    hint: "you can use: abs, min, max, random, randomint, sin, cos, sqrt, round, floor, ceil, distance, bearing, pack, field, fieldcount, number, text",
   },
   {
     what: "gives a function the wrong number of values",

@@ -78,6 +78,12 @@ export const SYNONYMS: readonly Synonym[] = [
     biological: "organism",
     also: ["cell", "creature"],
   },
+  // Talking to everybody at once. A machine broadcasts on the radio; an
+  // organism releases something into the water and whatever is nearby smells
+  // it. Both are the same mechanic: you cannot choose who receives it, and it
+  // does not say who you are.
+  { canonical: "broadcast", mechanical: "broadcast", biological: "release", also: ["emit", "transmit", "secrete"] },
+  { canonical: "radio", mechanical: "radio", biological: "signal", also: ["scent", "pheromone"] },
 ];
 
 /**
@@ -134,6 +140,12 @@ export const PROPERTY_ALIASES: Readonly<Record<string, string>> = {
   energy: "health",
   hp: "health",
   facing: "heading",
+  // A machine has a team; a colony of organisms has itself. Accepted here
+  // rather than in `SYNONYMS` so that the word is only special after a dot —
+  // `var swarm = 0` is still an ordinary variable belonging to whoever wrote it.
+  colony: "team",
+  swarm: "team",
+  side: "team",
 };
 
 /**
@@ -153,6 +165,14 @@ export interface ThemeVocab {
   /** The narrow, aimable sense: radar dish or eyespot. */
   readonly scanner: string;
   readonly pingVerb: string;
+  /** Saying something to the whole arena: broadcasting, or releasing a scent. */
+  readonly broadcastVerb: string;
+  /** What arrives when somebody does: a radio message, or a signal in the water. */
+  readonly radio: string;
+  /** Somebody on your side. Display only — the language says `event.friend`. */
+  readonly ally: string;
+  /** A side. Display only, and always shown counting from one. */
+  readonly team: string;
   readonly driveVerb: string;
   /** The consumable scattered about: fuel cells or morsels of food. */
   readonly fuel: string;
@@ -189,6 +209,10 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     fireVerb: "fire",
     scanner: "radar",
     pingVerb: "ping",
+    broadcastVerb: "broadcast",
+    radio: "radio",
+    ally: "ally",
+    team: "team",
     driveVerb: "drive",
     fuel: "fuel",
     slope: "slope",
@@ -211,6 +235,10 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     fireVerb: "sting",
     scanner: "eyespot",
     pingVerb: "peek",
+    broadcastVerb: "release",
+    radio: "signal",
+    ally: "kin",
+    team: "colony",
     driveVerb: "swim",
     fuel: "food",
     slope: "thickness",

@@ -121,6 +121,100 @@ export const RADAR = {
   occlusionStep: 6,
 } as const;
 
+/**
+ * One thing somebody said, waiting to be heard.
+ *
+ * `from` is used by the simulation to decide delivery order and to stop a robot
+ * hearing itself. It is deliberately NOT passed to the script: a broadcast
+ * arrives with no sender, no bearing and no distance, and that is the feature
+ * rather than an omission. Everybody hears everything, so saying who you are —
+ * and proving it to your own side without also proving it to the other one — is
+ * the problem the player is being handed. Attaching an id would solve it for
+ * them and leave nothing to work out.
+ */
+export interface RadioMessage {
+  from: number;
+  data: string;
+}
+
+/**
+ * The radio: the one instrument that reaches every robot in the arena at once.
+ *
+ * Every other sense is about *finding* somebody. This one is about *telling*
+ * somebody, and it is the only channel in the game that is not a function of
+ * where you are pointing or how far away you are. It is also completely public,
+ * which is what makes it interesting: an enemy hears your plan as clearly as
+ * your teammate does.
+ *
+ * The four numbers below exist to keep that from being either free or ruinous.
+ */
+export const RADIO = {
+  /**
+   * Ticks before a robot may speak again.
+   *
+   * Without it, a `loop` with a `broadcast` in it sends hundreds of messages a
+   * tick to everybody alive, and the event queues of every other robot become
+   * whatever the chattiest script in the match decided they should be. It is
+   * the same instrument as `RADAR.cooldown` and is meant to read as one: an
+   * either-or counted in whole ticks, which a script can reason about.
+   */
+  cooldown: 6,
+  /**
+   * Longest message, in characters. Anything past this is cut.
+   *
+   * A message is hashed every tick it is in flight, so its length is a cost
+   * everybody pays. Generous enough for a tag and three or four packed numbers,
+   * which is what `pack` is for, and nowhere near enough to post a novel.
+   */
+  maxLength: 48,
+  /**
+   * Most messages one robot is handed in a single tick.
+   *
+   * This is a pacing rule, **not** a loss rule. What does not fit stays in the
+   * robot's own inbox and arrives on a later tick, in the order it was sent.
+   * The cooldown bounds each sender; this stops one tick of chatter filling an
+   * eight-deep event queue and pushing a robot's reactions a tick behind.
+   *
+   * It used to drop the surplus, and that was a mistake worth recording. It
+   * made a message something a robot might simply never see, so anybody writing
+   * a flock had to stagger its transmissions by hand to avoid a collision they
+   * could not detect — and a robot that reads its messages every twelve ticks
+   * rather than every six was quietly deaf to most of them. A message that was
+   * sent should arrive.
+   */
+  maxPerTick: 4,
+  /**
+   * How many messages one robot will hold before the oldest is lost.
+   *
+   * The inbox exists so that nothing sent is dropped merely because it arrived
+   * at a busy moment, but it cannot be unbounded: it is hashed every tick, and
+   * a robot that never reads its messages would otherwise grow without limit
+   * and take every peer's memory with it.
+   *
+   * Deep enough that it is not reached in ordinary play — a full arena talking
+   * flat out is a handful of messages a tick against a drain of four — so
+   * hitting it means a robot has stopped keeping up, which is the same thing
+   * `eventsDropped` already reports.
+   */
+  inbox: 32,
+  /**
+   * Fuel per broadcast, paid by the sender and by nobody else.
+   *
+   * Speaking is work, like everything else that is actuated, and it must not
+   * become the one free action in a game whose whole economy is that thinking is
+   * free and doing is not. Priced well under a ping: talking should be cheaper
+   * than looking.
+   *
+   * **Listening is free**, and that asymmetry is the point rather than an
+   * oversight. If hearing a message cost anything, the radio would be a weapon
+   * as much as a channel — shouting at somebody would drain their tank whether
+   * they wanted the conversation or not, and the only defence would be to
+   * delete your `on radio` block, which is to say to switch the feature off.
+   * Nothing in `deliverRadio` spends a drop.
+   */
+  fuel: 0.25,
+} as const;
+
 export const BULLET = {
   /** Faster for weaker shots, so power trades speed for damage. */
   baseSpeed: 460,
@@ -433,6 +527,25 @@ export function clampWalls(walls: readonly Wall[] | undefined): Wall[] {
   return out;
 }
 
+/**
+ * Team assignments, made safe.
+ *
+ * Same reasoning as `clampWalls` and `clampFuelConfig`: a manifest arrives from
+ * a remote host, so its teams are input rather than fact. Anything that is not
+ * a whole number inside the field falls back to the entry's own index — which
+ * is exactly "on nobody's side but its own", the free-for-all default, and so
+ * is a safe answer rather than a guess.
+ *
+ * The bound matters more than it looks. A peer that accepted `team: 1e9` would
+ * count a different number of teams from everybody else, and the match would
+ * end on a different tick on that machine alone.
+ */
+export function clampTeams(raw: readonly (number | undefined)[]): number[] {
+  return raw.map((t, index) =>
+    typeof t === "number" && Number.isInteger(t) && t >= 0 && t < raw.length ? t : index,
+  );
+}
+
 /** A pickup sitting in the arena, waiting to be driven over. */
 export interface FuelCell {
   id: number;
@@ -483,6 +596,26 @@ export interface Robot {
   color: string;
   locomotion: Locomotion;
 
+  /**
+   * Which side this robot is on.
+   *
+   * A free-for-all is not a different kind of match: it is every robot on a
+   * team of its own, so `team` defaults to the robot's own id. That is the
+   * whole trick behind teams. One win rule rather than two, one friendly-fire
+   * rule rather than two, and `event.friend` is the same comparison either way
+   * — in a free-for-all it simply never comes out true. It also means the team
+   * code path is exercised by every match ever run, instead of only by the ones
+   * that asked for teams.
+   *
+   * Numbered from zero, because the default number IS the entry index and that
+   * identity is what the rest of this rests on. Everything a player sees counts
+   * from one; see `teamLabel` in the UI and `me.team` in `world.ts`.
+   *
+   * Fixed for the whole match. Nothing in the arena can change sides, which is
+   * what lets `hashWorld` treat it as a tripwire rather than as live state.
+   */
+  team: number;
+
   x: number;
   y: number;
   /** Chassis heading in degrees; 0 is +x (right), increasing clockwise. */
@@ -498,6 +631,16 @@ export interface Robot {
   radar: number;
   /** Ticks remaining before another ping may be sent. */
   pingHeat: number;
+  /** Ticks remaining before another broadcast may be sent. */
+  radioHeat: number;
+  /**
+   * Messages heard but not yet handed to the script, oldest first.
+   *
+   * Every robot has its own, which is the whole point: what one robot is too
+   * busy to read does not affect what anybody else hears, and a message waits
+   * rather than evaporating. Capped at `RADIO.inbox`.
+   */
+  inbox: string[];
   /**
    * Power of a shot that has been committed but has not left yet, or 0 for
    * none. It discharges as soon as the gun bears on what it was aimed at.
@@ -575,6 +718,18 @@ export interface World {
   bullets: Bullet[];
   fuel: FuelCell[];
   effects: Effect[];
+  /**
+   * What was said this tick, waiting to be delivered at the start of the next.
+   *
+   * Genuinely live state, unlike the team numbers and the friendly-fire switch
+   * beside it — it decides which handlers run next tick, so it is hashed with
+   * the same seriousness as a bullet in flight.
+   *
+   * Always in ascending sender id, because `runScripts` runs the robots in id
+   * order and each may push at most one per cooldown. Relied on rather than
+   * re-sorted; see `deliverRadio`.
+   */
+  radio: RadioMessage[];
   terrain: TerrainField;
   nextBulletId: number;
   nextFuelId: number;
@@ -592,8 +747,26 @@ export interface World {
    * mid-match, which is what lets the renderer draw them once.
    */
   walls: Wall[];
-  /** Set once fewer than two robots remain, or the tick limit is reached. */
+  /**
+   * Whether a bullet stops in a teammate or flies through one.
+   *
+   * A match setting rather than a rule, and part of the manifest, so a replay
+   * and every peer agree about it. Inert in a free-for-all, where nobody has a
+   * teammate to spare.
+   */
+  friendlyFire: boolean;
+  /** Set once fewer than two teams remain, or the tick limit is reached. */
   over: boolean;
+  /**
+   * The team that won, or null for a mutual wipe.
+   *
+   * Kept beside `winnerId` rather than replacing it: a team can win with three
+   * robots still standing, which no single id describes, but plenty of screens
+   * and every stored `BattleRecord` want a robot to point at. So `winnerId`
+   * stays the best survivor on the winning side, and is still exactly the last
+   * robot standing whenever there is only one.
+   */
+  winnerTeam: number | null;
   winnerId: number | null;
   /** Matches are capped so a stalemate cannot run forever. */
   maxTicks: number;

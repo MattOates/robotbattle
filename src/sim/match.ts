@@ -12,6 +12,14 @@ import { createWorld, type MatchManifest } from "./world.js";
 
 export interface MatchResult {
   winnerId: number | null;
+  /**
+   * The side that won, counting from zero, or null for a mutual wipe.
+   *
+   * Optional because a `BattleRecord` saved before teams existed is read back
+   * off disk as a plain object, and a required field would be a type that lies
+   * about the data it describes.
+   */
+  winnerTeam?: number | null;
   winnerName: string | null;
   ticks: number;
   /** Final hash — two peers agreeing here agree on the whole match. */
@@ -25,6 +33,8 @@ export interface Standing {
   health: number;
   kills: number;
   damageDealt: number;
+  /** Which side, counting from zero. Absent on records saved before teams. */
+  team?: number;
   /** 1 is the winner. */
   place: number;
 }
@@ -58,6 +68,14 @@ export function summarise(world: World): MatchResult {
   // Survivors first, then by how long they lasted — a robot that died later
   // placed better than one that died early.
   const ranked = [...world.robots].sort((a, b) => {
+    // The winning side fills the top places, so a team that won together is
+    // read as having won together rather than being interleaved with the
+    // losers it happened to outlive. Below that, the original rules stand.
+    if (world.winnerTeam !== null) {
+      const aWon = a.team === world.winnerTeam;
+      const bWon = b.team === world.winnerTeam;
+      if (aWon !== bWon) return aWon ? -1 : 1;
+    }
     if (a.alive !== b.alive) return a.alive ? -1 : 1;
     if (a.alive && b.alive) {
       if (b.health !== a.health) return b.health - a.health;
@@ -71,6 +89,7 @@ export function summarise(world: World): MatchResult {
   return {
     winnerId: world.winnerId,
     winnerName: winner?.declaredName ?? null,
+    winnerTeam: world.winnerTeam,
     ticks: world.tick,
     finalHash: hashWorld(world),
     standings: ranked.map((r, i) => ({
@@ -79,6 +98,7 @@ export function summarise(world: World): MatchResult {
       health: r.health,
       kills: r.kills,
       damageDealt: r.damageDealt,
+      team: r.team,
       place: i + 1,
     })),
   };

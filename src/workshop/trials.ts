@@ -45,12 +45,32 @@ export interface TrialRequest {
    */
   fuel?: FuelConfig;
   arena?: ArenaSpec;
+  /**
+   * How many copies of each script take the field, per side.
+   *
+   * 1 is the plain duel the bench has always run. Above that it is N of yours
+   * against N of theirs, on two sides — which is the only way to bench a robot
+   * whose whole behaviour is about its own team. A flock of one does not flock,
+   * and a robot that calls out what it has found has nobody to call to.
+   */
+  teamSize?: number;
+  /**
+   * Whether a {bullet} stops in a teammate. Only means anything above size 1.
+   */
+  friendlyFire?: boolean;
 }
 
 /** What a report was produced under. Carried so a shared table is not ambiguous. */
 export interface TrialConditions {
   fuel: FuelConfig;
   arena: ArenaSpec;
+  /**
+   * Copies per side. Recorded for the same reason the fuel is: a robot that
+   * wins 74% of its duels and one that wins 74% of its 3v3s are making very
+   * different claims, and a shared table has to say which.
+   */
+  teamSize: number;
+  friendlyFire: boolean;
 }
 
 export interface MatchupRow {
@@ -92,13 +112,24 @@ export interface TrialProgress {
 /** Seeds are spread far apart per matchup so no two matchups share a match. */
 const SEED_STRIDE = 100_000;
 
+/** Four a side is eight robots, which is already a crowded arena. */
+export const MAX_TEAM_SIZE = 4;
+
 export function runTrials(
   request: TrialRequest,
   onProgress?: (progress: TrialProgress) => void,
 ): TrialReport {
+  // Capped rather than trusted: this arrives from a shared session, and the
+  // cost of a sweep is the number of matches times the robots in each one.
+  const teamSize = Math.max(1, Math.min(MAX_TEAM_SIZE, Math.floor(request.teamSize ?? 1)));
   const conditions: TrialConditions = {
     fuel: request.fuel ?? FUEL_PRESETS.arena,
     arena: request.arena ?? FLAT_ARENA,
+    teamSize,
+    // Off by default, matching the lobby: somebody who has just put three
+    // copies of one robot on a side rarely means "and now shoot each other".
+    // Inert at size 1, where nobody has a teammate to spare.
+    friendlyFire: request.friendlyFire ?? false,
   };
   const subjectCheck = checkScript(request.subject.source);
   if (!subjectCheck.ok) {
@@ -140,12 +171,20 @@ export function runTrials(
     let healthTotal = 0;
 
     for (let i = 0; i < trials; i++) {
-      // Alternate sides so a positional quirk cannot masquerade as skill.
+      // Alternate sides so a positional quirk cannot masquerade as skill. With
+      // a team it is the whole block that swaps, so teammates stay adjacent on
+      // the spawn ring either way.
       const subjectFirst = i % 2 === 0;
-      const entries = subjectFirst
-        ? [{ source: request.subject.source }, { source: opponent.source }]
-        : [{ source: opponent.source }, { source: request.subject.source }];
-      const subjectIndex = subjectFirst ? 0 : 1;
+      const first = subjectFirst ? request.subject.source : opponent.source;
+      const second = subjectFirst ? opponent.source : request.subject.source;
+      const entries = [
+        ...Array.from({ length: teamSize }, () => ({ source: first, team: 0 })),
+        ...Array.from({ length: teamSize }, () => ({ source: second, team: 1 })),
+      ];
+      // Teams are stated even for a duel, where `0, 1` is exactly what the
+      // simulation would have assigned anyway — so a size-1 sweep produces the
+      // identical matches, and the identical numbers, that it always did.
+      const subjectTeam = subjectFirst ? 0 : 1;
 
       const result = runMatch(
         makeManifest(entries, {
@@ -153,15 +192,22 @@ export function runTrials(
           fuel: conditions.fuel,
           terrain: conditions.arena.terrain,
           walls: conditions.arena.walls,
+          // Left off entirely at size 1, where the setting cannot change a
+          // thing but WOULD change the hash, and with it every recorded number.
+          ...(teamSize > 1 ? { friendlyFire: conditions.friendlyFire } : {}),
         }),
       );
 
-      if (result.winnerId === null) draws++;
-      else if (result.winnerId === subjectIndex) wins++;
+      const winner = result.winnerTeam ?? null;
+      if (winner === null) draws++;
+      else if (winner === subjectTeam) wins++;
       else losses++;
 
       tickTotal += result.ticks;
-      healthTotal += result.standings.find((s) => s.id === subjectIndex)?.health ?? 0;
+      // Averaged across the side, so the figure means the same thing at every
+      // team size: how healthy your robots were at the end.
+      const mine = result.standings.filter((s) => (s.team ?? s.id) === subjectTeam);
+      healthTotal += mine.reduce((n, s) => n + s.health, 0) / Math.max(1, mine.length);
 
       done++;
       // Reporting every match would flood the channel on a 400-match sweep.

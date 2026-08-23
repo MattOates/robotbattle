@@ -15,6 +15,7 @@ import {
   ROBOT_RADIUS,
   SENSE,
   RADAR,
+  RADIO,
   TURRET,
   BULLET,
   DT,
@@ -30,6 +31,7 @@ import {
   gunBears,
   pushOutOfWalls,
   releaseShot,
+  sameTeam,
   spendFuel,
 } from "./world.js";
 import type { Bullet, FuelCell, Robot, World } from "./types.js";
@@ -58,6 +60,13 @@ export function step(world: World): void {
     for (const r of world.robots) r.vm.enqueue("start", {});
   }
 
+  // First, and deliberately so. Whatever was said last tick is handed out
+  // before anything else happens, which means a message crosses a tick boundary
+  // sitting in `world.radio` — where `hashWorld` can see it, and where a peer
+  // that heard something different is caught immediately. Delivering it within
+  // the tick it was sent would work just as well for the robots and leave the
+  // hash with nothing to check.
+  deliverRadio(world);
   senseAll(world);
   enqueueTicks(world);
   runScripts(world);
@@ -107,6 +116,7 @@ function senseAll(world: World): void {
           speed: best.speed,
           health: best.health,
           name: best.name,
+          friend: sameTeam(r, best),
           x: best.x,
           y: best.y,
         });
@@ -467,6 +477,7 @@ function resolveRobotCollisions(world: World): void {
         distance: dist,
         name: b.name,
         health: b.health,
+        friend: sameTeam(a, b),
         x: b.x,
         y: b.y,
       });
@@ -475,6 +486,7 @@ function resolveRobotCollisions(world: World): void {
         distance: dist,
         name: a.name,
         health: a.health,
+        friend: sameTeam(b, a),
         x: a.x,
         y: a.y,
       });
@@ -499,8 +511,19 @@ function moveBullets(world: World): void {
     // a naive endpoint check would occasionally tunnel through a target.
     let hitRobot: Robot | null = null;
     let hitT = Infinity;
+    // Looked up rather than carried on the bullet: a robot never changes sides
+    // mid-match, so this is exact, and it keeps `Bullet` — of which there may be
+    // dozens in flight — one field smaller in the hash. A dead shooter is still
+    // in `world.robots`, so the lookup cannot fail.
+    const shooterTeam = world.robots[b.ownerId]?.team;
     for (const r of world.robots) {
       if (!r.alive || r.id === b.ownerId) continue;
+      // With friendly fire off the shot passes straight THROUGH a teammate,
+      // rather than stopping in one for no damage. That distinction is the
+      // whole of it: a bullet that stopped would make teammates into shields,
+      // and "stand in front of the one on low health" is a mechanic nobody
+      // asked for and nobody could counter.
+      if (!world.friendlyFire && shooterTeam !== undefined && r.team === shooterTeam) continue;
       const t = segmentCircleHit(x0, y0, b.x, b.y, r.x, r.y, ROBOT_RADIUS);
       if (t !== null && t < hitT) {
         hitT = t;
@@ -536,6 +559,9 @@ function moveBullets(world: World): void {
         distance: 0,
         power: b.power,
         health: hitRobot.health,
+        // Whoever pulled the trigger, not whoever was hit: this event is read
+        // from the victim's seat, and "one of ours did that" is the useful fact.
+        friend: shooter ? sameTeam(hitRobot, shooter) : false,
         x: impactX,
         y: impactY,
       });
@@ -550,6 +576,7 @@ function moveBullets(world: World): void {
           name: hitRobot.name,
           health: hitRobot.health,
           power: b.power,
+          friend: sameTeam(shooter, hitRobot),
           x: hitRobot.x,
           y: hitRobot.y,
         });
@@ -711,6 +738,79 @@ function coolGuns(world: World): void {
     // The radar recovers in whole ticks rather than by a heat rate: a ping is
     // an instant either-or, so counting ticks is what a script can reason about.
     if (r.pingHeat > 0) r.pingHeat = Math.max(0, r.pingHeat - 1);
+    // Whole ticks, for the same reason the radar recovers in whole ticks: a
+    // broadcast is an instant either-or, and counting ticks is what a script
+    // can reason about.
+    if (r.radioHeat > 0) r.radioHeat = Math.max(0, r.radioHeat - 1);
+  }
+}
+
+// ---- phase: radio --------------------------------------------------------
+
+/**
+ * Hand out everything that was said, to everybody still alive.
+ *
+ * Runs first, so what is handed out is whatever was said during the PREVIOUS
+ * tick. That gives one uniform latency nobody can dodge and no ordering trick
+ * can shorten — you cannot arrange to hear something sooner by running earlier,
+ * because nothing is ever delivered in the tick it was sent. It also means a
+ * message in flight is state that survives a tick boundary, which is what makes
+ * it worth hashing.
+ *
+ * In two halves, and the split is the important part. A message is *posted*
+ * into every listener's own inbox, and only then *read* out of it at whatever
+ * rate that robot can manage. Nothing is thrown away because several people
+ * spoke at once, and a robot that reads its messages every twelfth tick gets
+ * all of them rather than a sixth of them — it simply gets them later.
+ *
+ * The alternative, delivering straight from one shared list and discarding the
+ * surplus, is what this replaced. It made a broadcast something a robot might
+ * never see through no fault of its own, and the only defence was to stagger
+ * your transmissions by hand against a collision you had no way to detect.
+ *
+ * `world.radio` is already in ascending sender id: `runScripts` runs the robots
+ * in id order and each may push at most one message per cooldown. That is
+ * relied upon rather than re-established with a sort — but it is exactly the
+ * sort of invariant that quietly stops being true, so if the phase order above
+ * ever changes, this is the comment that should stop you.
+ *
+ * There is no `hasQueued` check here, deliberately. Two messages in one tick
+ * are two pieces of news, not one repeated; the de-duplication that keeps a
+ * robot from queueing the same sense event twice would throw away half of a
+ * conversation.
+ */
+function deliverRadio(world: World): void {
+  // ---- post: what was said last tick goes into every listener's own inbox ----
+  for (const m of world.radio) {
+    for (const r of world.robots) {
+      if (!r.alive || r.id === m.from) continue;
+      // You do not hear yourself, and a robot with no `on radio` block is not
+      // listening at all — queueing for it would be holding post for a house
+      // with no letterbox.
+      if (!r.vm.handles("radio")) continue;
+      if (r.inbox.length >= RADIO.inbox) {
+        // Only reachable by a robot that has stopped reading its messages
+        // altogether. Oldest first, and counted, so the test bench says so.
+        r.inbox.shift();
+        r.vm.eventsDropped++;
+      }
+      r.inbox.push(m.data);
+    }
+  }
+  world.radio.length = 0;
+
+  // ---- read: hand over as many as will fit, and keep the rest ----
+  for (const r of world.robots) {
+    if (!r.alive || r.inbox.length === 0) continue;
+    let handed = 0;
+    while (r.inbox.length > 0 && handed < RADIO.maxPerTick) {
+      // A refusal means the event queue is full of things that matter more.
+      // The message stays exactly where it is and is offered again next tick,
+      // still in the order it was sent.
+      if (!r.vm.enqueue("radio", { data: r.inbox[0]! }, true)) break;
+      r.inbox.shift();
+      handed++;
+    }
   }
 }
 
@@ -730,34 +830,98 @@ function killRobot(world: World, victim: Robot, killer: Robot | null): void {
       bearing: angleDelta(r.heading, atan2Deg(victim.y - r.y, victim.x - r.x)),
       distance: hypot(victim.x - r.x, victim.y - r.y),
       name: victim.name,
+      friend: sameTeam(r, victim),
       x: victim.x,
       y: victim.y,
     });
   }
 }
 
+/**
+ * The match is over when one SIDE is left, not one robot.
+ *
+ * In a free-for-all every robot is its own side, so this is the same rule it
+ * always was, arrived at by a different route — which is the point of giving
+ * every robot a team rather than bolting a team mode on beside the old one.
+ *
+ * Everything here iterates `world.robots` in id order and only ever asks a Set
+ * for its size. Nothing reads state out of one: iteration order of a Set is
+ * insertion order, and insertion order is the sort of thing that is identical
+ * on every peer right up until the day it is not.
+ */
 function checkEnd(world: World): void {
-  const alive = world.robots.filter((r) => r.alive);
-  if (alive.length <= 1 && world.robots.length > 1) {
+  const teamsAlive = new Set<number>();
+  for (const r of world.robots) if (r.alive) teamsAlive.add(r.team);
+  const teamsAtStart = new Set(world.robots.map((r) => r.team)).size;
+
+  if (teamsAlive.size <= 1 && teamsAtStart > 1) {
     world.over = true;
-    world.winnerId = alive[0]?.id ?? null;
+    // Taken from the lowest-id survivor rather than out of the Set, so the
+    // answer does not depend on the order robots happened to die in.
+    const survivor = world.robots.find((r) => r.alive) ?? null;
+    world.winnerTeam = survivor?.team ?? null;
+    world.winnerId = bestOfTeam(world, world.winnerTeam)?.id ?? null;
     return;
   }
   if (world.tick + 1 >= world.maxTicks) {
     world.over = true;
-    // A timeout is decided on health, then damage dealt — rewarding the robot
-    // that was winning rather than declaring a draw.
-    let best: Robot | null = null;
+    // A timeout is decided on health, then damage dealt — rewarding the side
+    // that was winning rather than declaring a draw. The same tie-break the
+    // single-robot rule always used, one level up.
+    // Totals per side, accumulated in robot-id order so the arithmetic happens
+    // in the same sequence on every peer. Floating-point addition is not
+    // associative, and a sum built in a different order is a different number.
+    const health = new Map<number, number>();
+    const damage = new Map<number, number>();
     for (const r of world.robots) {
       if (!r.alive) continue;
-      if (
-        !best ||
-        r.health > best.health ||
-        (r.health === best.health && r.damageDealt > best.damageDealt)
-      ) {
-        best = r;
+      health.set(r.team, (health.get(r.team) ?? 0) + r.health);
+      damage.set(r.team, (damage.get(r.team) ?? 0) + r.damageDealt);
+    }
+
+    let bestTeam: number | null = null;
+    let bestHealth = -1;
+    let bestDamage = -1;
+    // Again driven by the robot list rather than by the map, so ties fall to the
+    // lowest team number by way of the lowest robot id, deterministically.
+    for (const r of world.robots) {
+      if (!r.alive) continue;
+      const h = health.get(r.team) ?? 0;
+      const d = damage.get(r.team) ?? 0;
+      if (h > bestHealth || (h === bestHealth && d > bestDamage)) {
+        bestTeam = r.team;
+        bestHealth = h;
+        bestDamage = d;
       }
     }
-    world.winnerId = best?.id ?? null;
+    world.winnerTeam = bestTeam;
+    world.winnerId = bestOfTeam(world, bestTeam)?.id ?? null;
   }
+}
+
+/**
+ * The robot to name when a side wins.
+ *
+ * A team can win with three robots still standing, which no single id
+ * describes — but `winnerId` is what the results table, the stored battle
+ * record and the bracket all point at, so it has to be somebody. The healthiest
+ * survivor, then the one who did the most damage, then the lowest id: the same
+ * order `summarise` places them in, so the winner is always the robot at the
+ * top of the table. With one survivor it is simply that survivor, which is what
+ * every match before teams meant by it.
+ */
+function bestOfTeam(world: World, team: number | null): Robot | null {
+  if (team === null) return null;
+  let best: Robot | null = null;
+  for (const r of world.robots) {
+    if (!r.alive || r.team !== team) continue;
+    if (
+      !best ||
+      r.health > best.health ||
+      (r.health === best.health && r.damageDealt > best.damageDealt)
+    ) {
+      best = r;
+    }
+  }
+  return best;
 }

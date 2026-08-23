@@ -16,6 +16,8 @@ import { styleFor } from "../../src/ui/roboscript-editor.js";
 import { RESERVED } from "../../src/lang/parser.js";
 import { scanLine } from "../../src/lang/scan.js";
 import { SYNONYMS } from "../../src/lang/vocab.js";
+import { EVENT_NAMES } from "../../src/lang/ast.js";
+import { wordsIn } from "../../src/lang/reference.js";
 
 /** The style the editor would paint a word, given what came before it. */
 function styleOf(line: string, index = 0): string | null {
@@ -32,6 +34,65 @@ describe("every word the language reserves", () => {
       return style === "variableName" || style === null;
     });
     expect(unknown, "reserved words the highlighter does not know").toEqual([]);
+  });
+});
+
+/**
+ * Reserved words are not the whole language, and the gap is where this test
+ * failed to earn its keep.
+ *
+ * An event name is spelled out of ordinary identifiers on purpose — `fuel`,
+ * `slope`, `ridge` and `radio` are all events, and all of them are still legal
+ * variable names, so none of them appear in `RESERVED`. The check above
+ * therefore could not see them, and every one of them shipped rendering as
+ * somebody's variable: `fuel` and `slope` since terrain arrived, `radio` from
+ * the day it was added.
+ *
+ * So the events are held against the highlighter directly, from the one list
+ * that knows an event exists.
+ */
+describe("every word an event is spelled with", () => {
+  const eventWords = [...new Set(EVENT_NAMES.flatMap((name) => name.split(" ")))];
+
+  /**
+   * `by` reads as a modifier rather than an event word, and deliberately: it
+   * appears in `hit by bullet`, but `turn by 90` is far and away the commoner
+   * sight, and one token is all the scanner has to go on. It still has to be
+   * *known* — which is what the second test below checks for every word.
+   */
+  const spelledAsEvents = eventWords.filter((w) => w !== "by");
+
+  it.each(spelledAsEvents)("`%s` reads as an event word after `on`", (word) => {
+    expect(styleOf(`on ${word}`, 1)).toBe("eventWord");
+  });
+
+  it.each(eventWords)("`%s` is recognised as something other than a variable", (word) => {
+    const style = styleOf(`on ${word}`, 1);
+    expect(style).not.toBe("variableName");
+    expect(style).not.toBeNull();
+  });
+
+  it("covers the events that are not reserved words at all", () => {
+    // Guards the guard: if these ever became keywords, the test above would be
+    // subsumed by the reserved-word one and this file would be checking
+    // nothing new.
+    const unreserved = eventWords.filter((w) => !RESERVED.has(w));
+    expect(unreserved.length).toBeGreaterThan(0);
+    expect(unreserved).toContain("radio");
+  });
+});
+
+/**
+ * The same hole on the instruction side. `broadcast` shipped uncoloured because
+ * adding an action meant editing a list in the editor that nothing pointed at.
+ */
+describe("every word an action is spelled with", () => {
+  const actionWords = [...wordsIn("actions")].filter((w) => /^[a-z]+$/.test(w));
+
+  it.each(actionWords)("`%s` is recognised as something other than a variable", (word) => {
+    const style = styleOf(word);
+    expect(style).not.toBe("variableName");
+    expect(style).not.toBeNull();
   });
 });
 

@@ -42,7 +42,7 @@ const KEYWORDS = [
   "true", "false", "none", "me", "arena", "event", "name", "color", "skid",
   "steered", "start", "sense", "hit", "bullet", "robot", "wall", "missed",
   "destroyed", "radar", "ping", "can", "do", "with", "given", "every",
-  "after", "before",
+  "after", "before", "broadcast",
 ] as const;
 
 type Keyword = (typeof KEYWORDS)[number];
