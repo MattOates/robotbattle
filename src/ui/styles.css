@@ -3178,6 +3178,34 @@ button {
   background: #0d1512;
 }
 
+/*
+ * A lesson's RoboScript, highlighted by the editor itself.
+ *
+ * Shaped to read as a block on a page rather than as an editor embedded in one:
+ * no focus ring, no caret, and the same margin as the `.robo-block` it replaced,
+ * so the rhythm of a lesson does not change.
+ */
+.robo-block-code {
+  border: 1px solid var(--bezel);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 0 0 18px;
+  background: #12150f;
+}
+
+:root[data-arena="biological"] .robo-block-code {
+  background: #0d1512;
+}
+
+/* Read-only: there is nothing here to put a cursor in. */
+.robo-block-code .cm-editor.cm-focused {
+  outline: none;
+}
+
+.robo-block-code .cm-cursor {
+  display: none;
+}
+
 .learn-nav {
   display: flex;
   justify-content: space-between;

@@ -11,6 +11,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { navigate } from "../router.js";
 import { Playground, PlaygroundBoundary } from "../../learn/Playground.js";
+import { CodeEditor } from "../CodeEditor.js";
 import { translate } from "../../learn/translate.js";
 import {
   lessonTeaches,
@@ -250,6 +251,8 @@ export interface CodeProps {
   theme: Theme;
 }
 
+const NOOP = () => {};
+
 function CodeBlock({ className, children, node, theme }: CodeProps) {
   const text = String(children ?? "").replace(/\n$/, "");
   const language = /language-(\w+)/.exec(className ?? "")?.[1];
@@ -280,10 +283,29 @@ function CodeBlock({ className, children, node, theme }: CodeProps) {
   }
 
   if (language === "robo") {
+    // The editor's own highlighter in preview mode, exactly as the assistant
+    // shows the snippets it offers. A lesson's examples ARE RoboScript, and
+    // there was no reason for them to be the only place in the app where it is
+    // rendered as flat text — least of all the place where somebody is reading
+    // it for the first time and has nothing else to tell a keyword from a name.
+    //
+    // Not a second highlighter: writing one would mean a copy of the language's
+    // colours that could drift from the editor's. And not costly either — the
+    // Learn bundle already carries `CodeEditor` for the playgrounds, so the
+    // heaviest lesson adds seven read-only views to a page that was already
+    // going to build one.
     return (
-      <pre className="robo-block">
-        <code>{translate(text, theme)}</code>
-      </pre>
+      <div className="robo-block-code">
+        <CodeEditor
+          source={translate(text, theme)}
+          theme={theme}
+          onChange={NOOP}
+          preview
+          // Copyable, unlike the assistant's previews: a lesson's examples are
+          // meant to be taken away and pasted into a Workshop.
+          copyable
+        />
+      </div>
     );
   }
 
