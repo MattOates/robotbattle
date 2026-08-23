@@ -17,7 +17,8 @@
     "preview": "vite preview",
     "check": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "skill": "vite-node scripts/build-skill.ts"
   },
   "keywords": [
     "robocode",

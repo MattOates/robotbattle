@@ -38,14 +38,27 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - run: npm run skill
       - name: Assemble the site
         run: |
-          mkdir -p _site/play
+          mkdir -p _site/play _site/skill
           cp docs/index.html _site/index.html
           cp -R dist/. _site/play/
+
+          # The skill, three ways: browsable files, one flat file for anywhere
+          # with no notion of a skill, and a zip that unpacks as a skill folder.
+          cp dist-skill/*.md _site/skill/
+          mkdir -p pack/roboscript
+          cp dist-skill/SKILL.md dist-skill/reference.md dist-skill/examples.md pack/roboscript/
+          (cd pack && zip -qr ../_site/skill/roboscript-skill.zip roboscript)
+
+          # At the root, where anything looking for it by convention will look.
+          cp dist-skill/llms.txt _site/llms.txt
+
           # Stops Pages running the built output through Jekyll.
           touch _site/.nojekyll
           echo "built $(du -sh _site/play | cut -f1) of game"
+          echo "built $(du -sh _site/skill | cut -f1) of skill"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
