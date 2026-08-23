@@ -2128,6 +2128,15 @@ function BenchPane({
    * not flock, and a robot that calls out what it finds has nobody to call to.
    */
   const [teamSize, setTeamSize] = useState(1);
+  /**
+   * Whether a shot stops in one of your own. Only means anything above a size
+   * of one, so the control appears with the teams and not before.
+   *
+   * Worth having rather than fixing at off: a host can turn it on, and a robot
+   * that has only ever been measured with it off has not been measured for that
+   * match.
+   */
+  const [benchFriendlyFire, setBenchFriendlyFire] = useState(false);
   const [picked, setPicked] = useState<string[]>(["spinner", "racer"]);
   // The same words the Arena lobby offers, from the same table, so a robot
   // tuned against "hilly" here meets that ground when it gets there.
@@ -2169,7 +2178,7 @@ function BenchPane({
             fuel: FUEL_SETTINGS[fuelLevel],
             arena: arenaOverride ?? arenaForLevel(terrainLevel),
             teamSize,
-            friendlyFire: false,
+            friendlyFire: benchFriendlyFire,
           },
           error: message.message,
         });
@@ -2187,6 +2196,7 @@ function BenchPane({
         fuel: FUEL_SETTINGS[fuelLevel],
         arena: arenaOverride ?? arenaForLevel(terrainLevel),
         teamSize,
+        friendlyFire: benchFriendlyFire,
       },
     };
     worker.postMessage(request);
@@ -2225,6 +2235,19 @@ function BenchPane({
                 }
               />
             </label>
+            {teamSize > 1 ? (
+              <label
+                className="check"
+                title="Whether a shot stops in one of your own. A host can turn this on, so it is worth knowing how your robot does under it."
+              >
+                <input
+                  type="checkbox"
+                  checked={benchFriendlyFire}
+                  onChange={(e) => setBenchFriendlyFire(e.target.checked)}
+                />
+                Friendly fire
+              </label>
+            ) : null}
             <button
               type="button"
               className="btn primary small"

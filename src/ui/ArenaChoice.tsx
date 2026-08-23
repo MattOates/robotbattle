@@ -76,7 +76,13 @@ export function ArenaChoicePanel({
   return (
     <>
       <div className="panel-head">
-        <span className="silkscreen">{terrainHeading(theme)}</span>
+        {/* The "what is this setting for" prose lives here rather than as a
+            paragraph, for the same reason it does on the other three settings:
+            four stacked bands each is what stopped the host's panel fitting on
+            a screen once the Arena grew sides and friendly fire. */}
+        <span className="silkscreen" title={terrainIntro(theme)}>
+          {terrainHeading(theme)}
+        </span>
       </div>
       <div className="panel-body">
         {arenas.length > 0 ? (
@@ -112,8 +118,7 @@ export function ArenaChoicePanel({
             .
           </p>
         ) : (
-          <>
-            <p className="empty small">{terrainIntro(theme)}</p>
+          <div className="setting">
             <div className="row">
               {TERRAIN_LEVELS.map((l) => (
                 <button
@@ -126,8 +131,8 @@ export function ArenaChoicePanel({
                 </button>
               ))}
             </div>
-            <p className="empty small">{terrainBlurb(level, theme)}</p>
-          </>
+            <p className="setting-note">{terrainBlurb(level, theme)}</p>
+          </div>
         )}
       </div>
     </>
