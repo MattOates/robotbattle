@@ -70,6 +70,7 @@ describe("event fields depend on the handler", () => {
       "speed",
       "health",
       "name",
+      "friend",
       "x",
       "y",
     ]);
@@ -124,6 +125,7 @@ describe("blocks you teach yourself", () => {
       "distance",
       "power",
       "health",
+      "friend",
       "x",
       "y",
     ]);

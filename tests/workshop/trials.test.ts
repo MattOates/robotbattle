@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { runTrials, type Contender, type TrialRequest } from "../../src/workshop/trials.js";
+import { sampleById } from "../../src/bots/index.js";
+import { MAX_TEAM_SIZE, runTrials, type Contender, type TrialRequest } from "../../src/workshop/trials.js";
 import { DODGER, HUNTER, RACER, SITTING_DUCK, SPINNER } from "../../src/bots/index.js";
 import { FUEL_PRESETS, TERRAIN_PRESETS } from "../../src/sim/types.js";
 
@@ -142,5 +143,84 @@ describe("the test bench", () => {
 
   it("asks for an opponent when given none", () => {
     expect(runTrials(request({ opponents: [] })).error).toBe("Pick someone to fight.");
+  });
+});
+
+describe("teams on the bench", () => {
+  /**
+   * A robot whose whole behaviour is about its own side cannot be measured one
+   * at a time. A flock of one does not flock; a robot that calls out what it has
+   * found has nobody to call to. So the bench runs N of yours against N of
+   * theirs.
+   */
+  const subject = { label: "Wingman", source: sampleById("wingman")!.source };
+  const opponents = [
+    { id: "hunter", label: "Hunter", kind: "arena" as const, source: sampleById("hunter")!.source },
+  ];
+  const base = { subject, opponents, trials: 4, seedBase: 77 };
+
+  it("runs a duel when nobody asked for teams", () => {
+    const report = runTrials(base);
+    expect(report.conditions.teamSize).toBe(1);
+    expect(report.rows[0]!.trials).toBe(4);
+  });
+
+  /**
+   * The load-bearing one. Stating `team: 0, 1` for a duel is exactly what the
+   * simulation would have assigned anyway, so asking for a team size of one has
+   * to produce the identical matches — otherwise every number anybody has ever
+   * recorded from this bench quietly moved.
+   */
+  it("gives byte-identical results at a team size of one", () => {
+    expect(runTrials({ ...base, teamSize: 1 }).rows).toEqual(runTrials(base).rows);
+  });
+
+  it("puts more robots in the arena as the size goes up", () => {
+    // Measured through the outcome rather than the manifest: a 3v3 is a
+    // different fight from a duel, so the numbers must actually move.
+    const duel = runTrials({ ...base, teamSize: 1 });
+    const teams = runTrials({ ...base, teamSize: 3 });
+    expect(teams.conditions.teamSize).toBe(3);
+    expect(teams.rows[0]!.winRate).not.toBe(duel.rows[0]!.winRate);
+  });
+
+  it("records the size, so a shared table is not ambiguous", () => {
+    // A robot that wins 74% of its duels and one that wins 74% of its 3v3s are
+    // making very different claims.
+    expect(runTrials({ ...base, teamSize: 2 }).conditions.teamSize).toBe(2);
+  });
+
+  it("clamps a size that arrived from somebody else", () => {
+    expect(runTrials({ ...base, teamSize: 99 }).conditions.teamSize).toBe(MAX_TEAM_SIZE);
+    expect(runTrials({ ...base, teamSize: 0 }).conditions.teamSize).toBe(1);
+    expect(runTrials({ ...base, teamSize: -3 }).conditions.teamSize).toBe(1);
+  });
+
+  it("turns friendly fire off by default, as the lobby does", () => {
+    expect(runTrials({ ...base, teamSize: 2 }).conditions.friendlyFire).toBe(false);
+  });
+
+  it("lets friendly fire be turned on, and it changes the fight", () => {
+    const off = runTrials({ ...base, teamSize: 3, friendlyFire: false });
+    const on = runTrials({ ...base, teamSize: 3, friendlyFire: true });
+    expect(on.conditions.friendlyFire).toBe(true);
+    expect(on.rows[0]!.avgTicks).not.toBe(off.rows[0]!.avgTicks);
+  });
+
+  it("averages health across the side, so the figure means one thing at any size", () => {
+    for (const teamSize of [1, 2, 3]) {
+      const row = runTrials({ ...base, teamSize }).rows[0]!;
+      expect(row.avgHealth).toBeGreaterThanOrEqual(0);
+      expect(row.avgHealth).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it("shows a flocking robot getting better with company", () => {
+    // The whole point of the feature, as an assertion: the Boid is weak alone
+    // and strong in numbers, because it has nobody to flock with at size 1.
+    const boid = { label: "Boid", source: sampleById("boid")!.source };
+    const alone = runTrials({ ...base, subject: boid, trials: 6, teamSize: 1 });
+    const together = runTrials({ ...base, subject: boid, trials: 6, teamSize: 3 });
+    expect(together.rows[0]!.winRate).toBeGreaterThan(alone.rows[0]!.winRate);
   });
 });

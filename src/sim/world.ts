@@ -28,11 +28,13 @@ import { beamReach, FLAT_TERRAIN, makeTerrain, slopeAt, uphillAt } from "./terra
 import {
   BULLET,
   clampFuelConfig,
+  clampTeams,
   clampTerrainConfig,
   clampWalls,
   FUEL,
   FUEL_PRESETS,
   MAX_FUEL,
+  RADIO,
   MAX_HEALTH,
   RADAR,
   ROBOT_RADIUS,
@@ -53,6 +55,14 @@ export interface Entry {
   source: string;
   /** Optional override for the on-screen colour, e.g. chosen in the lobby. */
   color?: string;
+  /**
+   * Which side this robot is on, numbered from zero.
+   *
+   * Optional for the same reason `walls` is: every manifest saved before teams
+   * existed still replays, as the free-for-all it was. Absent means "a team of
+   * my own", which is what `createWorld` fills in from the entry index.
+   */
+  team?: number;
 }
 
 /** Everything needed to reproduce a match exactly. */
@@ -72,6 +82,15 @@ export interface MatchManifest {
    * — still replays, as the wall-free match it was.
    */
   walls?: Wall[];
+  /**
+   * Whether a bullet stops in a teammate or flies straight through one.
+   *
+   * Optional, and absent means ON — which is what every match before teams
+   * existed did, since a bullet then stopped in anybody who was not the robot
+   * that fired it. A missing field has to mean what the old world meant, or
+   * every stored `BattleRecord` quietly replays as a different fight.
+   */
+  friendlyFire?: boolean;
   /** Bumped whenever simulation behaviour changes, so peers can refuse a mismatch. */
   simVersion: number;
 }
@@ -95,8 +114,18 @@ export interface MatchManifest {
  *     and do not stop the radar beam, but they are reported by `sense wall` and
  *     `ping wall`, and fuel now avoids spawning inside one \u2014 which moves the
  *     RNG stream, so an older peer must refuse the match rather than drift.
+ * 10 — teams. A robot belongs to a team, a free-for-all is every robot on a
+ *     team of its own, and the match ends when one team is left rather than one
+ *     robot. It ships inert: with nobody assigned, every team has one member,
+ *     the spawn ring lands on the identical slots, and not one tick of the
+ *     golden match plays differently — only its digest moves, because the hash
+ *     now folds in numbers it did not before. The bump is for the three things
+ *     a version 9 peer could not agree about: a manifest that assigns teams,
+ *     the friendly-fire switch, which decides whether a bullet passes through a
+ *     teammate or stops in one, and the radio, which is live state carried
+ *     between ticks.
  */
-export const SIM_VERSION = 9;
+export const SIM_VERSION = 10;
 
 /**
  * How far a spawn may vary from its slot on the ring.
@@ -133,6 +162,9 @@ export function makeManifest(
     // Empty by default for the same reason terrain is off by default: a match
     // gains walls because a host asked for them, never by surprise.
     walls: opts.walls ?? [],
+    // On unless a host says otherwise, which is what the game did before teams
+    // existed. See the note on the field.
+    friendlyFire: opts.friendlyFire ?? true,
     simVersion: SIM_VERSION,
   };
 }
@@ -166,6 +198,7 @@ export function createWorld(manifest: MatchManifest): World {
     bullets: [],
     fuel: [],
     effects: [],
+    radio: [],
     terrain: terrainConfig.enabled
       ? makeTerrain(terrainConfig, manifest.width, manifest.height)
       : FLAT_TERRAIN,
@@ -178,7 +211,11 @@ export function createWorld(manifest: MatchManifest): World {
     // own: an unbounded wall list would let one peer decide how much work every
     // other peer does per tick.
     walls: clampWalls(manifest.walls),
+    // Clamped like everything else that arrives in a manifest, and defaulting to
+    // the pre-teams behaviour when the field is missing entirely.
+    friendlyFire: manifest.friendlyFire !== false,
     over: false,
+    winnerTeam: null,
     winnerId: null,
     maxTicks: manifest.maxTicks,
   };
@@ -190,6 +227,30 @@ export function createWorld(manifest: MatchManifest): World {
 
   const slot = 360 / Math.max(1, n);
 
+  const teams = clampTeams(manifest.entries.map((e) => e.team));
+
+  // Which place on the ring each entry gets, so that teammates start next to
+  // each other rather than scattered around it.
+  //
+  // This changes the SLOT an entry occupies and nothing else. The draws below
+  // still happen in entry order, one per entry, in the same sequence they
+  // always did — which is the invariant that matters, and the one a future
+  // refactor must not break. In a free-for-all every team number is already the
+  // entry index, so this map is the identity and every existing seed keeps the
+  // exact spawn positions it has always had.
+  //
+  // Note it is deliberately NOT done by reordering the entries themselves. The
+  // peer-id sort in `manifestFromParticipants` is the sole authority on entry
+  // order, and shuffling it here would stop `entryIndexFor` agreeing with the
+  // manifest about whose robot is whose.
+  const slotOf: number[] = [];
+  manifest.entries
+    .map((_, i) => i)
+    .sort((a, b) => teams[a]! - teams[b]! || a - b)
+    .forEach((entryIndex, position) => {
+      slotOf[entryIndex] = position;
+    });
+
   manifest.entries.forEach((entry, index) => {
     const ast = parse(entry.source);
     const program = compile(ast);
@@ -198,7 +259,7 @@ export function createWorld(manifest: MatchManifest): World {
     // seed so that no two matches are the same. Draws happen in entry order,
     // which keeps the whole thing reproducible.
     const spread = slot * SPAWN_JITTER.angleFraction;
-    const angle = slot * index + rng.range(-spread, spread);
+    const angle = slot * slotOf[index]! + rng.range(-spread, spread);
     const radius = ringRadius * rng.range(SPAWN_JITTER.minRadiusScale, SPAWN_JITTER.maxRadiusScale);
     const facing = normalizeAngle(
       angle + 180 + rng.range(-SPAWN_JITTER.heading, SPAWN_JITTER.heading),
@@ -210,6 +271,7 @@ export function createWorld(manifest: MatchManifest): World {
       declaredName: ast.name,
       color: entry.color ?? ast.color,
       locomotion: ast.locomotion,
+      team: teams[index]!,
       x: cx + cosDeg(angle) * radius,
       y: cy + sinDeg(angle) * radius,
       heading: facing,
@@ -218,6 +280,8 @@ export function createWorld(manifest: MatchManifest): World {
       gunHeat: 0,
       radar: facing,
       pingHeat: 0,
+      radioHeat: 0,
+      inbox: [],
       pendingPower: 0,
       health: MAX_HEALTH,
       fuel: MAX_FUEL,
@@ -316,6 +380,13 @@ function makeHost(world: World, robot: Robot): VmHost {
             return robot.gunHeat <= 0 ? 1 : 0;
           case "score":
             return robot.kills;
+          // Counted from one, unlike `robot.team`, which counts from zero
+          // because the default team number is the entry index. The arena tag,
+          // the standings and this property all say the same number as each
+          // other; the simulation is the only thing that starts at nought, and
+          // nobody should have to learn that to write a robot.
+          case "team":
+            return robot.team + 1;
           default:
             return null;
         }
@@ -330,6 +401,13 @@ function makeHost(world: World, robot: Robot): VmHost {
             return world.tick;
           case "robots":
             return world.robots.reduce((acc, r) => acc + (r.alive ? 1 : 0), 0);
+          // How many sides are still in it. 1 means the match is about to end;
+          // in a free-for-all this is simply `arena.robots` said another way.
+          case "teams": {
+            const seen = new Set<number>();
+            for (const r of world.robots) if (r.alive) seen.add(r.team);
+            return seen.size;
+          }
           default:
             return null;
         }
@@ -396,6 +474,9 @@ function makeHost(world: World, robot: Robot): VmHost {
           return;
         case "ping":
           ping(world, robot, a0);
+          return;
+        case "broadcast":
+          broadcast(world, robot, args[0] ?? null);
           return;
         default:
           return;
@@ -472,6 +553,42 @@ export function fire(world: World, robot: Robot, powerRaw: number): void {
     return;
   }
   robot.pendingPower = power;
+}
+
+/**
+ * Say something to the whole arena.
+ *
+ * Ignored outright while the radio is still warm, exactly as `fire` is ignored
+ * by a gun that has not cooled — spamming it costs nothing and achieves
+ * nothing, which is the friendliest way for a limit to behave.
+ *
+ * The value is flattened to text here rather than at delivery, and with
+ * `toText` rather than anything hand-rolled, because that function already
+ * trims float noise to two decimals. Two peers that formatted the same number
+ * differently would hash differently, so this is a determinism decision and not
+ * a cosmetic one. It also means a message is one kind of thing by the time it
+ * is in flight, whatever the script handed over.
+ */
+export function broadcast(world: World, robot: Robot, value: Value): void {
+  if (!robot.alive || robot.radioHeat > 0) return;
+  robot.radioHeat = RADIO.cooldown;
+  spendFuel(world, robot, RADIO.fuel);
+  world.radio.push({
+    from: robot.id,
+    data: toText(value).slice(0, RADIO.maxLength),
+  });
+}
+
+/**
+ * Are these two on the same side?
+ *
+ * The whole of the team mechanic, in one comparison. In a free-for-all every
+ * robot has a team number of its own, so this is true only when a robot is
+ * asked about itself — which is why nothing had to grow a special case for
+ * matches without teams.
+ */
+export function sameTeam(a: Robot, b: Robot): boolean {
+  return a.team === b.team;
 }
 
 /**
@@ -641,6 +758,7 @@ export function ping(world: World, robot: Robot, powerRaw: number = RADAR.minPow
       // Bearings are relative to the chassis everywhere in this language, so a
       // ping return drops straight into `turn body by` or `turret.aim at`.
       bearing: angleDelta(robot.heading, atan2Deg(best.y - robot.y, best.x - robot.x)),
+      friend: sameTeam(robot, best),
       distance: bestDist,
       heading: best.heading,
       speed: best.speed,

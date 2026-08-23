@@ -39,6 +39,10 @@ export function renderDoc(text: string, theme: Theme = "mechanical"): string {
     .replace(/\{ground\}/g, words.ground)
     .replace(/\{uphill\}/g, words.uphill)
     .replace(/\{downhill\}/g, words.downhill)
+    .replace(/\{broadcast\}/g, words.broadcastVerb)
+    .replace(/\{radio\}/g, words.radio)
+    .replace(/\{ally\}/g, words.ally)
+    .replace(/\{team\}/g, words.team)
     .replace(/\{arena\}/g, words.arena);
 }
 
@@ -72,6 +76,27 @@ const HEIGHT: FieldDoc = {
   name: "height",
   detail: "How bad the {ground} is out there on its own, 0 for the easiest and 100 for the worst.",
 };
+/**
+ * Whose side it is on.
+ *
+ * A plain yes-or-no rather than a team number, and that is deliberate. Which
+ * side somebody is on is a fact about the lobby; whether they are on YOURS is
+ * the only part of it the arena has any business telling you. It also means the
+ * field says the same thing however many teams there are.
+ *
+ * The consequence, which is a decision and not an oversight: with three or more
+ * sides you cannot tell one enemy team from another. That is what the radio is
+ * for — work it out and tell your own side.
+ */
+const FRIEND: FieldDoc = {
+  name: "friend",
+  detail:
+    "True when it is on your side. Always false when everyone is fighting for themselves.",
+};
+const DATA: FieldDoc = {
+  name: "data",
+  detail: "Whatever was broadcast, exactly as it was sent.",
+};
 const X: FieldDoc = { name: "x", detail: "Its position across the arena." };
 const Y: FieldDoc = { name: "y", detail: "Its position down the arena." };
 
@@ -92,9 +117,14 @@ export const EVENT_DOCS: Readonly<Record<EventName, EventDoc>> = {
   },
   "sense robot": {
     summary: "Another {robot} has come into your sense cone.",
-    fields: [BEARING, DISTANCE, HEADING, SPEED, HEALTH, NAME, X, Y],
+    fields: [BEARING, DISTANCE, HEADING, SPEED, HEALTH, NAME, FRIEND, X, Y],
   },
   "sense bullet": {
+    // Deliberately no `friend`. A {bullet} in the cone does have somebody's
+    // name on it, but being told one is friendly would hand a team free
+    // dodging every time it fired through its own line — and the whole cost of
+    // fighting shoulder to shoulder is that you have to watch where you shoot.
+    // A {bullet} is a {bullet}.
     summary: "A {bullet} is flying through your sense cone. Time to dodge.",
     fields: [BEARING, DISTANCE, HEADING, SPEED, POWER, X, Y],
   },
@@ -110,7 +140,7 @@ export const EVENT_DOCS: Readonly<Record<EventName, EventDoc>> = {
   "ping robot": {
     summary:
       "Your {radar} beam found a {robot}. The beam is narrow and reaches much further than the cone, so this is a {robot} you could not otherwise see \u2014 as long as nothing higher than you was in the way.",
-    fields: [BEARING, DISTANCE, HEADING, SPEED, HEALTH, NAME, X, Y],
+    fields: [BEARING, DISTANCE, HEADING, SPEED, HEALTH, NAME, FRIEND, X, Y],
   },
   "ping fuel": {
     summary:
@@ -138,15 +168,16 @@ export const EVENT_DOCS: Readonly<Record<EventName, EventDoc>> = {
   },
   "hit robot": {
     summary: "You bumped into another {robot}.",
-    fields: [BEARING, DISTANCE, NAME, HEALTH, X, Y],
+    fields: [BEARING, DISTANCE, NAME, HEALTH, FRIEND, X, Y],
   },
   "hit by bullet": {
+    // Here `friend` is about the SHOOTER: somebody on your own side hit you.
     summary: "Someone shot you. The bearing points back at where it came from.",
-    fields: [BEARING, DISTANCE, POWER, HEALTH, X, Y],
+    fields: [BEARING, DISTANCE, POWER, HEALTH, FRIEND, X, Y],
   },
   "bullet hit": {
     summary: "One of your shots hit someone.",
-    fields: [BEARING, DISTANCE, NAME, HEALTH, POWER, X, Y],
+    fields: [BEARING, DISTANCE, NAME, HEALTH, POWER, FRIEND, X, Y],
   },
   "bullet missed": {
     summary: "One of your shots flew off the edge of the arena without hitting anything.",
@@ -154,7 +185,12 @@ export const EVENT_DOCS: Readonly<Record<EventName, EventDoc>> = {
   },
   "robot destroyed": {
     summary: "Any {robot} has been destroyed — possibly by you, possibly not.",
-    fields: [BEARING, DISTANCE, NAME, X, Y],
+    fields: [BEARING, DISTANCE, NAME, FRIEND, X, Y],
+  },
+  radio: {
+    summary:
+      "Somebody broadcast something, and every {robot} alive heard it. It does not say who sent it or where they are \u2014 so if you want your own side to know it was you, put that in the message, knowing the other side is reading it too.",
+    fields: [DATA],
   },
 };
 

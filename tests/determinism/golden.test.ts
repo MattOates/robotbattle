@@ -89,49 +89,69 @@ const GOLDEN = {
   //     no walls means no rejection and no extra draw here, but the code path
   //     differs between builds, so a version 8 peer must refuse rather than
   //     guess.
-  simVersion: 9,
+  // 10 — teams, and the radio. A robot belongs to a side, a free-for-all is
+  //     every robot on a side of its own, and the match ends when one side is
+  //     left rather than one robot. Like terrain and walls before it, the
+  //     mechanic ships inert: this match assigns nobody, so every team number
+  //     is the robot's own entry index, the spawn ring lands on the identical
+  //     slots, and not one tick plays differently. 1833 ticks and Racer, both
+  //     identical to version 9, and the fuel-off pair below untouched — that
+  //     is the claim this entry is making.
+  //
+  //     The hashes moved for exactly the reason they moved at versions 7 and 9,
+  //     and it is worth being just as precise: `hashWorld` now folds in each
+  //     robot's team and radio cooldown, the friendly-fire switch, whatever is
+  //     in the air unheard, and every robot's own radio inbox. A match with no sides and nobody talking hashes
+  //     several more integers than it used to. The digest changed; the world it
+  //     describes did not.
+  //
+  //     The version bump is about what a version 9 peer could not agree with:
+  //     a manifest that assigns teams, the friendly-fire switch — which decides
+  //     whether a bullet passes through a teammate or stops in one — and the
+  //     radio, which is live state carried between ticks.
+  simVersion: 10,
   ticks: 1833,
   winner: "Racer",
-  finalHash: "c839fc09c2a1c557",
+  finalHash: "b65901503b18f49b",
   /** Hash at ticks 0, 50, 100, ... */
   every50: [
-    "6aa7a02f282b3621",
-    "088827e3ed097d9b",
-    "d703020a743e9c50",
-    "afa23a02768b786f",
-    "cdd8b26007ca30d0",
-    "d885f454515b958b",
-    "09aaae6eef04f283",
-    "f28b2b7f2ab6cdf2",
-    "53c4ea7dc03e5b59",
-    "d90e5a6b75028fcb",
-    "dd0333c659b0a14d",
-    "2f9c023cd0837d19",
-    "cb2da97e60fa9530",
-    "e0b18edcda6eae78",
-    "049f9f24ad478060",
-    "bca29f4506bf4899",
-    "b83cb34a7c9ab406",
-    "249584b590ff1ebd",
-    "7b01646ed2e591e2",
-    "badaf711bb497055",
-    "f7fbb239697325e7",
-    "d0b1981bfc869c2d",
-    "686c75d03764d347",
-    "2736f767fdcaa727",
-    "8aef8fa2ee2785d3",
-    "44cfde9e70d30adf",
-    "2d29d63030fd0396",
-    "c572ebd21bb1ab0e",
-    "5fc82e30c9e7fd21",
-    "50be8198d43450f7",
-    "d0161af82de2aeea",
-    "7c672bc958575c26",
-    "68bdd8f1974655d6",
-    "856e7a9d5c207e4c",
-    "c24df9c853ac52e9",
-    "0981ab02a1760569",
-    "b3fec20aa2dc6b0a",
+    "45801097a2a901bc",
+    "8d17eee4a918c9e2",
+    "09920f49ee2c936d",
+    "f5b6d3bf07068916",
+    "6a18a62f46cf6fe5",
+    "279e6114faad8662",
+    "209f79ba2b8a087c",
+    "9c102e45f7f379cd",
+    "5ebb34200fc0d7d2",
+    "895081697f304130",
+    "ae9fd7cac6a99ace",
+    "aa862b682830bdb4",
+    "b99607509beb40a1",
+    "bc888eedc226b29d",
+    "b0911aab47e18189",
+    "d4f2946df42bc75c",
+    "7a0ac04388ab4acd",
+    "40d35b9f284b49be",
+    "58237386694b4d95",
+    "d9caa2ada2c7020a",
+    "3d7b09644d373840",
+    "ac0cba87977e68c0",
+    "d6547bff71a89e9e",
+    "697b7b04eb610b4e",
+    "6d4d389a725e7eaa",
+    "23ee7630c35e6796",
+    "1d2a7c6b4b2aa2c9",
+    "a20d164b3618ad05",
+    "c9a82d78eab0256e",
+    "2ec6e7b960c42588",
+    "73e9f226ff1518dd",
+    "cc0d43cd34391f9f",
+    "a8e05c3b6544eb57",
+    "530955eac1bb6cb5",
+    "248ca5a024c10e94",
+    "1c1b1da416830360",
+    "73cb8a6e97cb2375",
   ],
 };
 

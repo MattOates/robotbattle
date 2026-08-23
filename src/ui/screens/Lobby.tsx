@@ -10,6 +10,8 @@ import { navigate, routePath, type ScreenName } from "../router.js";
 import { useRoomChat, type RoomChat } from "../useRoomChat.js";
 import { MAX_CHAT_LENGTH } from "../../net/protocol.js";
 import { shortAgo } from "../../store/chat.js";
+import { teamLabel } from "../matchSettings.js";
+import type { Theme } from "../../lang/vocab.js";
 
 /**
  * Talk, for as long as the room lasts.
@@ -137,6 +139,16 @@ interface Props {
   onPlayerName: (name: string) => void;
   /** Whether this mode wants everyone to bring a robot. */
   requiresRobot?: boolean;
+  /**
+   * How many sides this match has, or 0 for a free-for-all.
+   *
+   * Passed in by the mode rather than owned here, because `Lobby` is shared
+   * with the Tournament and the Trade table, and neither of those has sides.
+   * When it is 0 the roster looks exactly as it always did.
+   */
+  teamCount?: number;
+  /** Only used to word the team labels; the lobby is otherwise theme-free. */
+  theme?: Theme;
   /** Set when the host has prodded us for holding things up. */
   nudge?: { at: number; text: string } | null;
   /** Host-only action, shown when the room is ready to begin. */
@@ -157,6 +169,8 @@ export function Lobby({
   playerName,
   onPlayerName,
   requiresRobot = true,
+  teamCount = 0,
+  theme = "mechanical",
   nudge = null,
   action,
   children,
@@ -224,6 +238,30 @@ export function Lobby({
                       {peer.robot ? peer.robot.name : "no robot yet"}
                     </span>
                   </span>
+                  {teamCount > 1 ? (
+                    // You may move yourself; the host may move anybody. Either
+                    // way it is a request — the host owns the roster, and the
+                    // answer arrives back as the next one.
+                    <span className="team-picker">
+                      {Array.from({ length: teamCount }, (_, team) => {
+                        const mine = peer.id === room.state?.selfId;
+                        const canSet = mine || (self?.isHost ?? false);
+                        return (
+                          <button
+                            key={team}
+                            type="button"
+                            disabled={!canSet}
+                            title={teamLabel(team, theme)}
+                            className={`team-badge t${team % 6}`}
+                            style={{ opacity: peer.team === team ? 1 : 0.3 }}
+                            onClick={() => room.session?.setTeam(team, peer.id)}
+                          >
+                            {team + 1}
+                          </button>
+                        );
+                      })}
+                    </span>
+                  ) : null}
                   {requiresRobot ? (
                     <span className={`ready-pip${peer.ready ? " on" : ""}`}>
                       {peer.ready ? "Ready" : "Waiting"}

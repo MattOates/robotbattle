@@ -311,7 +311,7 @@ class AstBuilder extends Base {
   // --- actions -------------------------------------------------------------
 
   action(c: Children): Stmt {
-    for (const key of ["driveStmt", "turnStmt", "turretStmt", "radarStmt", "fireStmt", "pingStmt"]) {
+    for (const key of ["driveStmt", "turnStmt", "turretStmt", "radarStmt", "fireStmt", "pingStmt", "broadcastStmt"]) {
       if (has(c, key)) return this.visit(node(c, key)) as Stmt;
     }
     return { type: "action", action: "stop", args: [], pos: at(tok(c, "Stop")) };
@@ -394,6 +394,15 @@ class AstBuilder extends Base {
       action: "ping",
       args: (all(c, "expr") as CstNode[]).map((e) => this.visit(e) as Expr),
       pos: at(tok(c, "Ping")),
+    };
+  }
+
+  broadcastStmt(c: Children): Stmt {
+    return {
+      type: "action",
+      action: "broadcast",
+      args: (all(c, "expr") as CstNode[]).map((e) => this.visit(e) as Expr),
+      pos: at(tok(c, "Broadcast")),
     };
   }
 

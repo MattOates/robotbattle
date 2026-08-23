@@ -70,6 +70,13 @@ export function hashWorld(world: World): string {
   h.int(world.height);
   h.bool(world.over);
   h.int(world.winnerId ?? -1);
+  h.int(world.winnerTeam ?? -1);
+
+  // Whether a bullet stops in a teammate. Immutable for the whole match, so
+  // hashing it every tick buys exactly one thing — a peer that was handed a
+  // different rule is caught at tick 0, rather than after the two simulations
+  // have quietly shot each other to pieces in different orders.
+  h.bool(world.friendlyFire);
 
   // The terrain field itself is immutable and derived, so there is nothing in it
   // to hash each tick \u2014 but the recipe that made it is worth four bytes. Two
@@ -101,6 +108,10 @@ export function hashWorld(world: World): string {
   h.int(world.robots.length);
   for (const r of world.robots) {
     h.int(r.id);
+    // Fixed for the match, and hashed for the same reason the walls are: a peer
+    // that received a different team assignment disagrees about when the match
+    // ends and who may shoot whom, and should find that out immediately.
+    h.int(r.team);
     h.float(r.x);
     h.float(r.y);
     h.float(r.heading);
@@ -109,6 +120,12 @@ export function hashWorld(world: World): string {
     h.float(r.gunHeat);
     h.float(r.radar);
     h.float(r.pingHeat);
+    h.float(r.radioHeat);
+    // Heard but not yet read. Live state: it decides which handlers run on the
+    // ticks to come, so two peers holding different inboxes are already two
+    // different matches.
+    h.int(r.inbox.length);
+    for (const m of r.inbox) h.text(m);
     h.int(r.pendingPower);
     h.float(r.health);
     h.float(r.fuel);
@@ -138,6 +155,17 @@ export function hashWorld(world: World): string {
     h.float(f.x);
     h.float(f.y);
     h.float(f.amount);
+  }
+
+  // What is in the air but not yet heard. Unlike the team numbers above, this
+  // is live state that decides which handlers run next tick, so it is hashed
+  // with the same seriousness as a bullet in flight — and for the same reason,
+  // since two peers that disagree about what was said will shortly disagree
+  // about everything the listeners did next.
+  h.int(world.radio.length);
+  for (const m of world.radio) {
+    h.int(m.from);
+    h.text(m.data);
   }
 
   h.int(world.bullets.length);

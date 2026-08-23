@@ -30,6 +30,7 @@ export const BIOLOGICAL: ArenaTheme = {
 
   labelColor: 0xd8f3ea,
   labelStroke: 0x061012,
+  teamColors: [0x5fd4ff, 0xffa15f, 0x86e5a0, 0xc79bff, 0xffe08a, 0xff8fb8],
 
   senseConeColor: 0x9be7c4,
   senseConeAlpha: 0.07,

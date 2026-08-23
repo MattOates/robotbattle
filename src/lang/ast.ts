@@ -36,6 +36,10 @@ export const EVENT_NAMES = [
   "bullet hit",
   "bullet missed",
   "robot destroyed",
+  // Somebody said something. The only event that is not about a place, a thing
+  // or a collision — it carries a message and nothing else, not even who sent
+  // it. See `RADIO` in `sim/types.ts` for why it is anonymous on purpose.
+  "radio",
 ] as const;
 
 export type EventName = (typeof EVENT_NAMES)[number];
@@ -58,7 +62,8 @@ export type ActionKind =
   | "radarTurnBy" // [relative degrees]
   | "radarAim" // [bearing relative to chassis heading]
   | "radarSweep" // [degrees to sweep back and forth]
-  | "ping"; // [power 1..3] — sends the beam where the radar points
+  | "ping" // [power 1..3] — sends the beam where the radar points
+  | "broadcast"; // [message] — says one thing to every robot in the arena
 
 export interface Expr_Num {
   type: "num";

@@ -40,6 +40,7 @@ import { MAX_CHAT_LENGTH, sanitiseChat, sanitiseText } from "../../net/protocol.
 import type { Message } from "../../net/protocol.js";
 import { RoomYProvider, CURSOR_COLORS } from "../../net/yprovider.js";
 import { newId } from "../../store/storage.js";
+import { MAX_TEAM_SIZE } from "../../workshop/trials.js";
 import type { Contender, TrialReport } from "../../workshop/trials.js";
 import {
   FUEL_LEVELS,
@@ -1807,6 +1808,13 @@ function TrialPane({
   arenaName: string | null;
 }) {
   const [opponents, setOpponents] = useState<string[]>(["spinner", "racer"]);
+  /**
+   * Copies of each robot per side, and 1 means the free-for-all this has always
+   * been rather than a 1v1 — the Trial pits you against everything you ticked
+   * at once. Above 1 it becomes sides: your copies against theirs, which is the
+   * only way to watch a robot that works with its own team actually do it.
+   */
+  const [teamSize, setTeamSize] = useState(1);
   const [fuelLevel, setFuelLevel] = useState<FuelLevel>("normal");
   const [terrainLevel, setTerrainLevel] = useState<TerrainLevel>("flat");
   const [expanded, setExpanded] = useState(false);
@@ -1856,16 +1864,34 @@ function TrialPane({
     // Filtered through the live list, so a version deleted since it was ticked
     // simply drops out rather than failing to compile.
     const chosen = contenders.filter((c) => opponents.includes(c.id));
-    const next = makeManifest(
-      [{ source: robot.source }, ...chosen.map((c) => ({ source: c.source }))],
-      {
-        seed: (Date.now() % 2147483647) | 0,
-        fuel: FUEL_SETTINGS[fuelLevel],
-        ...specToManifest(arenaOverride ?? arenaForLevel(terrainLevel)),
-      },
-    );
+    // At size 1 this is the free-for-all it has always been: no teams stated,
+    // so the manifest is byte-identical to the ones this panel used to build.
+    // Above 1, your copies are one side and everything you ticked is the other.
+    const entries =
+      teamSize > 1
+        ? [
+            ...Array.from({ length: teamSize }, () => ({ source: robot.source, team: 0 })),
+            ...chosen.flatMap((c) =>
+              Array.from({ length: teamSize }, () => ({ source: c.source, team: 1 })),
+            ),
+          ]
+        : [{ source: robot.source }, ...chosen.map((c) => ({ source: c.source }))];
+    const next = makeManifest(entries, {
+      seed: (Date.now() % 2147483647) | 0,
+      fuel: FUEL_SETTINGS[fuelLevel],
+      ...specToManifest(arenaOverride ?? arenaForLevel(terrainLevel)),
+      // Off for a team match, matching the lobby and the bench.
+      ...(teamSize > 1 ? { friendlyFire: false } : {}),
+    });
     setManifest(next);
-    setLineup(["This version", ...chosen.map((c) => c.label)]);
+    setLineup(
+      teamSize > 1
+        ? [
+            ...Array.from({ length: teamSize }, () => "This version"),
+            ...chosen.flatMap((c) => Array.from({ length: teamSize }, () => c.label)),
+          ]
+        : ["This version", ...chosen.map((c) => c.label)],
+    );
     setRunning(true);
     if (inSession) onBroadcast(next);
   };
@@ -1980,6 +2006,24 @@ function TrialPane({
             </span>
           </div>
           <div className="panel-body">
+            <div className="row" aria-label="copies per side">
+              <span className="roster-meta">Per side</span>
+              {[1, 2, 3, MAX_TEAM_SIZE].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={`btn small${teamSize === n ? " primary" : ""}`}
+                  onClick={() => setTeamSize(n)}
+                  title={
+                    n === 1
+                      ? "One of each, all against all — the Trial as it has always run."
+                      : `${n} copies of yours against ${n} of each robot you have picked.`
+                  }
+                >
+                  {n === 1 ? "Solo" : `${n} a side`}
+                </button>
+              ))}
+            </div>
             <div className="row" aria-label="fuel">
               <span className="roster-meta">{fuelHeading(theme)}</span>
               {FUEL_LEVELS.map((level) => (
@@ -2076,6 +2120,14 @@ function BenchPane({
 }) {
   const words = THEMES[theme];
   const [trials, setTrials] = useState(50);
+  /**
+   * Copies of each script per side. 1 is the duel the bench has always run.
+   *
+   * Above 1 it is N of yours against N of theirs, which is the only way to
+   * measure a robot whose behaviour is about its own side: a flock of one does
+   * not flock, and a robot that calls out what it finds has nobody to call to.
+   */
+  const [teamSize, setTeamSize] = useState(1);
   const [picked, setPicked] = useState<string[]>(["spinner", "racer"]);
   // The same words the Arena lobby offers, from the same table, so a robot
   // tuned against "hilly" here meets that ground when it gets there.
@@ -2116,6 +2168,8 @@ function BenchPane({
           conditions: {
             fuel: FUEL_SETTINGS[fuelLevel],
             arena: arenaOverride ?? arenaForLevel(terrainLevel),
+            teamSize,
+            friendlyFire: false,
           },
           error: message.message,
         });
@@ -2132,6 +2186,7 @@ function BenchPane({
         seedBase: 1234,
         fuel: FUEL_SETTINGS[fuelLevel],
         arena: arenaOverride ?? arenaForLevel(terrainLevel),
+        teamSize,
       },
     };
     worker.postMessage(request);
@@ -2155,6 +2210,19 @@ function BenchPane({
                 max={500}
                 value={trials}
                 onChange={(e) => setTrials(Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
+              />
+            </label>
+            <label className="check" title="Copies of each robot per side. Above 1 it is a team match, which is the only way to bench a robot that works with its own side.">
+              Per side
+              <input
+                className="num-input"
+                type="number"
+                min={1}
+                max={MAX_TEAM_SIZE}
+                value={teamSize}
+                onChange={(e) =>
+                  setTeamSize(Math.max(1, Math.min(MAX_TEAM_SIZE, Number(e.target.value) || 1)))
+                }
               />
             </label>
             <button

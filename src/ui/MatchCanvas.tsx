@@ -34,8 +34,14 @@ export interface MatchStatus {
     kills: number;
     damageDealt: number;
     alive: boolean;
+    /** Which side, counting from zero. */
+    team: number;
     error: string | null;
   }>;
+  /** True when at least two robots share a side, so the scoreboard groups them. */
+  teamed: boolean;
+  /** The side that won, counting from zero, or null. */
+  winnerTeam: number | null;
 }
 
 export interface MatchOutcome {
@@ -126,8 +132,11 @@ export function MatchCanvas({
       kills: r.kills,
       damageDealt: r.damageDealt,
       alive: r.alive,
+      team: r.team,
       error: r.scriptError ? `line ${r.scriptError.line}: ${r.scriptError.message}` : null,
     })),
+    teamed: new Set(world.robots.map((r) => r.team)).size < world.robots.length,
+    winnerTeam: world.winnerTeam,
   });
 
   // --- renderer lifecycle -------------------------------------------------

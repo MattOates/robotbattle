@@ -16,6 +16,11 @@ export interface Participant {
   peerId: PeerId;
   displayName: string;
   robot: RobotEntry;
+  /**
+   * Which side, counting from zero. Absent for a free-for-all, where the
+   * simulation gives everybody a side of their own.
+   */
+  team?: number;
 }
 
 export const ARENA_SIZE = { width: 900, height: 620 } as const;
@@ -30,12 +35,23 @@ export const ARENA_SIZE = { width: 900, height: 620 } as const;
 export function manifestFromParticipants(
   participants: readonly Participant[],
   seed: number,
-  options: { maxTicks?: number; fuel?: FuelConfig; arena?: ArenaSpec } = {},
+  options: {
+    maxTicks?: number;
+    fuel?: FuelConfig;
+    arena?: ArenaSpec;
+    friendlyFire?: boolean;
+  } = {},
 ): MatchManifest {
+  // Sorted by peer id and by nothing else. Teams ride along on the entries but
+  // must never reorder them: this sort is the sole authority on which entry is
+  // whose, and `entryIndexFor` below reproduces it exactly. Sitting teammates
+  // next to each other on the spawn ring is the simulation's job, and it does
+  // it without touching entry order — see `slotOf` in `createWorld`.
   const ordered = [...participants].sort((a, b) => a.peerId.localeCompare(b.peerId));
   const entries: Entry[] = ordered.map((p) => ({
     source: p.robot.source,
     color: p.robot.color,
+    ...(p.team !== undefined ? { team: p.team } : {}),
   }));
   return makeManifest(entries, {
     seed,
@@ -46,6 +62,7 @@ export function manifestFromParticipants(
     ...(options.arena !== undefined
       ? { terrain: options.arena.terrain, walls: options.arena.walls }
       : {}),
+    ...(options.friendlyFire !== undefined ? { friendlyFire: options.friendlyFire } : {}),
   });
 }
 

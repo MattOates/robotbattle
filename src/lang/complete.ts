@@ -111,6 +111,16 @@ const ME_PROP_DOCS: PropDocs<(typeof ME_PROP_NAMES)[number]> = {
   },
   ammo: { detail: "1 when you are ready to fire, 0 when you are not." },
   score: { detail: "How many robots you have destroyed." },
+  // Deliberately not `themed`. That would rename the property itself through
+  // `SYNONYMS`, and putting `team` in there would also rewrite the word
+  // wherever it appeared — including as somebody's variable name. The
+  // biological spellings are in `PROPERTY_ALIASES` instead, which only ever
+  // applies to a `me.<prop>` access, so `me.colony` reads while `var colony`
+  // stays the player's own.
+  team: {
+    detail:
+      "Which side you are on, counting from 1. When everyone is fighting for themselves you get a number of your own, which nobody else shares.",
+  },
 };
 
 const ARENA_PROP_DOCS: PropDocs<(typeof ARENA_PROP_NAMES)[number]> = {
@@ -118,6 +128,10 @@ const ARENA_PROP_DOCS: PropDocs<(typeof ARENA_PROP_NAMES)[number]> = {
   height: { detail: "How tall the arena is." },
   time: { detail: "How many ticks the match has been running." },
   robots: { detail: "How many {robots} are still alive, including you." },
+  teams: {
+    detail:
+      "How many sides still have somebody alive. 1 means the match is about to end.",
+  },
 };
 
 const ME_PROPS: readonly PropDoc[] = ME_PROP_NAMES.map((name) => ({ name, ...ME_PROP_DOCS[name] }));

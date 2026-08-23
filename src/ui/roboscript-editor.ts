@@ -40,6 +40,8 @@ import {
 } from "@codemirror/view";
 import { Tag, tags as t } from "@lezer/highlight";
 
+import { EVENT_NAMES } from "../lang/ast.js";
+import { wordsIn } from "../lang/reference.js";
 import { scanLine, type LooseToken } from "../lang/scan.js";
 import {
   completeAt,
@@ -90,29 +92,44 @@ const CONTROL = new Set([
   "before",
 ]);
 const MODIFIERS = new Set(["to", "by", "at", "forward", "back", "backward", "times", "ticks"]);
-const ACTIONS = new Set([
-  "drive",
-  "stop",
-  "turn",
-  "fire",
-  "turret",
-  "aim",
-  "sweep",
-  "radar",
-  "ping",
-]);
-const EVENT_WORDS = new Set([
-  "start",
-  "tick",
-  "sense",
-  "hit",
-  "bullet",
-  "robot",
-  "wall",
-  "missed",
-  "destroyed",
-  "ping",
-]);
+/**
+ * The instruction words, read out of the grammar rather than listed again here.
+ *
+ * `broadcast` is why. It shipped rendering as somebody's variable name, because
+ * adding an action to the language meant editing a second list in this file
+ * that nothing pointed at and nobody remembered — the precise failure the
+ * comment at the top of `reference.ts` describes, reappearing in the one file
+ * that had been left out of the fix.
+ *
+ * Words that already have a role keep it: `chassis` is a keyword, and `at`,
+ * `forward` and `back` are modifiers that happen to appear inside an action's
+ * grammar. Taking them out here means this set can be derived without
+ * repainting half the editor.
+ */
+const ACTIONS = new Set(
+  [...wordsIn("actions")].filter((w) => !CONTROL.has(w) && !MODIFIERS.has(w)),
+);
+
+/**
+ * The words an event name is spelled with, from the list of events themselves.
+ *
+ * `EVENT_NAMES` is the only place that knows an event exists, so it is the only
+ * honest source for this. The hand-written version missed `radio` completely,
+ * and had been missing `fuel`, `slope` and `ridge` since terrain arrived —
+ * every one of them an event word that quietly rendered as a variable.
+ *
+ * Deliberately not reserved words, most of them: `on sense fuel` is an event,
+ * and `var fuel = 0` is still a perfectly legal thing to write. The scanner
+ * cannot tell those apart from one token, so a word that names an event is
+ * coloured as one wherever it appears — the same bargain `robot` and `wall`
+ * have always made here.
+ *
+ * `by` is the exception, and stays a modifier: it turns up in `hit by bullet`
+ * but also in `turn by 90`, and the second is far and away the commoner sight.
+ */
+const EVENT_WORDS = new Set(
+  EVENT_NAMES.flatMap((name) => name.split(" ")).filter((w) => !MODIFIERS.has(w)),
+);
 const OBJECTS = new Set(["me", "arena", "event"]);
 const VALUES = new Set(["true", "false", "none", "skid", "steered"]);
 const OPERATOR_WORDS = new Set(["is", "isnt", "not", "and", "or", "mod"]);

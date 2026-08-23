@@ -46,6 +46,17 @@ export const enum Op {
   JUMP_IF_TRUE, // arg: absolute address; pops
   WAIT, // pops tick count, suspends the handler
   HALT,
+  /**
+   * A call whose arity is decided at the call site rather than by the builtin.
+   *
+   * `arg` is the builtin index, exactly as for `CALL`; the number of arguments
+   * is pushed last and popped first. Added at the end of the enum on purpose:
+   * these values are bytecode, so a new one may only ever go on the bottom.
+   *
+   * Only `pack` uses it. Everything else has an arity that is a property of the
+   * function, and `CALL` says so more cheaply.
+   */
+  CALL_N,
 }
 
 export type Value = number | string | boolean | null;
@@ -59,7 +70,7 @@ export interface PropRef {
 // The functions a script can call live in `builtins.ts`, with their arguments
 // and what each one is for. Re-exported here because this is where everything
 // that compiles or runs bytecode already looks for them.
-export { BUILTIN_NAMES, BUILTIN_SIGNATURES } from "./builtins.js";
+export { arityOf, BUILTIN_NAMES, BUILTIN_SIGNATURES } from "./builtins.js";
 
 /** Compiled program, ready to run. */
 export interface Chunk {

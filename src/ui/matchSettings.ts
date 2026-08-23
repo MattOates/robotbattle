@@ -102,6 +102,71 @@ export function arenaForLevel(level: TerrainLevel): ArenaSpec {
   return { terrain: TERRAIN_SETTINGS[level], walls: [] };
 }
 
+/**
+ * Whether teammates can shoot each other.
+ *
+ * Only two settings, so unlike fuel and terrain this is a switch rather than a
+ * scale — but it lives here for the same reason they do: a robot tuned against
+ * one rule and entered into a match played under the other is meeting a
+ * different game, and the words for it have to mean the same thing everywhere.
+ *
+ * Inert in a free-for-all, where nobody has a teammate to spare, which is why
+ * `describeConditions` says nothing about it unless there are sides.
+ */
+export const FIRE_SETTINGS = {
+  on: true,
+  off: false,
+} satisfies Record<string, boolean>;
+
+export type FireLevel = keyof typeof FIRE_SETTINGS;
+
+const FIRE_BLURB: Record<FireLevel, string> = {
+  on: "A {bullet} hits whoever it reaches. Check `event.friend` before you {fire}, because nothing else will.",
+  // "Passes through" rather than "does not hurt": the difference matters, since
+  // it means a teammate is never cover.
+  off: "A {bullet} passes straight through your own side. It does not stop in them either, so nobody can hide behind anybody.",
+};
+
+const FIRE_INTRO =
+  "When two {robots} are on the same side, this decides what happens when one of them {fire}s at the other.";
+
+export const FIRE_LEVELS = Object.keys(FIRE_SETTINGS) as FireLevel[];
+
+/**
+ * Heading for the friendly-fire control.
+ *
+ * Not themed, and not built out of the vocabulary's word for an ally. "Friendly
+ * fire" is a phrase people already know, and assembling one out of parts gave
+ * "Ally fire" and "Kin fire" — which are not things anybody says, and which
+ * made a switch that is simply on or off look like a mechanic of its own.
+ */
+export function fireHeading(_theme: Theme): string {
+  return "Friendly fire";
+}
+
+export function fireIntro(theme: Theme): string {
+  return renderDoc(FIRE_INTRO, theme);
+}
+
+export function fireBlurb(level: FireLevel, theme: Theme): string {
+  return renderDoc(FIRE_BLURB[level], theme);
+}
+
+export function fireLevelWord(level: FireLevel, _theme: Theme): string {
+  return level === "on" ? "On" : "Off";
+}
+
+/**
+ * What to call a side, to a player. Always counting from one.
+ *
+ * The simulation numbers teams from zero, because the default team number is
+ * the entry index. Nobody should have to learn that to read a scoreboard, so
+ * every number a person sees goes through here.
+ */
+export function teamLabel(team: number, theme: Theme): string {
+  return `${capitalise(THEMES[theme].team)} ${team + 1}`;
+}
+
 export const FUEL_LEVELS = Object.keys(FUEL_SETTINGS) as FuelLevel[];
 export const TERRAIN_LEVELS = Object.keys(TERRAIN_SETTINGS) as TerrainLevel[];
 
@@ -152,7 +217,7 @@ export function terrainLevelWord(level: TerrainLevel, theme: Theme): string {
  * number is worse than an honest shrug.
  */
 export function describeConditions(
-  conditions: { fuel: FuelConfig; arena: ArenaSpec },
+  conditions: { fuel: FuelConfig; arena: ArenaSpec; friendlyFire?: boolean; teams?: number },
   theme: Theme,
 ): string {
   const words = THEMES[theme];
@@ -171,7 +236,11 @@ export function describeConditions(
   // table says what was fought over.
   const wallCount = conditions.arena.walls.length;
   const wallPart = wallCount > 0 ? `, and ${wallCount} walls` : "";
-  return `${fuelPart} and ${groundPart}${wallPart}`;
+  // Only worth saying when there are sides to have it between. In a
+  // free-for-all the setting is inert, and a line about it would be noise.
+  const teamed = (conditions.teams ?? 0) > 1;
+  const firePart = teamed && conditions.friendlyFire === false ? ", friendly fire off" : "";
+  return `${fuelPart} and ${groundPart}${wallPart}${firePart}`;
 }
 
 function sameFuel(a: FuelConfig, b: FuelConfig): boolean {

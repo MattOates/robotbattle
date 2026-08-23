@@ -33,6 +33,14 @@ import {
   fuelBlurb,
   fuelHeading,
   fuelIntro,
+  FIRE_LEVELS,
+  FIRE_SETTINGS,
+  fireBlurb,
+  fireHeading,
+  fireIntro,
+  fireLevelWord,
+  teamLabel,
+  type FireLevel,
   type FuelLevel,
   type TerrainLevel,
 } from "../matchSettings.js";
@@ -79,6 +87,16 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
   // Generate by default. A saved arena is something a host deliberately brings,
   // never something that arrives because it happened to be first in the list.
   const [arenaChoice, setArenaChoice] = useState<ArenaChoiceValue>(GENERATE);
+  /** 0 is a free-for-all, which is what the Arena has always been. */
+  const [teamCount, setTeamCount] = useState(0);
+  /**
+   * Defaults to off because the control only appears once there are
+   * sides, and somebody who has just made two teams almost never means "and now
+   * shoot each other". The manifest still defaults the other way — that is what
+   * every match played before teams existed did — so this is a lobby default
+   * and not a change to the rules.
+   */
+  const [fireLevel, setFireLevel] = useState<FireLevel>("off");
   const hashesRef = useRef(new Map<number, string>());
 
   useAutoJoin(room, initialRoom);
@@ -184,9 +202,18 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
     }
 
     session.setNotice(null);
-    const manifest = manifestFromParticipants(participants, newMatchSeed(), {
+    // Anybody the host never put on a side is spread over the sides that
+    // exist, in peer-id order, so a room that forgot to sort itself out still
+    // gets an even match rather than one team of five.
+    const withTeams: Participant[] =
+      teamCount > 1
+        ? participants.map((p, i) => ({ ...p, team: p.team ?? i % teamCount }))
+        : participants.map(({ team: _ignored, ...rest }) => rest);
+
+    const manifest = manifestFromParticipants(withTeams, newMatchSeed(), {
       fuel: FUEL_SETTINGS[fuelLevel],
       arena: resolveArena(arenaChoice, terrainLevel, lib.arenas),
+      ...(teamCount > 1 ? { friendlyFire: FIRE_SETTINGS[fireLevel] } : {}),
     });
     session.broadcast({ t: "start", matchId: newMatchId(), manifest, label: "Arena" });
   };
@@ -237,6 +264,7 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           <Results
             outcome={outcome}
             myIndex={match.myIndex}
+            theme={theme}
             onClose={() => {
               setMatch(null);
               setOutcome(null);
@@ -256,7 +284,13 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
     <Lobby
       title="Arena"
       shareScreen="arena"
-      blurb="Everyone's robot in one arena at once, all against all. Last one running wins."
+      blurb={
+        teamCount > 1
+          ? "Everyone's robot in one arena, in sides. The last side still running wins."
+          : "Everyone's robot in one arena at once, all against all. Last one running wins."
+      }
+      teamCount={teamCount}
+      theme={theme}
       room={room}
       robots={robots}
       selectedRobotId={robot?.id ?? null}
@@ -288,23 +322,74 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
       {room.isHost ? (
         <>
           <div className="panel-head">
-            <span className="silkscreen">{fuelHeading(theme)}</span>
+            <span className="silkscreen" title="Everyone against everyone, or two or more sides. On a side you can tell friend from foe with `event.friend`, and talk to each other with `broadcast` — though everybody hears that, including the other side.">Sides</span>
           </div>
           <div className="panel-body">
-            <p className="empty small">{fuelIntro(theme)}</p>
-            <div className="row">
-              {FUEL_LEVELS.map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  className={`btn small${fuelLevel === level ? " primary" : ""}`}
-                  onClick={() => setFuelLevel(level)}
-                >
-                  {level}
-                </button>
-              ))}
+            <div className="setting">
+              <div className="row">
+                {[0, 2, 3, 4].map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    className={`btn small${teamCount === count ? " primary" : ""}`}
+                    onClick={() => setTeamCount(count)}
+                  >
+                    {count === 0 ? "Free-for-all" : `${count} sides`}
+                  </button>
+                ))}
+              </div>
+              <p className="setting-note">
+                {teamCount > 1
+                  ? `Pick sides in the roster. Anyone left unassigned is spread between ${teamLabel(0, theme)} and ${teamLabel(teamCount - 1, theme)}.`
+                  : "Everyone for themselves, as the Arena has always been."}
+              </p>
             </div>
-            <p className="empty small">{fuelBlurb(fuelLevel, theme)}</p>
+          </div>
+
+          {teamCount > 1 ? (
+            <>
+              <div className="panel-head">
+                <span className="silkscreen" title={fireIntro(theme)}>{fireHeading(theme)}</span>
+              </div>
+              <div className="panel-body">
+                <div className="setting">
+                  <div className="row">
+                    {FIRE_LEVELS.map((level) => (
+                      <button
+                        key={level}
+                        type="button"
+                        className={`btn small${fireLevel === level ? " primary" : ""}`}
+                        onClick={() => setFireLevel(level)}
+                      >
+                        {fireLevelWord(level, theme)}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="setting-note">{fireBlurb(fireLevel, theme)}</p>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          <div className="panel-head">
+            <span className="silkscreen" title={fuelIntro(theme)}>{fuelHeading(theme)}</span>
+          </div>
+          <div className="panel-body">
+            <div className="setting">
+              <div className="row">
+                {FUEL_LEVELS.map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    className={`btn small${fuelLevel === level ? " primary" : ""}`}
+                    onClick={() => setFuelLevel(level)}
+                  >
+                    {level}
+                  </button>
+                ))}
+              </div>
+              <p className="setting-note">{fuelBlurb(fuelLevel, theme)}</p>
+            </div>
           </div>
           <ArenaChoicePanel
             theme={theme}
@@ -339,23 +424,42 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
 export function Results({
   outcome,
   myIndex,
+  theme = "mechanical",
   onClose,
 }: {
   outcome: MatchOutcome;
   myIndex: number | null;
+  theme?: Theme;
   onClose: () => void;
 }) {
   const ranked = [...outcome.telemetry].sort((a, b) => a.place - b.place);
+
+  // Read defensively: a `BattleRecord` saved before teams existed has no team
+  // on its standings at all, and it still has to open.
+  const standings = outcome.result.standings;
+  const teamOf = new Map(standings.map((s) => [s.id, s.team]));
+  const teamed = new Set(standings.map((s) => s.team ?? s.id)).size < standings.length;
+  const winnerTeam = outcome.result.winnerTeam ?? null;
+  // A side that won with more than one robot left is not described by any one
+  // name, so it is named as the side it is.
+  const wonAsTeam =
+    winnerTeam !== null && standings.filter((s) => s.team === winnerTeam).length > 1;
+
   return (
     <div className="results-overlay">
       <div className="results-card">
         <h3 className="screen-title">
-          {outcome.result.winnerName ? `${outcome.result.winnerName} wins` : "No survivors"}
+          {wonAsTeam
+            ? `${teamLabel(winnerTeam, theme)} wins`
+            : outcome.result.winnerName
+              ? `${outcome.result.winnerName} wins`
+              : "No survivors"}
         </h3>
         <table className="results-table">
           <thead>
             <tr>
               <th>#</th>
+              {teamed ? <th>Side</th> : null}
               <th>Robot</th>
               <th>Damage</th>
               <th>Accuracy</th>
@@ -367,6 +471,15 @@ export function Results({
             {ranked.map((t: RobotTelemetry) => (
               <tr key={t.robotId} className={t.robotId === myIndex ? "mine" : undefined}>
                 <td>{t.place}</td>
+                {teamed ? (
+                  <td>
+                    {teamOf.get(t.robotId) !== undefined ? (
+                      <span className={`team-badge t${teamOf.get(t.robotId)! % 6}`}>
+                        {teamOf.get(t.robotId)! + 1}
+                      </span>
+                    ) : null}
+                  </td>
+                ) : null}
                 <td>
                   {t.name}
                   {t.robotId === myIndex ? " (you)" : ""}

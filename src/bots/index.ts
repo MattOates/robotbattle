@@ -949,6 +949,371 @@ on sense robot
 end
 `;
 
+
+/**
+ * Wingman — fighting as a side, and talking about it.
+ *
+ * The one sample that needs two of itself in the arena to make any sense. It
+ * shows the three things teams add, in the order they matter:
+ *
+ *  - `event.friend`, so it does not shoot its own side;
+ *  - `broadcast`, to call out what it has found;
+ *  - `pack` and `field`, because a call-out is several things at once.
+ *
+ * The interesting part is the tag. `broadcast` reaches every robot alive,
+ * enemies included, and says nothing about who sent it — so the first slot of
+ * every message is a word both Wingmen know and nobody else does. That is not
+ * security, and it is not meant to be: anyone who watches a match can read the
+ * word and start sending it too. Working out what to do about that is the whole
+ * game, and this robot is where a player meets the problem.
+ */
+const WINGMAN = `
+name "Wingman"
+chassis tank
+color #4ea8ff
+
+-- Both copies of this robot share the word. Change it and they stop
+-- understanding each other, which is the quickest way to see what it is for.
+var codeword = "vulpes"
+
+-- Where our side last saw an enemy, so we can go and help.
+var help_x = 0
+var help_y = 0
+var helping = 0
+
+on start
+  radar.sweep 60
+  turret.sweep 45
+end
+
+-- Anything the beam finds gets called out, so the other one knows without
+-- having to look. The message is four things packed into one: the word that
+-- says it is us, what kind of news it is, and where.
+on ping robot
+  if event.friend is false then
+    broadcast pack(codeword, "contact", event.x, event.y)
+  end
+end
+
+on radio
+  -- Everybody heard this, including whoever we are fighting. If it does not
+  -- start with our word, it was not one of ours, and we want nothing to do
+  -- with it.
+  if field(event.data, 1) is codeword and field(event.data, 2) is "contact" then
+    set help_x = number(field(event.data, 3))
+    set help_y = number(field(event.data, 4))
+    set helping = 1
+  end
+end
+
+-- Head for wherever our side last called out.
+on tick every 5
+  if helping is 1 then
+    turn to bearing(help_x - me.x, help_y - me.y)
+    drive 70
+  end
+end
+
+-- The cone found somebody. Check whose side they are on BEFORE shooting: with
+-- friendly fire on, the alternative is shooting the only ally we have.
+on sense robot
+  if event.friend is false then
+    turret.aim at event.bearing
+    fire 2
+    broadcast pack(codeword, "contact", event.x, event.y)
+  end
+end
+
+on hit by bullet
+  if event.friend is true then
+    -- One of ours. Say so rather than shooting back.
+    broadcast pack(codeword, "sorry", me.x, me.y)
+  else
+    turn body by event.bearing + 90
+    drive 80
+  end
+end
+`;
+
+/**
+ * Boid — Reynolds' flocking, with the radio standing in for eyesight.
+ *
+ * The three rules of a boid are all statements about your neighbours:
+ * **separation** (do not crowd them), **alignment** (head the way they head)
+ * and **cohesion** (drift towards the middle of them). Every one of them needs
+ * to know where the neighbours ARE, and in the arena a robot can only see a
+ * 30-degree cone in front of itself. A flock that had to look at each other
+ * would spend the whole match turning round to check.
+ *
+ * So this one tells instead of looking. Each Boid broadcasts its own position
+ * and heading every sixth tick, and builds its picture of the flock entirely
+ * out of what it hears. Nobody ever senses a flockmate; the cone and the gun
+ * are left free for whoever it is fighting. That is the point of the robot: the
+ * radio is not a chat channel bolted on to a robot that already worked, it is
+ * the sense organ the algorithm needs and the arena does not otherwise provide.
+ *
+ * ## Reading a flock out of a message queue
+ *
+ * There are no lists in RoboScript, so the flock is never assembled anywhere.
+ * Each message adds one neighbour into a set of running totals — a count, a sum
+ * of positions, a sum of heading vectors, a sum of separation pushes — and every
+ * sixth tick the totals are turned into one steering direction and cleared. The
+ * window is the radio's own cooldown, so each flockmate contributes exactly once
+ * to each decision.
+ *
+ * ## Written as `can` blocks, and why the cadences are offset
+ *
+ * There is not one `on` block in it. Every behaviour is a named `can ... given`
+ * block, which is also the most useful thing this robot demonstrates after the
+ * flocking itself: each block keeps its OWN count, so `announce` and
+ * `flock_together` can both say `every 6` without treading on each other, and
+ * either can be lifted out and read on its own.
+ *
+ * `announce` says `every 6 after 3`, and the `after` is doing real work.
+ * `after` starts the cadence counting, so that block fires on ticks 9, 15, 21
+ * while the steering fires on 6, 12, 18 — talking lands halfway between
+ * decisions rather than on top of them, which gives every message a clear run
+ * at the totals before they are used and cleared. Putting them on the same beat
+ * costs about a third of the flock's alignment and most of its win rate.
+ *
+ * Headings are summed as `cos`/`sin` and read back with `bearing`, because the
+ * average of 350 degrees and 10 degrees is 0, not 180. Averaging the numbers
+ * themselves points the flock backwards twice a turn.
+ *
+ * ## Two things it learned the hard way
+ *
+ * **Food is shared, because a flock cannot see it.** The radar reports a robot
+ * in preference to fuel, and a Boid's radar is looking at flockmates every time
+ * it sweeps — so `ping fuel` almost never fires for a robot in a flock. Instead
+ * the first Boid whose cone happens to catch a cell broadcasts where it is, and
+ * the whole flock knows. That is the honest version of a waggle dance, and it
+ * is also why the messages carry a kind: `p` for position, `f` for food.
+ *
+ * **It flies slower when it is hungry.** A flock is fuel-expensive in a way a
+ * lone robot is not: five of them clump together and then compete for the same
+ * cells, so they run low sooner than five robots that spread out. Cruising at a
+ * speed set by the tank means a hungry flock slows down instead of grinding
+ * itself to bits at walking pace — which is worth about four survivors out of
+ * five at two minutes, against three without it.
+ *
+ * The tag is `flock` plus `me.team`, so two flocks in the same arena do not
+ * merge. Note what that is not: it is not a secret. Anybody can read a match
+ * and work out what to send. `Wingman` is where that problem is spelled out.
+ */
+const BOID = `
+-- Boid: Reynolds' three rules of flocking, with the radio doing the seeing.
+--
+-- There are no "on" blocks here at all. Every "can ... given <event>" block IS
+-- the handler for that event, and each one keeps its own count -- which is why
+-- two of them can both say "every 6" and neither treads on the other.
+name "Boid"
+chassis tank
+color #6ad98a
+
+-- The word this flock answers to. me.team is on the end so that two flocks in
+-- the same arena do not merge into one. It is not a secret: anybody watching a
+-- match can read it off and start sending it. See the Wingman for that problem.
+var flock = "starling"
+var tag = ""
+
+-- What the flock looks like, totalled up as the messages come in. There are no
+-- lists in RoboScript, so the flock is never assembled anywhere -- each message
+-- adds itself into these running totals, and every sixth tick they become one
+-- direction and are cleared.
+var mates = 0
+var sum_x = 0
+var sum_y = 0
+var dir_x = 0
+var dir_y = 0
+var push_x = 0
+var push_y = 0
+
+-- The last food anybody in the flock saw, and whether it is our turn to pass
+-- the news on.
+var food_x = 0
+var food_y = 0
+var found = 0
+var news = 0
+
+can wake given start
+  set tag = flock + me.team
+  -- No radar sweep. In a flock the beam only ever finds a flockmate -- it
+  -- reports a robot in preference to food -- so sweeping it is pure cost.
+  turret.sweep 45
+  drive 55
+end
+
+-- ---------------------------------------------------------------- talking --
+
+-- One transmission every six ticks, which is as often as the radio allows.
+-- Food news jumps the queue: a flock that cannot see food is worth more to
+-- than one more position update.
+can announce given tick every 6 after 3
+  if news is 1 then
+    broadcast pack(tag, "f", round(food_x), round(food_y))
+    set news = 0
+  else
+    broadcast pack(tag, "p", round(me.x), round(me.y), round(me.heading))
+  end
+end
+
+-- Everything the flock knows about itself arrives here. Nobody ever senses a
+-- flockmate: the cone and the gun stay free for whoever we are fighting.
+can listen given radio
+  if field(event.data, 1) is tag then
+    var kind = field(event.data, 2)
+    var mx = number(field(event.data, 3))
+    var my = number(field(event.data, 4))
+    if kind is "f" then
+      set food_x = mx
+      set food_y = my
+      set found = 1
+    end
+    if kind is "p" then
+      do fold with mx, my, number(field(event.data, 5))
+    end
+  end
+end
+
+-- One flockmate, folded into the totals. The three rules of a boid are all
+-- statements about your neighbours, so this is where all three are gathered.
+can fold with mx, my, mh
+  set mates = mates + 1
+
+  -- Cohesion: where the flock is, on average.
+  set sum_x = sum_x + mx
+  set sum_y = sum_y + my
+
+  -- Alignment: which way it is heading, on average. Summed as components and
+  -- read back with bearing(), because the average of 350 and 10 is 0, not 180.
+  set dir_x = dir_x + cos(mh)
+  set dir_y = dir_y + sin(mh)
+
+  -- Separation: push away from anyone close, harder the closer they are.
+  var gap = distance(me.x, me.y, mx, my)
+  if gap < 120 and gap > 0 then
+    var strength = (120 - gap) / 120
+    set push_x = push_x + (me.x - mx) / gap * strength
+    set push_y = push_y + (me.y - my) / gap * strength
+  end
+end
+
+-- ---------------------------------------------------------------- feeding --
+
+can remember with fx, fy
+  set food_x = fx
+  set food_y = fy
+  set found = 1
+  -- Tell the others. One pair of eyes finding food feeds the whole flock.
+  set news = 1
+end
+
+can spot given sense fuel
+  do remember with event.x, event.y
+end
+
+can glimpse given ping fuel
+  do remember with event.x, event.y
+end
+
+-- ---------------------------------------------------------------- steering --
+
+-- The three rules, the food, a little wander and the walls, added up as one
+-- direction. Every sixth tick, because that is how often a full set of
+-- flockmates has been heard from.
+can flock_together given tick every 6
+  var vx = 0
+  var vy = 0
+
+  if mates > 0 then
+    -- Separation dominates: a flock that touches itself grinds itself down,
+    -- since a collision costs both robots their speed and a little health.
+    set vx = push_x * 4.5 + dir_x / mates + (sum_x / mates - me.x) / 260
+    set vy = push_y * 4.5 + dir_y / mates + (sum_y / mates - me.y) / 260
+  end
+
+  -- Head for food, harder the emptier the tank.
+  var want = (100 - me.fuel) / 100
+  if found is 1 and want > 0 then
+    var away = distance(me.x, me.y, food_x, food_y)
+    if away < 25 then
+      set found = 0
+    else
+      set vx = vx + (food_x - me.x) / away * want * 4
+      set vy = vy + (food_y - me.y) / away * want * 4
+    end
+  end
+
+  -- A little noise, so the flock roams instead of settling into one spot and
+  -- starving in it.
+  set vx = vx + (random() - 0.5) * 0.4
+  set vy = vy + (random() - 0.5) * 0.4
+
+  -- Turn back before the wall rather than after it. Written out here rather
+  -- than tucked into a block of its own: it works on vx and vy, and a block
+  -- that quietly reached into whoever called it would be the kind of thing
+  -- that reads fine until somebody moves it.
+  if me.x < 130 then
+    set vx = vx + 2
+  end
+  if me.x > arena.width - 130 then
+    set vx = vx - 2
+  end
+  if me.y < 130 then
+    set vy = vy + 2
+  end
+  if me.y > arena.height - 130 then
+    set vy = vy - 2
+  end
+
+  if abs(vx) + abs(vy) > 0.05 then
+    do fly with bearing(vx, vy)
+  end
+
+  set name = "flock " + mates
+  do forget
+end
+
+-- Turn towards a heading, slowing down for a sharp turn and for an empty tank.
+-- A hungry flock that keeps sprinting arrives everywhere too slowly to steer
+-- and spends the rest of the match bumping into itself.
+can fly with goal
+  var err = goal - me.heading
+  if err > 180 then
+    set err = err - 360
+  end
+  if err < -180 then
+    set err = err + 360
+  end
+  turn to goal
+  var cruise = 25 + me.fuel * 0.3
+  if abs(err) > 60 then
+    drive cruise * 0.5
+  else
+    drive cruise
+  end
+end
+
+can forget
+  set mates = 0
+  set sum_x = 0
+  set sum_y = 0
+  set dir_x = 0
+  set dir_y = 0
+  set push_x = 0
+  set push_y = 0
+end
+
+-- ---------------------------------------------------------------- fighting --
+
+can shoot given sense robot
+  if event.friend is false then
+    turret.aim at event.bearing
+    fire 2
+  end
+end
+`;
+
 export const SAMPLE_BOTS: SampleBot[] = [
   {
     id: "sitting-duck",
@@ -1015,6 +1380,18 @@ export const SAMPLE_BOTS: SampleBot[] = [
     title: "Mouse",
     teaches: "following a wall: the radar as a whisker, and solving a labyrinth",
     source: MOUSE,
+  },
+  {
+    id: "wingman",
+    title: "Wingman",
+    teaches: "teams: event.friend, broadcast, and packing a message your side can read",
+    source: WINGMAN,
+  },
+  {
+    id: "boid",
+    title: "Boid",
+    teaches: "flocking: using the radio as a sense organ, and averaging a flock out of messages",
+    source: BOID,
   },
   {
     id: "hunter-bio",

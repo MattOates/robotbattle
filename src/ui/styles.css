@@ -3655,3 +3655,109 @@ button {
   border-color: var(--signal);
   color: var(--chassis);
 }
+
+/* ---- teams ------------------------------------------------------------- */
+
+/*
+ * A side is shown as a number in its colour, everywhere a robot appears: on the
+ * arena label, in the standings, in the lobby roster. The colour alone is not
+ * enough — two team colours will always look close to somebody, it is no use at
+ * all to a colourblind player, and a screenshot of a ring says nothing. The
+ * number is the part that always reads; the colour is what makes it quick.
+ *
+ * These six match `teamColors` in the render themes, in the same order, so the
+ * badge beside a robot's name is the ring drawn around it in the arena.
+ */
+.team-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: #0b0d11;
+  background: var(--ink-muted);
+  flex: none;
+}
+
+.team-badge.t0 { background: #4ea8ff; }
+.team-badge.t1 { background: #ff7a4e; }
+.team-badge.t2 { background: #6ad98a; }
+.team-badge.t3 { background: #d08bff; }
+.team-badge.t4 { background: #ffd166; }
+.team-badge.t5 { background: #ff6b9d; }
+
+/* One extra column for the badge; otherwise the row is exactly as it was. */
+.standing.teamed {
+  grid-template-columns: 22px 20px 12px 1fr 92px 62px;
+}
+
+.team-tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 6px 4px 10px;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.team-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A side with nobody left is dimmed the same way a dead robot's row is. */
+.team-side.out {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.team-picker {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/*
+ * One match setting: the buttons, and what the current choice means.
+ *
+ * The note sits BESIDE the buttons rather than under them. Under them, each
+ * setting was a heading, a paragraph of explanation, a row of buttons and then
+ * a second paragraph — four stacked bands each — and once the Arena grew sides
+ * and friendly fire to go with fuel and the map, the host's panel no longer fit
+ * on a screen and everything in it grew a scrollbar. Beside them it is two
+ * bands, and the note reads as a caption on the button you just pressed, which
+ * is what it actually is.
+ *
+ * The longer "what is this setting for" prose moved to the heading's `title`,
+ * so it is one hover away rather than permanently occupying a third of the
+ * panel.
+ */
+.setting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.setting .row {
+  flex: none;
+  margin: 0;
+}
+
+.setting .setting-note {
+  /* Wraps to its own line below the buttons when the panel gets narrow, which
+     is the one case where stacking is better than squeezing. */
+  flex: 1 1 200px;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}

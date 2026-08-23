@@ -273,6 +273,7 @@ function CodeBlock({ className, children, node, theme }: CodeProps) {
           fuel={params["fuel"] === "true"}
           terrain={params["terrain"] === "true"}
           maze={params["maze"] === "true"}
+          copies={Number(params["copies"]) || 1}
         />
       </PlaygroundBoundary>
     );

@@ -38,7 +38,8 @@ make help        # everything else
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Learn**      | A baker's dozen of short lessons — sensing, turning, shooting, deciding, remembering, thinking time — each with a live playground you can edit and run in place, in whichever vocabulary you chose.                       |
 | **Workshop**   | Write, version, and test a robot. Save named versions, pin them as sparring partners, run trials against the sample bots, and read the telemetry.                                                                         |
-| **Arena**      | Everyone's robot in one arena at once, over WebRTC or between tabs on one machine.                                                                                                                                        |
+| **Arena**      | Everyone's robot in one arena at once, over WebRTC or between tabs on one machine — all against all, or in sides.                                                                                                          |
+| **Teams**      | Sides that can tell each other apart (`event.friend`) and talk to each other (`broadcast`). Every robot hears every broadcast and none of them say who sent it, so proving who you are is left to you — which is the point. |
 | **Trade**      | Put robots on a shared table, read each other's scripts, and swap copies — with permission, never without.                                                                                                                |
 | **Tournament** | A random draw from everything the room puts forward, with a qualifying round robin deciding who is seeded through a round that cannot pair off. Every tie is settled over eleven matches, and any of them can be watched. |
 

@@ -36,6 +36,15 @@ export interface PeerInfo {
   isHost: boolean;
   ready: boolean;
   robot: { name: string; color: string } | null;
+  /**
+   * Which side, counting from zero, or null in a free-for-all.
+   *
+   * On `PeerInfo` rather than on `RobotEntry` because a side is something the
+   * room decides, not something a script declares. The host is authoritative
+   * about it exactly as it is about who is present, so it travels on the roster
+   * and a guest asks for a change rather than announcing one.
+   */
+  team: number | null;
 }
 
 export type Message =
@@ -45,6 +54,8 @@ export type Message =
   /** Host is authoritative about who is present. */
   | { t: "roster"; peers: PeerInfo[] }
   | { t: "ready"; ready: boolean }
+  /** Guest would like to be on this side. The host decides whether it is. */
+  | { t: "team"; team: number | null }
   /** Guest swapped robot while in the lobby. */
   | { t: "entry"; robot: RobotEntry | null }
   /** Host explains why the room will not start. */

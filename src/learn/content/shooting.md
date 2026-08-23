@@ -97,3 +97,8 @@ its shots.
 
 In the example above, change `fire 2` to `fire 1` and then `fire 3`, and watch
 how often each actually connects.
+
+One more thing, for later. In a team match `on sense robot` also tells you
+`event.friend`, and a {robot} that fires without looking at it will happily
+destroy its own side. Shooting is the one place where checking first is not
+optional.

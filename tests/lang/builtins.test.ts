@@ -38,6 +38,14 @@ describe("the order of the table", () => {
       "ceil",
       "distance",
       "bearing",
+      // Appended when the radio arrived. New entries may only ever go on the
+      // bottom: the index is what `CALL` carries, so inserting one anywhere
+      // else silently changes what every already-compiled robot does.
+      "pack",
+      "field",
+      "fieldcount",
+      "number",
+      "text",
     ]);
   });
 });

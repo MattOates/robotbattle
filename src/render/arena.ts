@@ -482,10 +482,23 @@ export class ArenaRenderer {
       const view = this.viewFor(now);
 
       // Redraw the cached art only when something about it actually changed.
-      const key = `${now.color}|${now.locomotion}|${now.alive}`;
+      // The team is part of the key because the ring is drawn into the same
+      // cached body graphic. Without it, two robots on different sides would
+      // share whichever sprite was rasterised first.
+      const teamIndex = to.teamed ? now.team : -1;
+      const key = `${now.color}|${now.locomotion}|${now.alive}|${teamIndex}`;
       if (view.drawnColor !== key) {
         const tint = hexToNumber(now.color);
         view.body.clear();
+        // Underneath the robot, so the art sits on top of it rather than being
+        // recoloured by it. A robot keeps the colour its owner chose; the side
+        // is a ring around it and a number beneath it.
+        if (teamIndex >= 0) {
+          const teamColor = this.theme.teamColors[teamIndex % this.theme.teamColors.length]!;
+          view.body
+            .circle(0, 0, ROBOT_RADIUS + 4)
+            .stroke({ width: 2.5, color: teamColor, alpha: 0.9 });
+        }
         this.theme.drawBody(view.body, tint, now.locomotion, ROBOT_RADIUS);
         const turret = view.turretPivot.children[0] as Graphics;
         turret.clear();
@@ -511,10 +524,21 @@ export class ArenaRenderer {
       // renderer to do. A robot using its name as a debug readout changes it
       // thirty times a second, and at that rate the label is unreadable anyway
       // — so it is allowed to change a few times a second and no more.
+      // The side is shown as a number as well as a colour. A ring on its own is
+      // ambiguous the moment two team colours look close, is no use at all to a
+      // colourblind player, and says nothing in a screenshot — and with three or
+      // more sides there is nothing to count. Prefixed to the label rather than
+      // given its own Text because a second one per robot would double the most
+      // expensive thing the renderer does.
+      //
+      // Note it comes from `now.team` and never from the label: `set name` is
+      // script-controlled, and a robot must not be able to dress up as the
+      // other side.
+      const shown = teamIndex >= 0 ? `${teamIndex + 1} · ${now.name}` : now.name;
       view.labelAge++;
-      if (view.drawnLabel !== now.name && view.labelAge >= LABEL_INTERVAL) {
-        view.label.text = now.name;
-        view.drawnLabel = now.name;
+      if (view.drawnLabel !== shown && view.labelAge >= LABEL_INTERVAL) {
+        view.label.text = shown;
+        view.drawnLabel = shown;
         view.labelAge = 0;
       }
 

@@ -40,6 +40,14 @@ export interface RobotSnap {
   climb: number;
   /** -1..1 of top speed. Effort needs both: shoving hard, not merely being on a hill. */
   speed: number;
+  /**
+   * Which side, counting from zero.
+   *
+   * Taken from the robot rather than read out of its label, because `set name`
+   * is script-controlled: a robot must not be able to dress up as the other
+   * side, or hide which one it is on.
+   */
+  team: number;
   name: string;
   color: string;
   locomotion: Locomotion;
@@ -78,6 +86,8 @@ export interface Snapshot {
    * looking at the real reach, not at a decorative constant.
    */
   fuelRadius: number;
+  /** True when at least two robots share a side, so team markings are worth drawing. */
+  teamed: boolean;
 }
 
 export function snapshot(world: World): Snapshot {
@@ -95,6 +105,7 @@ export function snapshot(world: World): Snapshot {
       fuel: r.fuel / MAX_FUEL,
       climb: r.climb,
       speed: r.speed / CHASSIS_TOP_SPEED,
+      team: r.team,
       name: r.name,
       color: r.color,
       locomotion: r.locomotion,
@@ -109,6 +120,10 @@ export function snapshot(world: World): Snapshot {
     fuel: world.fuel.map((f) => ({ id: f.id, x: f.x, y: f.y, amount: f.amount })),
     fuelEnabled: world.fuelConfig.enabled,
     fuelRadius: world.fuelConfig.radius,
+    // Whether this match has sides at all. When it does not, every robot is on
+    // a team of its own and the team markings are left off entirely — a number
+    // that is always the robot's own index tells a viewer nothing.
+    teamed: new Set(world.robots.map((r) => r.team)).size < world.robots.length,
   };
 }
 

@@ -25,6 +25,7 @@ export const MECHANICAL: ArenaTheme = {
 
   labelColor: 0xdfe4ec,
   labelStroke: 0x0b0d11,
+  teamColors: [0x4ea8ff, 0xff7a4e, 0x6ad98a, 0xd08bff, 0xffd166, 0xff6b9d],
 
   senseConeColor: 0x7fd1e0,
   senseConeAlpha: 0.07,
