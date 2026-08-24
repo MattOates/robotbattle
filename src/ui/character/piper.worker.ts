@@ -18,6 +18,42 @@
  */
 
 import { TtsSession, download, stored } from "@mintplex-labs/piper-tts-web";
+// The `/wasm` build specifically, because that is the one Piper imports.
+// Importing the bare package instead pulls a *second*, WebGPU-capable copy of
+// the runtime into this worker, and two Emscripten runtimes in one thread is
+// its own kind of trouble.
+import { env } from "onnxruntime-web/wasm";
+
+/**
+ * Pin the runtime to one thread, and do not let it be talked out of it.
+ *
+ * Multi-threaded WebAssembly needs the page to be cross-origin isolated, which
+ * needs COOP and COEP response headers, which a static host like GitHub Pages
+ * does not send. So one thread is not a tuning choice here — it is the only
+ * thing that can work.
+ *
+ * Piper sets `numThreads` to `navigator.hardwareConcurrency` as it initialises,
+ * and on the main thread the runtime notices it cannot honour that and warns
+ * and falls back. Inside a worker it does not fall back; it fails, and reports
+ * the failure as "No graph was found in the protobuf" — which sends you looking
+ * at your model file for a very long time before you think to look at threads.
+ * The model is fine. The property is therefore made unwritable, so Piper's
+ * assignment is quietly ignored rather than breaking synthesis.
+ */
+try {
+  Object.defineProperty(env.wasm, "numThreads", {
+    get: () => 1,
+    // A setter that quietly declines, rather than a read-only property. Module
+    // code is strict mode, so an unwritable property makes Piper's assignment
+    // *throw* during initialisation — which fails the voice just as dead, only
+    // with a different confusing message.
+    set: () => undefined,
+    configurable: true,
+  });
+} catch {
+  // Not configurable on this runtime: the runtime's own fallback will have to
+  // do. It manages on the main thread; the risk is confined to the worker.
+}
 
 interface WasmPaths {
   onnxWasm: string;
@@ -39,8 +75,25 @@ export type PiperWorkerOut =
  * Built once and kept: creating a session reads a sixty-megabyte model into the
  * runtime, so doing it per sentence would make every line cost what the first
  * one did.
+ *
+ * The *promise* is what is stored, not the session. `session ??= await
+ * create()` reads as though it builds one, but the assignment happens after the
+ * await, so two overlapping calls both see null and both start building — and
+ * the tour always makes two at once, saying the current step while preparing
+ * the next. Two concurrent initialisations of the runtime leave it in a state
+ * where the model no longer parses, which surfaces as the wonderfully
+ * unhelpful "No graph was found in the protobuf".
  */
-let session: TtsSession | null = null;
+let session: Promise<TtsSession> | null = null;
+
+/**
+ * Inference, one at a time.
+ *
+ * A session is not re-entrant, and the queue costs nothing here: the work is
+ * CPU-bound and single-threaded anyway, so overlapping it would not make it
+ * finish sooner even if it were safe.
+ */
+let queue: Promise<unknown> = Promise.resolve();
 
 const post = (message: PiperWorkerOut, transfer?: Transferable[]) =>
   (self as unknown as Worker).postMessage(message, transfer ?? []);
@@ -65,11 +118,18 @@ self.onmessage = async (event: MessageEvent<PiperWorkerIn>) => {
       return;
     }
 
-    session ??= await TtsSession.create({
+    session ??= TtsSession.create({
       voiceId: request.voiceId,
       wasmPaths: request.wasmPaths,
     });
-    const wav = await (await session.predict(request.text)).arrayBuffer();
+    const ready = await session;
+
+    const mine = queue.then(() => ready.predict(request.text));
+    // Kept as the tail whatever happens, so one failure does not wedge the
+    // queue behind a rejected promise.
+    queue = mine.catch(() => undefined);
+
+    const wav = await (await mine).arrayBuffer();
     post({ id: request.id, kind: "wav", wav }, [wav]);
   } catch (error) {
     post({

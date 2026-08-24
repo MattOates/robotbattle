@@ -100,6 +100,20 @@ export function useTour(id: TourId, theme: Theme, enabled = true): TourApi {
     if (next) void instance.prepare(fillVocab(`${next.title}. ${next.body}`, theme));
   }, [index, muted, step, steps, theme, voiceStatus]);
 
+  // Autoplay is refused until the page has been interacted with, and arriving
+  // at a resumed tour involves no interaction at all. The first click or key
+  // press is the moment that changes, so it is the moment to try again.
+  useEffect(() => {
+    if (voiceStatus !== "ready" || muted) return;
+    const wake = () => void speaker.current?.retryBlocked();
+    window.addEventListener("pointerdown", wake, { once: true });
+    window.addEventListener("keydown", wake, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", wake);
+      window.removeEventListener("keydown", wake);
+    };
+  }, [muted, voiceStatus]);
+
   const amplitude = useCallback(
     () => (voiceStatus === "ready" && !muted ? (speaker.current?.amplitude() ?? 0) : 0),
     [muted, voiceStatus],

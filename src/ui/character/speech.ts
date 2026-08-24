@@ -214,6 +214,8 @@ export class Speaker {
    * its next opportunity.
    */
   private utterance = 0;
+  /** A line autoplay would not let us play, kept for the first user gesture. */
+  private blocked: string | null = null;
 
   constructor(provider: VoiceProvider) {
     this.provider = provider;
@@ -237,7 +239,8 @@ export class Speaker {
         ),
       ]);
       return !this.disposed;
-    } catch {
+    } catch (error) {
+      console.warn("[voice] unavailable:", error);
       return false;
     }
   }
@@ -248,8 +251,9 @@ export class Speaker {
     if (line === "" || this.cache.has(line) || this.disposed) return;
     try {
       this.cache.set(line, await this.provider.synthesise(line));
-    } catch {
+    } catch (error) {
       // A line that will not synthesise is a line said silently.
+      console.warn("[voice] could not prepare:", error);
     }
   }
 
@@ -265,7 +269,11 @@ export class Speaker {
       try {
         wav = await this.provider.synthesise(line);
         this.cache.set(line, wav);
-      } catch {
+      } catch (error) {
+        // Reported rather than swallowed. A silent tour is a supported outcome,
+        // but "the voice did nothing and said nothing about it" is impossible
+        // to diagnose from a bug report.
+        console.warn("[voice] could not synthesise:", error);
         return;
       }
     }
@@ -274,10 +282,17 @@ export class Speaker {
     try {
       const context = this.audio();
       // A context built inside a promise continuation is not built during a
-      // user gesture, so it starts suspended and plays nothing. The page has
-      // sticky activation by now — nobody reaches a tour without clicking —
-      // which is what lets this resume rather than being refused.
-      if (context.state === "suspended") await context.resume();
+      // user gesture, so it starts suspended. Usually the page has sticky
+      // activation — somebody pressed "Show me how it works" — and this
+      // resumes. On a reload into a part-finished tour nobody has clicked yet,
+      // the resume is refused, and the line is kept for `retryBlocked`.
+      if (context.state === "suspended") {
+        await context.resume().catch(() => undefined);
+        if (context.state === "suspended") {
+          this.blocked = text;
+          return;
+        }
+      }
       if (superseded()) return;
       // `decodeAudioData` consumes the buffer it is given, so the cache keeps
       // the original and each playback decodes a copy.
@@ -292,9 +307,26 @@ export class Speaker {
       source.onended = () => {
         if (this.source === source) this.source = null;
       };
-    } catch {
-      // Autoplay policy, a decode failure, a closed context: stay quiet.
+    } catch (error) {
+      // Autoplay policy, a decode failure, a closed context: stay quiet, but
+      // leave a trace.
+      console.warn("[voice] could not play:", error);
     }
+  }
+
+  /**
+   * Say again whatever autoplay refused to let us say.
+   *
+   * Nothing plays until the page has been interacted with. Coming *into* a tour
+   * that is already part-way through — a reload, or a link straight to the
+   * Workshop — involves no click at all, so the first line is silently dropped
+   * and the helper appears mute. This replays it at the first sign of life.
+   */
+  async retryBlocked(): Promise<void> {
+    const line = this.blocked;
+    if (line === null) return;
+    this.blocked = null;
+    await this.say(line);
   }
 
   /** How loud it is right now, 0 to 1. Zero when nothing is playing. */
