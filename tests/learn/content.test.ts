@@ -16,6 +16,7 @@ import { translate } from "../../src/learn/translate.js";
 import { findBareVocab } from "../../src/learn/lint.js";
 import {
   CODE_LANGS,
+  fillVocab,
   extractCode,
   lessonTeaches,
   lessonTitle,
@@ -150,4 +151,51 @@ describe("shared prose reads correctly in both worlds", () => {
       expect(warnings.map((w) => `line ${w.line}: "${w.word}" in — ${w.text}`)).toEqual([]);
     },
   );
+});
+
+describe("vocabulary placeholders", () => {
+  const THEMES_LIST = ["mechanical", "biological"] as const;
+
+  it("leaves nothing in curly braces once filled", () => {
+    // The bug this catches: `{Arena}` was written in prose while the table
+    // only knew `arena`, so readers were shown the placeholder itself. Any
+    // new placeholder that nobody added to the table fails here rather than
+    // in front of somebody.
+    for (const lesson of lessons) {
+      for (const theme of THEMES_LIST) {
+        const filled = fillVocab(selectWorld(lesson.body, theme), theme);
+        const leftover = filled.match(/\{[A-Za-z]\w*\}/g);
+        expect(leftover, `${lesson.id} (${theme})`).toBeNull();
+      }
+    }
+  });
+
+  it("agrees the indefinite article with what it substitutes", () => {
+    // "a {robot}" is a robot but an organism; "an {arena}" is an arena but a
+    // microcosm. Both directions, both worlds.
+    expect(fillVocab("a {robot} moves", "mechanical")).toBe("a robot moves");
+    expect(fillVocab("a {robot} moves", "biological")).toBe("an organism moves");
+    expect(fillVocab("an {arena} holds it", "mechanical")).toBe("an arena holds it");
+    expect(fillVocab("an {arena} holds it", "biological")).toBe("a microcosm holds it");
+    expect(fillVocab("a {radar} sees", "biological")).toBe("an eyespot sees");
+  });
+
+  it("keeps the capital on a sentence-leading article", () => {
+    expect(fillVocab("A {robot} waits.", "biological")).toBe("An organism waits.");
+    expect(fillVocab("An {arena} waits.", "biological")).toBe("A microcosm waits.");
+  });
+
+  it("does not mistake other words for an article", () => {
+    expect(fillVocab("another {robot}", "biological")).toBe("another organism");
+    expect(fillVocab("data {robot}", "biological")).toBe("data organism");
+  });
+
+  it("keeps the whitespace it found, including a line break", () => {
+    // Prose wraps, so the article and the noun are often on separate lines.
+    expect(fillVocab("a\n{robot}", "biological")).toBe("an\norganism");
+  });
+
+  it("leaves an unknown placeholder alone rather than eating the article", () => {
+    expect(fillVocab("a {nonsense} thing", "biological")).toBe("a {nonsense} thing");
+  });
 });

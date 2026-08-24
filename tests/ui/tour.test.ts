@@ -9,6 +9,7 @@ import {
 } from "../../src/ui/tour/steps.js";
 import { Tours } from "../../src/store/tour.js";
 import { MemoryStore } from "../../src/store/storage.js";
+import { fillVocab } from "../../src/learn/markdown.js";
 
 describe("gates", () => {
   it("advances a narration step only on Next", () => {
@@ -87,6 +88,22 @@ describe("step definitions", () => {
     for (const step of every) {
       if (step.anchor === null) continue;
       expect(known.has(step.anchor), `${step.id} points at ${step.anchor}`).toBe(true);
+    }
+  });
+
+  it("leaves no placeholder unfilled in either world", () => {
+    // `{Arena}` shipped in the menu step while the vocabulary table only knew
+    // `arena`, so the tour read out the braces. Anything the table does not
+    // know now fails here instead.
+    for (const step of every) {
+      for (const theme of ["mechanical", "biological"] as const) {
+        for (const field of [step.title, step.body]) {
+          const filled = fillVocab(field, theme)
+            .replaceAll("{name}", "Matt")
+            .replaceAll("{helper}", "Sprocket");
+          expect(filled.match(/\{[A-Za-z]\w*\}/g), `${step.id} (${theme})`).toBeNull();
+        }
+      }
     }
   });
 
