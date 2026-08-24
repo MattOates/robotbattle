@@ -45,7 +45,7 @@ export interface TourApi {
   amplitude: () => number;
 }
 
-export function useTour(id: TourId, theme: Theme, enabled = true): TourApi {
+export function useTour(id: TourId, theme: Theme, enabled = true, playerName = ""): TourApi {
   const tours = useMemo(() => new Tours(), []);
   const steps = TOURS[id];
   const character = BRANDING[theme].character;
@@ -100,8 +100,12 @@ export function useTour(id: TourId, theme: Theme, enabled = true): TourApi {
     // that a bare Piper spike never does — two calls at once — and a spike
     // doing exactly this, one at a time, is reliable. Half a second is not
     // worth the risk of the helper going quiet for the rest of the tour.
-    void instance.say(fillVocab(`${step.title}. ${step.body}`, theme));
-  }, [index, muted, step, steps, theme, voiceStatus]);
+    void instance.say(
+      fillVocab(`${step.title}. ${step.body}`, theme)
+        .replaceAll("{name}", playerName.trim() || "there")
+        .replaceAll("{helper}", character.name),
+    );
+  }, [character.name, index, muted, playerName, step, steps, theme, voiceStatus]);
 
   // Autoplay is refused until the page has been interacted with, and arriving
   // at a resumed tour involves no interaction at all. The first click or key

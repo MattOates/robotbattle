@@ -58,9 +58,9 @@ export function App() {
         invitedTo={ROOM_SCREENS.has(route.screen) ? route.room : null}
         onDone={(name, theme, wantsTour) => {
           complete(name, theme, wantsTour);
-          // A tour is a tour of the Workshop, so that is where it happens.
-          // Anyone who declined is left wherever they were already heading.
-          if (wantsTour && !ROOM_SCREENS.has(route.screen)) navigate("workshop");
+          // The tour opens on the menu — a greeting, and what the modes are
+          // for — and walks them to the Workshop itself.
+          if (wantsTour && !ROOM_SCREENS.has(route.screen)) navigate("menu");
         }}
       />
     );
@@ -77,7 +77,7 @@ export function App() {
       />
       <Suspense fallback={<div className="splash">Loading…</div>}>
       {route.screen === "menu" ? (
-        <Menu theme={profile.theme} robotCount={lib.robots.length} />
+        <Menu theme={profile.theme} robotCount={lib.robots.length} playerName={profile.name} />
       ) : null}
 
       {route.screen === "workshop" ? (

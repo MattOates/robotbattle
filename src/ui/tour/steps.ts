@@ -21,6 +21,8 @@ import type { TourId } from "../../store/tour.js";
  * that silently loses its arrow and centres itself.
  */
 export const TOUR_ANCHORS = [
+  "menu-modes",
+  "menu-workshop",
   "editor",
   "editor-tab",
   "trial-tab",
@@ -50,6 +52,8 @@ export type TourAnchor = (typeof TOUR_ANCHORS)[number];
  * reactions will later hang off.
  */
 export type TourSignal =
+  /** A screen was opened. Sent when it mounts, so navigation advances a step. */
+  | { kind: "screen"; screen: string }
   | { kind: "pane"; pane: string }
   | { kind: "opponents"; ids: readonly string[] }
   | { kind: "source"; text: string }
@@ -62,6 +66,8 @@ export type TourSignal =
 export type Gate =
   /** Narration: the reader presses Next when they have read it. */
   | { kind: "next" }
+  /** They went somewhere. */
+  | { kind: "screen"; screen: string }
   /** They opened a particular tab. */
   | { kind: "pane"; pane: string }
   /** Exactly this set of opponents is ticked — no more, no fewer. */
@@ -93,6 +99,14 @@ export type Gate =
 
 export interface TourStep {
   id: string;
+  /**
+   * Which screen this step belongs on.
+   *
+   * The tour starts on the menu and finishes in the Workshop, so both screens
+   * mount it and each shows only the steps that are its own. Defaults to the
+   * Workshop, which is where all but the first few live.
+   */
+  screen?: "menu" | "workshop";
   /** Where to point. Null centres the card, for steps that are about nothing. */
   anchor: TourAnchor | null;
   placement: "top" | "bottom" | "left" | "right";
@@ -138,6 +152,8 @@ export function isSatisfied(gate: Gate, signal: TourSignal): boolean {
   switch (gate.kind) {
     case "next":
       return signal.kind === "next";
+    case "screen":
+      return signal.kind === "screen" && signal.screen === gate.screen;
     case "pane":
       return signal.kind === "pane" && signal.pane === gate.pane;
     case "opponents":
@@ -236,6 +252,33 @@ end
  * game. Neither beat is narrated: both are real matches the player watched.
  */
 export const WORKSHOP_TOUR: readonly TourStep[] = [
+  {
+    id: "hello",
+    screen: "menu",
+    anchor: null,
+    placement: "bottom",
+    title: "Hello {name}",
+    body: "I am {helper}. Five minutes and you will have a {robot} that wins a fight — and you will have written the part that matters yourself. Say if you would rather get on with it alone; the button is bottom right of every card.",
+    gate: { kind: "next" },
+  },
+  {
+    id: "the-modes",
+    screen: "menu",
+    anchor: "menu-modes",
+    placement: "right",
+    title: "This is everything there is",
+    body: "The **Workshop** is where you write a {robot} and try it out on your own. The **{Arena}** puts everyone's into one fight at once, and a **Tournament** draws them against each other — both of those want other people. **Learn** is the long version of what I am about to show you, and **Reference** is the dictionary.",
+    gate: { kind: "next" },
+  },
+  {
+    id: "to-the-workshop",
+    screen: "menu",
+    anchor: "menu-workshop",
+    placement: "right",
+    title: "We want the Workshop",
+    body: "Everything starts there. Open it.",
+    gate: { kind: "screen", screen: "workshop" },
+  },
   {
     id: "meet",
     anchor: "editor",

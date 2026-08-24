@@ -137,7 +137,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
    * Off in a shared session: a coach mark telling somebody to press Start when
    * only the host can is worse than no help at all.
    */
-  const tour = useTour("workshop", theme, !initialRoom);
+  const tour = useTour("workshop", theme, !initialRoom, playerName);
   const [showCones, setShowCones] = useState(true);
   /**
    * Whether the assistant tray is out.
@@ -447,6 +447,14 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
   const viewingId = inSession && !isHost ? (guestView?.robotId ?? null) : (selected?.id ?? null);
   const editable = inSession ? viewingId !== null && viewingId === sessionRobotId : true;
   const viewedName = inSession && !isHost ? (guestView?.name ?? "") : (selected?.name ?? "");
+
+  // Getting here is what completes the menu step that asked them to come.
+  // Sent once on mount: the two screens share the tour through storage rather
+  // than through React, so this is how one hands over to the other.
+  const announceArrival = tour.signal;
+  useEffect(() => {
+    announceArrival({ kind: "screen", screen: "workshop" });
+  }, [announceArrival]);
 
   const updateSource = useCallback(
     (source: string) => {
@@ -867,9 +875,11 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
         </div>
       </div>
 
+      {/* Menu steps belong to the menu, which mounts its own copy. */}
       <Tour
-        tour={tour}
+        tour={tour.step?.screen === "menu" ? { ...tour, step: null } : tour}
         theme={theme}
+        playerName={playerName}
         onInsert={(snippet) => {
           if (!selected) return;
           // Applied to the stored script rather than to the editor's buffer, so

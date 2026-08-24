@@ -171,3 +171,32 @@ describe("Tours storage", () => {
     expect(tours.muted()).toBe(true);
   });
 });
+
+describe("the opening on the menu", () => {
+  it("greets by name before it explains anything", () => {
+    const first = WORKSHOP_TOUR[0]!;
+    expect(first.screen).toBe("menu");
+    expect(first.title).toContain("{name}");
+  });
+
+  it("stays on the menu until it has asked them to move", () => {
+    // Every menu step comes before every Workshop step: the tour walks in one
+    // direction, and a step that sends somebody back would be a mess to render
+    // when only one screen is mounted at a time.
+    const screens = WORKSHOP_TOUR.map((s) => s.screen ?? "workshop");
+    expect(screens.lastIndexOf("menu")).toBeLessThan(screens.indexOf("workshop"));
+  });
+
+  it("hands over by waiting for the Workshop to open", () => {
+    const menuSteps = WORKSHOP_TOUR.filter((s) => s.screen === "menu");
+    const last = menuSteps.at(-1)!;
+    expect(last.gate).toEqual({ kind: "screen", screen: "workshop" });
+  });
+
+  it("advances a screen gate only for the screen it names", () => {
+    const gate = { kind: "screen", screen: "workshop" } as const;
+    expect(isSatisfied(gate, { kind: "screen", screen: "workshop" })).toBe(true);
+    expect(isSatisfied(gate, { kind: "screen", screen: "arena" })).toBe(false);
+    expect(isSatisfied(gate, { kind: "next" })).toBe(false);
+  });
+});

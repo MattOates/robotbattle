@@ -168,15 +168,23 @@ function place(rect: Rect | null, placement: string): React.CSSProperties {
 interface Props {
   tour: TourApi;
   theme: Theme;
+  /** So the helper can greet somebody by name rather than at them. */
+  playerName?: string;
   /** Put the step's snippet into the script. Absent where nothing is editable. */
   onInsert?: (snippet: string) => void;
 }
 
-export function Tour({ tour, theme, onInsert }: Props) {
+export function Tour({ tour, theme, playerName, onInsert }: Props) {
   const { step, voice } = tour;
   const rect = useAnchor(step?.anchor ?? null);
   const character = BRANDING[theme].character;
   const cardRef = useRef<HTMLDivElement | null>(null);
+
+  /** The vocabulary substitutions, plus the two names `fillVocab` cannot know. */
+  const say = (text: string) =>
+    fillVocab(text, theme)
+      .replaceAll("{name}", playerName?.trim() || "there")
+      .replaceAll("{helper}", character.name);
 
   /**
    * Move the mouth with the voice, without telling React about it.
@@ -261,10 +269,10 @@ export function Tour({ tour, theme, onInsert }: Props) {
         ) : (
           <>
             <h3 className="tour-title">
-              <Copy text={fillVocab(step.title, theme)} />
+              <Copy text={say(step.title)} />
             </h3>
             <div className="tour-body">
-              <Copy text={fillVocab(step.body, theme)} />
+              <Copy text={say(step.body)} />
             </div>
 
             <div className="tour-actions">
