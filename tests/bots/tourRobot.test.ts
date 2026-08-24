@@ -239,10 +239,19 @@ describe("the difficulty arc", () => {
       seedBase: 4242,
     }).rows[0]!.winRate;
 
-  const mid = stage("arm-it");
+  // The scaffold the tour types in for you, before you add the shot yourself.
+  const scaffold = stage("arm-it");
+  const mid = stage("add-fire");
   const final = stage("pick-your-range");
 
-  it("lets the first fix beat the Duck", () => {
+  it("cannot beat even the Duck until the player adds the shot", () => {
+    // The tour types in aiming and chasing and stops there, leaving one line
+    // for the player to write. If the scaffold could win on its own, that line
+    // would not be worth asking anybody for.
+    expect(rate(scaffold, SITTING_DUCK, "duck")).toBeLessThan(10);
+  });
+
+  it("beats the Duck once the shot is added", () => {
     expect(rate(mid, SITTING_DUCK, "duck")).toBeGreaterThan(65);
   });
 

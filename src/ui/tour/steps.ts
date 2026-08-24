@@ -53,6 +53,7 @@ export type TourSignal =
   | { kind: "pane"; pane: string }
   | { kind: "opponents"; ids: readonly string[] }
   | { kind: "source"; text: string }
+  | { kind: "trialStart"; opponents: readonly string[] }
   | { kind: "trial"; opponents: readonly string[]; won: boolean }
   | { kind: "saved" }
   /** The Next button. Only ever satisfies a `next` gate. */
@@ -67,6 +68,16 @@ export type Gate =
   | { kind: "opponents"; exactly: readonly string[] }
   | { kind: "trialWon"; against: readonly string[] }
   | { kind: "trialLost"; against: readonly string[] }
+  /**
+   * A fight was *started*, whoever wins.
+   *
+   * For the one step where waiting for the end is a two-minute wait for
+   * nothing: a robot that cannot shoot against a Duck that cannot shoot back
+   * has no way to end a match, so it runs to the tick limit. The lesson —
+   * "you never fired" — is plain within seconds, so the tour moves on as soon
+   * as the match is under way and talks over the top of it.
+   */
+  | { kind: "trialStarted"; against: readonly string[] }
   /**
    * A fight happened, win or lose.
    *
@@ -135,6 +146,8 @@ export function isSatisfied(gate: Gate, signal: TourSignal): boolean {
       return signal.kind === "trial" && signal.won && sameSet(signal.opponents, gate.against);
     case "trialLost":
       return signal.kind === "trial" && !signal.won && sameSet(signal.opponents, gate.against);
+    case "trialStarted":
+      return signal.kind === "trialStart" && sameSet(signal.opponents, gate.against);
     case "trialRan":
       return signal.kind === "trial" && sameSet(signal.opponents, gate.against);
     case "sourceHas":
@@ -178,6 +191,15 @@ export function applySnippet(source: string, insert: NonNullable<TourStep["inser
 // Real RoboScript in canonical words, translated into the reader's vocabulary
 // on the way into the editor. `tests/bots/tourRobot.test.ts` compiles every one
 // of them, so a snippet that does not parse cannot be shipped.
+
+const AIM_AND_CHASE = `
+on sense robot
+  -- Something came into view. event.bearing is which way it is.
+  turret.aim at event.bearing
+  turn body by event.bearing
+  drive forward 80
+end
+`;
 
 const SEE_AND_CHASE = `
 on sense robot
@@ -251,17 +273,30 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
     anchor: "trial-start",
     placement: "top",
     title: "Go on then",
-    body: "The Duck does not move, does not aim and does not shoot. This should be easy.",
-    gate: { kind: "trialRan", against: ["sitting-duck"] },
+    body: "The Duck does not move, does not aim and does not shoot. How hard can it be?",
+    gate: { kind: "trialStarted", against: ["sitting-duck"] },
   },
   {
     id: "arm-it",
     anchor: "editor",
     placement: "right",
-    title: "You never fired a shot",
-    body: "Nor could you: there is nothing in your script about shooting. `on sense {robot}` wakes up when something wanders into view, `event.bearing` is which way it is, and `event.distance` is how far. Point the {turret} at it, {fire}, and go after it.",
+    title: "You are going to lose this",
+    body: "Watch for a moment. Neither of you can shoot, so nobody dies and the clock decides it — and you have been wearing yourself down on the walls while the Duck sat there untouched. Losing to something that does nothing at all is a good place to start. `on sense {robot}` wakes up when something comes into view, `event.bearing` is which way it is, and `event.distance` is how far. Point the {turret} at it, {fire}, and go after it.",
     gate: { kind: "sourceHas", needle: "on sense" },
-    insert: { label: "Add this to my {robot}", snippet: SEE_AND_CHASE },
+    insert: { label: "Start it off for me", snippet: AIM_AND_CHASE },
+  },
+  {
+    id: "add-fire",
+    anchor: "editor",
+    placement: "right",
+    title: "Now make it shoot",
+    body: "That block now points the {turret} at whatever it sees and goes after it — but it still never pulls the trigger. Put `{fire} 2` on its own line just under the `turret.aim` line, and mind the indentation. The 2 is how much of a shot to spend: harder shots hurt more and cost more.",
+    gate: { kind: "sourceHas", needle: "fire" },
+    insert: {
+      label: "I would rather you did it",
+      snippet: SEE_AND_CHASE,
+      replaces: "sense robot",
+    },
   },
   {
     id: "beat-duck",

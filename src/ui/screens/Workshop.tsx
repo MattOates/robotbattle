@@ -822,6 +822,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               arenaOverride={benchArena}
               arenaName={selectedArena?.name ?? null}
               onOpponents={(ids) => tour.signal({ kind: "opponents", ids })}
+              onTrialStarted={(ids) => tour.signal({ kind: "trialStart", opponents: ids })}
               onTrialFinished={(ids, won) =>
                 tour.signal({ kind: "trial", opponents: ids, won })
               }
@@ -1829,6 +1830,7 @@ function TrialPane({
   arenaOverride,
   arenaName,
   onOpponents,
+  onTrialStarted,
   onTrialFinished,
 }: {
   robot: StoredRobot | null;
@@ -1854,6 +1856,8 @@ function TrialPane({
   arenaName: string | null;
   /** Who is ticked, whenever that changes. For the tour; nothing else uses it. */
   onOpponents?: (ids: readonly string[]) => void;
+  /** A fight has begun. For the tour; nothing else uses it. */
+  onTrialStarted?: (ids: readonly string[]) => void;
   /** How a fight went, once it is over. Also only the tour. */
   onTrialFinished?: (ids: readonly string[], won: boolean) => void;
 }) {
@@ -1925,6 +1929,7 @@ function TrialPane({
     // simply drops out rather than failing to compile.
     const chosen = contenders.filter((c) => opponents.includes(c.id));
     foughtRef.current = chosen.map((c) => c.id);
+    onTrialStarted?.(foughtRef.current);
     // At size 1 this is the free-for-all it has always been: no teams stated,
     // so the manifest is byte-identical to the ones this panel used to build.
     // Above 1, your copies are one side and everything you ticked is the other.
