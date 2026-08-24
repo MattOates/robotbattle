@@ -44,30 +44,11 @@ function useCrossTabSync(refresh: () => void): void {
     };
   }, [refresh]);
 }
+import { TOUR_ROBOT, TOUR_SEED } from "../bots/index.js";
+import { Tours } from "../store/tour.js";
+import { WORKSHOP_TOUR } from "./tour/steps.js";
 import type { StoredArena, StoredRobot } from "../store/types.js";
 import type { Theme } from "../lang/vocab.js";
-
-const FIRST_ROBOT = `-- Your first robot. Change anything you like.
--- Press Ctrl-Space in the editor to see what you can write.
-name "My First Robot"
-chassis tank
-color #7fd1e0
-
-on start
-  turret.sweep 45
-  drive forward 60
-end
-
-on sense robot
-  set name = "found you"
-  turret.aim at event.bearing
-  fire 2
-end
-
-on hit wall
-  turn body by 150
-end
-`;
 
 export interface LibraryApi {
   library: Library;
@@ -86,7 +67,25 @@ export interface LibraryApi {
   clearHistory: () => void;
 }
 
-export function useLibrary(): LibraryApi {
+/**
+ * What a brand new player's library starts with.
+ *
+ * Which of the two depends on whether they took the tour: somebody being shown
+ * around starts from a {robot} that cannot fight, because watching it lose and
+ * then fixing it is the entire lesson. Somebody who declined gets the finished
+ * article instead — skipping the tour should cost you the tour, not the robot
+ * it produces.
+ *
+ * Null while nobody has chosen yet, which is the whole of the welcome screen.
+ * Seeding before that point would hand out the wrong one and then have to take
+ * it back.
+ */
+export function starterRobot(onboarded: boolean, tours = new Tours()): string | null {
+  if (!onboarded) return null;
+  return tours.state("workshop") === "skipped" ? TOUR_ROBOT : TOUR_SEED;
+}
+
+export function useLibrary(seed: string | null = TOUR_ROBOT): LibraryApi {
   const store = useMemo(() => defaultStore(), []);
   const library = useMemo(() => new Library(store), [store]);
   const arenaLib = useMemo(() => new ArenaLibrary(store), [store]);
@@ -110,15 +109,15 @@ export function useLibrary(): LibraryApi {
   useCrossTabSync(refresh);
 
   useEffect(() => {
-    if (seeded.current) return;
+    if (seeded.current || seed === null) return;
     seeded.current = true;
-    // A brand new player should land in the Workshop with something that
-    // already works, not an empty page and a blinking cursor.
+    // A brand new player should land in the Workshop with something, rather
+    // than an empty page and a blinking cursor.
     if (library.list().length === 0) {
-      library.create(FIRST_ROBOT);
+      library.create(seed);
       refresh();
     }
-  }, [library, refresh]);
+  }, [library, refresh, seed]);
 
   const clearHistory = useCallback(() => {
     battles.clear();
@@ -130,10 +129,13 @@ export function useLibrary(): LibraryApi {
     for (const arena of arenaLib.list()) arenaLib.remove(arena.id);
     battles.clear();
     chat.clearAll();
+    // Somebody who has wiped everything is starting over, and starting over
+    // includes being offered the guided tour again.
+    new Tours(store).reset();
     // Let the seeding effect run again so they are not left with nothing.
     seeded.current = false;
     refresh();
-  }, [arenaLib, battles, chat, library, refresh]);
+  }, [arenaLib, battles, chat, library, refresh, store]);
 
   return {
     library,
@@ -183,7 +185,7 @@ export function useProfile(): {
   setName: (name: string) => void;
   setTheme: (theme: Theme) => void;
   setAssistantModel: (id: string) => void;
-  complete: (name: string, theme: Theme) => void;
+  complete: (name: string, theme: Theme, wantsTour: boolean) => void;
 } {
   const store = useMemo(() => defaultStore(), []);
 
@@ -254,11 +256,17 @@ export function useProfile(): {
   );
 
   const complete = useCallback(
-    (name: string, theme: Theme) => {
+    (name: string, theme: Theme, wantsTour: boolean) => {
       const trimmed = name.trim().slice(0, 24) || "Player";
       store.set(NAME_KEY, trimmed);
       store.set(THEME_KEY, theme);
       store.set(ONBOARDED_KEY, "yes");
+      // Settled here rather than on arrival at the Workshop, because it also
+      // decides which robot the library is seeded with — and that has to be
+      // known before the Workshop renders anything.
+      const tours = new Tours(store);
+      if (wantsTour) tours.begin("workshop", WORKSHOP_TOUR[0]!.id);
+      else tours.skip("workshop");
       setProfile((p) => ({ ...p, name: trimmed, theme, onboarded: true }));
     },
     [store],

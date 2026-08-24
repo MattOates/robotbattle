@@ -3820,3 +3820,295 @@ button {
   line-height: 1.45;
   color: var(--ink-muted);
 }
+
+/* ---------- the helper's face ---------- */
+
+/*
+ * Sprocket and Pip. The shapes come from `character/Avatar.tsx`; everything
+ * about how they move is here, so a new expression is a keyframe rather than a
+ * change to the artwork.
+ *
+ * The global prefers-reduced-motion rule at the top of this file already stops
+ * all of it, leaving a face that still changes between states — which is the
+ * behaviour we want: expression is information, movement is decoration.
+ */
+
+.avatar {
+  display: block;
+  overflow: visible;
+  flex: none;
+}
+
+.avatar line {
+  stroke: var(--signal-dim);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.avatar-hull,
+.avatar-membrane {
+  fill: var(--panel-raised);
+  stroke: var(--bezel-light);
+  stroke-width: 2;
+}
+
+.avatar-track {
+  fill: var(--bezel);
+}
+
+.avatar-wheel {
+  fill: var(--panel);
+}
+
+.avatar-lens {
+  fill: var(--chassis);
+  stroke: var(--bezel-light);
+  stroke-width: 1.5;
+}
+
+.avatar-pupil {
+  fill: var(--signal);
+}
+
+.avatar-glint {
+  fill: var(--ink-strong);
+  opacity: 0.85;
+}
+
+.avatar-bulb {
+  fill: var(--signal-dim);
+}
+
+.avatar-jaw {
+  fill: var(--signal-dim);
+  /* Driven by the analyser on the voice, so the mouth moves with the words. */
+  transform-origin: 32px 42px;
+  transform: scaleY(calc(1 + var(--amp, 0) * 2.6));
+}
+
+.avatar-eye {
+  /* Reserved for glancing at whatever was just clicked; nothing sets it yet. */
+  transform: translate(calc(var(--look-x, 0) * 1px), calc(var(--look-y, 0) * 1px));
+  transition: transform 220ms ease-out;
+}
+
+/* --- idle: a slow blink, and cilia that drift --- */
+
+.avatar[data-state="idle"] .avatar-pupil,
+.avatar[data-state="talking"] .avatar-pupil {
+  animation: avatar-blink 5.5s infinite;
+}
+
+@keyframes avatar-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.1);
+  }
+}
+
+.avatar-pupil {
+  transform-origin: 32px 30px;
+}
+
+/* --- thinking: the antenna spins, the nucleus wobbles --- */
+
+.avatar[data-state="thinking"] .avatar-antenna {
+  transform-origin: 32px 18px;
+  animation: avatar-scan 1.6s ease-in-out infinite;
+}
+
+.avatar[data-state="thinking"] .avatar-bulb {
+  animation: avatar-pulse 1.2s ease-in-out infinite;
+}
+
+.avatar[data-state="thinking"] .avatar-eye {
+  animation: avatar-wobble 2.4s ease-in-out infinite;
+}
+
+@keyframes avatar-scan {
+  0%,
+  100% {
+    transform: rotate(-22deg);
+  }
+  50% {
+    transform: rotate(22deg);
+  }
+}
+
+@keyframes avatar-pulse {
+  0%,
+  100% {
+    fill: var(--signal-dim);
+  }
+  50% {
+    fill: var(--signal);
+  }
+}
+
+@keyframes avatar-wobble {
+  0%,
+  100% {
+    transform: translateX(-1.5px);
+  }
+  50% {
+    transform: translateX(1.5px);
+  }
+}
+
+/* --- pleased: a hop --- */
+
+.avatar[data-state="pleased"] {
+  animation: avatar-hop 620ms ease-out;
+}
+
+.avatar[data-state="pleased"] .avatar-pupil {
+  fill: var(--ok);
+}
+
+@keyframes avatar-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-6px);
+  }
+  55% {
+    transform: translateY(0);
+  }
+  70% {
+    transform: translateY(-2px);
+  }
+}
+
+/* --- the cilia fringe, always moving a little --- */
+
+.avatar-fringe line {
+  animation: avatar-beat 1.2s ease-in-out infinite;
+  transform-origin: 32px 33px;
+}
+
+.avatar[data-state="talking"] .avatar-fringe line {
+  animation-duration: 0.7s;
+}
+
+@keyframes avatar-beat {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+/* ---------- the guided tour ---------- */
+
+/*
+ * Above everything, including the settings cog at 60. The scrim is four panels
+ * around the highlighted control rather than one sheet with a hole in it, so
+ * that the control underneath stays clickable — the tour asks people to really
+ * press the buttons, so it must not cover them.
+ */
+
+.tour-scrim,
+.tour-scrim-full {
+  position: fixed;
+  background: rgb(0 0 0 / 55%);
+  z-index: 80;
+  pointer-events: none;
+}
+
+.tour-scrim-full {
+  inset: 0;
+  background: rgb(0 0 0 / 40%);
+}
+
+.tour-halo {
+  position: fixed;
+  z-index: 80;
+  border: 2px solid var(--signal);
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 40%), 0 0 18px var(--signal-dim);
+  pointer-events: none;
+  animation: tour-halo-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes tour-halo-breathe {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.tour-card {
+  position: fixed;
+  z-index: 81;
+  width: 340px;
+  max-width: calc(100vw - 28px);
+  padding: 12px 14px 10px;
+  background: var(--panel-raised);
+  border: 1px solid var(--bezel-light);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 55%);
+}
+
+.tour-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.tour-who {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.tour-title {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--ink-strong);
+}
+
+.tour-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.tour-body p {
+  margin: 0 0 8px;
+}
+
+.tour-body code,
+.tour-title code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  color: var(--readout);
+}
+
+.tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* The invitation shown on a first visit to the Arena or a Tournament. */
+.tour-offer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

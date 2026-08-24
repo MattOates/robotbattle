@@ -18,6 +18,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Lobby } from "./Lobby.js";
+import { TourOffer } from "../tour/TourOffer.js";
+import { useTour } from "../tour/useTour.js";
 import { BracketView } from "../BracketView.js";
 import { MatchCanvas, type MatchOutcome } from "../MatchCanvas.js";
 import { RobotTable, type TableEntry } from "../RobotTable.js";
@@ -90,6 +92,7 @@ const TOUR_TERRAIN = {
 type TourTerrainLevel = keyof typeof TOUR_TERRAIN;
 
 export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }: Props) {
+  const tour = useTour("tournament", theme);
   const { robots } = lib;
   const words = THEMES[theme];
 
@@ -695,10 +698,16 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       </div>
 
       <div className="panel-body">
+        <TourOffer
+          tour={tour}
+          theme={theme}
+          ready={!drawn}
+          offer="First tournament? I can show you how the draw works."
+        />
         {notice ? <div className="notice">{notice}</div> : null}
 
         {isHost && !drawn ? (
-          <>
+          <div data-tour="lobby-config">
             <div className="row" aria-label="fuel">
               <span className="roster-meta">{fuelHeading(theme)}</span>
               {(Object.keys(TOUR_FUEL) as TourFuelLevel[]).map((level) => (
@@ -758,7 +767,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
                 </select>
               </div>
             ) : null}
-          </>
+          </div>
         ) : null}
 
         {/* No separate "champion" banner: the tree ends in the winner's
@@ -818,7 +827,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
             ) : null}
           </>
         ) : (
-          <>
+          <div data-tour="tournament-table">
             <RobotTable
               theme={theme}
               robotPlural={words.robotPlural}
@@ -868,6 +877,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
                 <button
                   type="button"
                   className="btn primary"
+                  data-tour="tournament-draw"
                   disabled={field.length < 2 || qualifying !== null}
                   onClick={makeDraw}
                 >
@@ -881,7 +891,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
             ) : (
               <div className="empty small">The host makes the draw when everyone is in.</div>
             )}
-          </>
+          </div>
         )}
       </div>
     </Lobby>

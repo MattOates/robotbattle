@@ -14,6 +14,8 @@ import {
   type ArenaChoiceValue,
 } from "../ArenaChoice.js";
 import { Lobby } from "./Lobby.js";
+import { TourOffer } from "../tour/TourOffer.js";
+import { useTour } from "../tour/useTour.js";
 import { Countdown } from "../Countdown.js";
 import { MatchCanvas, type MatchOutcome, type MatchStatus } from "../MatchCanvas.js";
 import { useAutoJoin, useRoom } from "../useRoom.js";
@@ -64,6 +66,7 @@ interface LiveMatch {
 }
 
 export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Props) {
+  const tour = useTour("arena", theme);
   const { robots } = lib;
   const [robotId, setRobotId] = useState<string | null>(robots[0]?.id ?? null);
   const robot = robots.find((r) => r.id === robotId) ?? robots[0] ?? null;
@@ -319,8 +322,14 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           : undefined
       }
     >
+      <TourOffer
+        tour={tour}
+        theme={theme}
+        ready={room.phase === "connected"}
+        offer="First time in the {arena}? I can show you how a room is set up."
+      />
       {room.isHost ? (
-        <>
+        <div data-tour="lobby-config">
           <div className="panel-head">
             <span className="silkscreen" title="Everyone against everyone, or two or more sides. On a side you can tell friend from foe with `event.friend`, and talk to each other with `broadcast` — though everybody hears that, including the other side.">Sides</span>
           </div>
@@ -399,7 +408,7 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
             level={terrainLevel}
             onLevel={setTerrainLevel}
           />
-        </>
+        </div>
       ) : null}
       <div className="panel-head">
         <span className="silkscreen">How it works</span>

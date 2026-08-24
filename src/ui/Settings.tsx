@@ -13,6 +13,7 @@ import { openBugReport } from "./bugReport.js";
 import { THEMES, type Theme } from "../lang/vocab.js";
 import { assistantRuntime, downloadSizeGB, type AssistantModel } from "../assistant/runtime.js";
 import { useAssistantUsable } from "../assistant/useAssistant.js";
+import { Tours } from "../store/tour.js";
 import type { LibraryApi } from "./useLibrary.js";
 import type { Profile } from "./useLibrary.js";
 
@@ -224,6 +225,16 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
             </div>
 
             <div className="settings-danger">
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => {
+                  new Tours().reset();
+                  window.location.reload();
+                }}
+              >
+                Show the tours again
+              </button>
               <button
                 type="button"
                 className="btn small"
