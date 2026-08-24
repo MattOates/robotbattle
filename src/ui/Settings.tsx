@@ -251,12 +251,19 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
                 onClick={() => {
                   if (
                     !window.confirm(
-                      "Delete every robot, every saved version and every battle? This cannot be undone.",
+                      "Delete everything and start over as a new player?\n\n" +
+                        "Every robot, saved version, arena, battle and conversation, " +
+                        "which lessons you have read, and your name and world. " +
+                        "You will be asked to choose again. This cannot be undone.",
                     )
                   ) {
                     return;
                   }
                   lib.clearAll();
+                  // Reloaded rather than re-rendered: the name and world are
+                  // read once at start-up and live above this component, so
+                  // without this the screen would still think it knows you.
+                  window.location.reload();
                 }}
               >
                 Delete everything

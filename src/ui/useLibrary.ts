@@ -17,6 +17,7 @@ import {
   storageAvailable,
   usedBytes,
   STORAGE_BUDGET_BYTES,
+  wipe,
 } from "../store/storage.js";
 
 /**
@@ -61,7 +62,14 @@ export interface LibraryApi {
   robots: StoredRobot[];
   refresh: () => void;
   storage: { used: number; budget: number; available: boolean };
-  /** Throw away every robot and every battle. Not undoable. */
+  /**
+   * Throw away everything and become a new player again: robots, arenas,
+   * battles, chat, lessons read, tours seen, name and world. Not undoable.
+   *
+   * The caller is expected to reload afterwards — the name and world are read
+   * once at start-up and held in React state above this, so a wipe that did
+   * not reload would leave the screen claiming to know who you are.
+   */
   clearAll: () => void;
   /** Forget battle history but keep the robots. */
   clearHistory: () => void;
@@ -125,17 +133,11 @@ export function useLibrary(seed: string | null = TOUR_ROBOT): LibraryApi {
   }, [battles, refresh]);
 
   const clearAll = useCallback(() => {
-    for (const robot of library.list()) library.remove(robot.id);
-    for (const arena of arenaLib.list()) arenaLib.remove(arena.id);
-    battles.clear();
-    chat.clearAll();
-    // Somebody who has wiped everything is starting over, and starting over
-    // includes being offered the guided tour again.
-    new Tours(store).reset();
+    wipe(store);
     // Let the seeding effect run again so they are not left with nothing.
     seeded.current = false;
     refresh();
-  }, [arenaLib, battles, chat, library, refresh, store]);
+  }, [refresh, store]);
 
   return {
     library,
