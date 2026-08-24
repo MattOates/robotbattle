@@ -37,10 +37,11 @@ export interface Character {
   /**
    * A Piper voice id from the `rhasspy/piper-voices` catalogue.
    *
-   * Both are British, and both are the best quality Piper publishes for that
-   * voice. Note the asymmetry is forced rather than chosen: `en_GB-cori-high`
-   * is the *only* high-tier en_GB voice there is, and it is female. Every
-   * British male voice tops out at medium, so Sprocket takes the best of those.
+   * Both British, and both `medium` — deliberately the same weight class.
+   * Pip was on `en_GB-cori-high`, the only high-tier en_GB voice there is, and
+   * it downloaded happily and then never spoke: at roughly 113 MB it is nearly
+   * twice the medium models, and loading it into the runtime is where it went
+   * quiet. A voice nobody hears is not higher quality than one they do.
    */
   voiceId: string;
   /** Roughly how much there is to download, for the copy that says so. */
@@ -59,7 +60,7 @@ export const BRANDING: Readonly<Record<Theme, Branding>> = {
     character: {
       name: "Sprocket",
       greeting: "Right then. Let us build you a robot.",
-      voiceId: "en_GB-alan-medium",
+      voiceId: "en_GB-northern_english_male-medium",
       voiceMB: 63,
     },
   },
@@ -74,8 +75,8 @@ export const BRANDING: Readonly<Record<Theme, Branding>> = {
     character: {
       name: "Pip",
       greeting: "Right then. Let us grow you an organism.",
-      voiceId: "en_GB-cori-high",
-      voiceMB: 114,
+      voiceId: "en_GB-jenny_dioco-medium",
+      voiceMB: 63,
     },
   },
 };
