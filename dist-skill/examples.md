@@ -1,21 +1,15 @@
-/**
- * Sample robots.
- *
- * These double as the tutorial ladder (each one introduces exactly one new
- * idea) and as the test corpus. They are inline strings rather than loose files
- * so that tests, the dev server and a future static build all read them the
- * same way with no loader configuration.
- */
+# Worked examples
 
-export interface SampleBot {
-  id: string;
-  title: string;
-  /** What this example is here to teach. */
-  teaches: string;
-  source: string;
-}
+Every one of these is a robot that runs in the real game today. They are the
+best guide to what idiomatic RoboScript looks like — read the shape of them
+before writing one.
 
-const SITTING_DUCK = `-- The simplest robot there is: it just sits and waits.
+## Sitting Duck
+
+Teaches: the smallest possible robot, and the name label
+
+```roboscript
+-- The simplest robot there is: it just sits and waits.
 -- Good for target practice while you test another robot.
 name "Sitting Duck"
 chassis tank
@@ -24,9 +18,14 @@ color #8a8f98
 on start
   set name = "please don't"
 end
-`;
+```
 
-const SPINNER = `-- Spins on the spot and sweeps its turret, firing at anything it sees.
+## Spinner
+
+Teaches: on tick, turret sweeping, and turning on the spot
+
+```roboscript
+-- Spins on the spot and sweeps its turret, firing at anything it sees.
 -- Only a tank can turn like this while standing still.
 name "Spinner"
 chassis tank
@@ -45,9 +44,198 @@ on sense robot
   fire 2
   set name = "spotted!"
 end
-`;
+```
 
-const RACER = `-- A car: much faster than a tank, but it cannot turn on the spot,
+## Hunter
+
+Teaches: event.bearing, chasing a target, reacting to being hit
+
+```roboscript
+-- Sweeps for a target, then chases it down and keeps shooting.
+-- Shows how event.bearing points straight at whatever you just noticed.
+name "Hunter"
+chassis tank
+color #ff8800
+
+var seen = 0
+
+on start
+  turret.sweep 45
+  drive forward 70
+end
+
+on sense robot
+  set seen = seen + 1
+  set name = "hunting"
+  turret.aim at event.bearing
+  fire 3
+  -- Turn the whole robot toward the target as well as the turret.
+  turn body by event.bearing
+  if event.distance > 120 then
+    drive forward 90
+  else
+    drive forward 30
+  end
+end
+
+on hit by bullet
+  -- Shot from behind? Turn side-on and run.
+  set name = "ouch!"
+  turn body by event.bearing + 90
+  drive forward 100
+end
+
+on hit wall
+  turn body by 150
+  drive forward 70
+end
+```
+
+## Scout
+
+Teaches: the radar: aiming a third instrument, pinging, and on ping robot
+
+```roboscript
+-- Sees people long before they can see it, using the radar.
+--
+-- The radar is a third thing you can point, alongside your body and your
+-- turret. It reaches three times as far as your sense cone but is only a
+-- fifth as wide, and it looks only when you ping — so it has to be aimed on
+-- purpose. The trade is worth it: by the time somebody walks into your cone,
+-- your gun is already pointing at them.
+name "Scout"
+chassis tank
+color #6ad98a
+
+on start
+  drive forward 45
+  -- The turret watches the near ground, the radar searches the far ground.
+  turret.sweep 30
+  radar.sweep 90
+end
+
+on tick
+  -- Ping whenever the beam has recovered. me.pingHeat counts down to zero.
+  if me.pingHeat is 0 then
+    ping
+  end
+end
+
+on ping robot
+  -- A contact far outside the cone. Hold the beam on it so the next ping says
+  -- whether it is still there, point the gun the same way, and turn to face it.
+  set name = "contact"
+  radar.aim at event.bearing
+  turret.aim at event.bearing
+  turn body by event.bearing
+end
+
+on ping wall
+  -- Nothing down that line, only the edge of the arena.
+  set name = "searching"
+end
+
+on ping ridge
+  -- The beam stopped at ground higher than we are, so there could be anything
+  -- behind it and we would not know. Sweep on rather than keep looking at it.
+  set name = "blocked"
+  radar.sweep 90
+end
+
+on sense robot
+  -- Close enough for the cone, and the gun is already looking the right way.
+  set name = "in range"
+  turret.aim at event.bearing
+  fire 3
+end
+
+on hit by bullet
+  -- Shot by someone the beam has not found: get off the line of fire.
+  turn body by event.bearing + 90
+  drive forward 80
+end
+
+on hit wall
+  turn body by 150
+  drive forward 50
+end
+```
+
+## Toolkit
+
+Teaches: can blocks: naming behaviour, and letting it run itself
+
+```roboscript
+-- A robot with no "on" blocks at all.
+--
+-- Each "can" block says which event it is for, and because nothing here
+-- writes "on sense robot" out longhand, the blocks for an event *are* that
+-- handler — running in the order they appear. Paste another one in and it
+-- joins the end; delete one and the rest carry on.
+--
+-- That is the point of writing behaviour this way: each block is a whole
+-- thought you can lift out and give to somebody else.
+name "Toolkit"
+chassis tank
+color #ffd166
+
+var target = 0
+
+can look given start
+  turret.sweep 40
+  radar.sweep 90
+  drive forward 55
+end
+
+can search given tick
+  if me.pingHeat is 0 then
+    ping
+  end
+end
+
+-- A block can be handed something. With a starting value it still runs on its
+-- own; without one it would be a block you could only "do" by hand.
+can engage with power=3 given sense robot
+  set name = "seen"
+  set target = event.bearing
+  turret.aim at event.bearing
+  fire power
+end
+
+can close given sense robot
+  turn body by target
+  if event.distance > 150 then
+    drive forward 80
+  else
+    drive forward 30
+  end
+end
+
+can point given ping robot
+  set name = "far contact"
+  radar.aim at event.bearing
+  turret.aim at event.bearing
+  turn body by event.bearing
+end
+
+can flinch given hit by bullet
+  set name = "hit"
+  turn body by event.bearing + 90
+  drive forward 90
+end
+
+can bounce given hit wall
+  turn body by 150
+  drive forward 60
+end
+```
+
+## Racer
+
+Teaches: a car's turning circle, variables, and if/else
+
+```roboscript
+-- A car: much faster than a tank, but it cannot turn on the spot,
 -- so it has to drive its way around a corner.
 --
 -- It drives the ground like a race track. Going uphill is slow and burns fuel,
@@ -62,7 +250,7 @@ const RACER = `-- A car: much faster than a tank, but it cannot turn on the spot
 --
 -- It also watches for the wall and starts the corner early. A car turns in a
 -- circle it cannot tighten, so by the time a wall is close there is no room
--- left to miss it \u2014 the turn has to begin while it is still a long way off.
+-- left to miss it — the turn has to begin while it is still a long way off.
 name "Racer"
 chassis car
 color #ffd166
@@ -123,7 +311,7 @@ on tick
         -- turn from straight up the hill is the flattest way through.
         --
         -- Turning the short way matters for a car. If the hill is on the right
-        -- we take the line to its left, and the other way round \u2014 either way
+        -- we take the line to its left, and the other way round — either way
         -- the wheel only ever moves a little, which keeps the speed up.
         set name = "on the line"
         if me.uphill > 0 then
@@ -136,49 +324,14 @@ on tick
     end
   end
 end
-`;
+```
 
-const HUNTER = `-- Sweeps for a target, then chases it down and keeps shooting.
--- Shows how event.bearing points straight at whatever you just noticed.
-name "Hunter"
-chassis tank
-color #ff8800
+## Dodger
 
-var seen = 0
+Teaches: sensing bullets, evading, and wait
 
-on start
-  turret.sweep 45
-  drive forward 70
-end
-
-on sense robot
-  set seen = seen + 1
-  set name = "hunting"
-  turret.aim at event.bearing
-  fire 3
-  -- Turn the whole robot toward the target as well as the turret.
-  turn body by event.bearing
-  if event.distance > 120 then
-    drive forward 90
-  else
-    drive forward 30
-  end
-end
-
-on hit by bullet
-  -- Shot from behind? Turn side-on and run.
-  set name = "ouch!"
-  turn body by event.bearing + 90
-  drive forward 100
-end
-
-on hit wall
-  turn body by 150
-  drive forward 70
-end
-`;
-
-const DODGER = `-- Watches for incoming fire and gets out of the way.
+```roboscript
+-- Watches for incoming fire and gets out of the way.
 -- Uses a loop with break, and wait to pause between moves.
 name "Dodger"
 chassis car
@@ -205,17 +358,91 @@ on hit wall
   wait 5 ticks
   drive forward 80
 end
-`;
+```
 
-/**
- * The Hunter, written in the biological vocabulary.
- *
- * This is not a different robot: it compiles to identical bytecode and fights
- * identically. It is here to make the point that the theme is wording and art,
- * never a gameplay advantage — and the vocab test asserts exactly that against
- * HUNTER above.
- */
-const GOAT = `-- Goat: gets to the high ground and holds it.
+## Hungry Hippo
+
+Teaches: fuel: sensing it near and far, and spending nothing you don't have to
+
+```roboscript
+-- Never fights. Just eats.
+--
+-- Moving, turning, shooting and pinging all use up fuel. Thinking is free, and
+-- so is the sense cone, which notices things all on its own.
+--
+-- So this robot does as little as it can. It never shoots, because shooting
+-- does not find food. It never sweeps its turret, for the same reason. The one
+-- thing it pays for is the ping, because the cone only sees a little way ahead
+-- and the beam sees three times as far.
+--
+-- Finding food near or far leads to the same move: turn to face it, then drive.
+name "Hungry Hippo"
+chassis tank
+color #ff6b6b
+
+on start
+  radar.sweep 90
+  drive forward 60
+end
+
+on tick
+  -- Ping as often as you are allowed. me.pingHeat counts down to zero after
+  -- each one, and asking early does nothing at all.
+  if me.pingHeat is 0 then
+    ping
+  end
+end
+
+on sense fuel
+  -- The cone found food, so it is close. Turn to it and drive over it.
+  set name = "nom"
+  turn body by event.bearing
+  drive forward 100
+end
+
+on ping fuel
+  -- The beam found food a long way off. Keep the beam on it so the next ping
+  -- checks it is still there, then set off.
+  set name = "on my way"
+  radar.aim at event.bearing
+  turn body by event.bearing
+  drive forward 100
+end
+
+on ping wall
+  -- The beam hit the wall, so there is nothing that way. Aiming the beam
+  -- stopped it sweeping, so start it sweeping again.
+  set name = "hungry"
+  radar.sweep 90
+end
+
+on ping ridge
+  -- Same idea, different reason: high ground stopped the beam short. Look
+  -- somewhere else rather than staring at the hill.
+  set name = "hungry"
+  radar.sweep 90
+end
+
+on hit wall
+  turn body by 150
+  drive forward 40
+end
+
+on hit by bullet
+  -- Someone is shooting at it. It does not shoot back, but driving sideways
+  -- makes it harder to hit.
+  set name = "rude"
+  turn body by event.bearing + 90
+  drive forward 100
+end
+```
+
+## Goat
+
+Teaches: me.slope and me.uphill: reading the ground and taking the high ground
+
+```roboscript
+-- Goat: gets to the high ground and holds it.
 --
 -- Height is worth something here. Anyone coming up at you is slowed to a
 -- crawl and paying three times the fuel for it, while you sit still at the
@@ -225,7 +452,7 @@ const GOAT = `-- Goat: gets to the high ground and holds it.
 -- which way is up, turned so that 0 means straight ahead.
 --
 -- The clever bit is how it knows it has arrived. The top of a hill is level,
--- the same as the bottom is \u2014 so when the slope runs out after a climb, that
+-- the same as the bottom is — so when the slope runs out after a climb, that
 -- is the summit. On a flat map the slope never turns up at all, and then there
 -- is nothing to climb and the goat just goes hunting instead.
 --
@@ -313,249 +540,14 @@ on hit wall
   turn body by 140
   drive forward 70
 end
-`;
+```
 
-const HUNTER_BIO = `-- The very same robot as Hunter, in biology words.
-name "Hunter"
-body ciliate
-color #ff8800
+## Apex
 
-var seen = 0
+Teaches: the one to beat: fighting and foraging, budgeted against the cost table
 
-on start
-  stinger.sweep 45
-  swim forward 70
-end
-
-on sense organism
-  set seen = seen + 1
-  set name = "hunting"
-  stinger.aim at event.bearing
-  sting 3
-  -- Turn the whole organism toward the target as well as the stinger.
-  turn body by event.bearing
-  if event.distance > 120 then
-    swim forward 90
-  else
-    swim forward 30
-  end
-end
-
-on stung
-  -- Stung from behind? Turn side-on and flee.
-  set name = "ouch!"
-  turn body by event.bearing + 90
-  swim forward 100
-end
-
-on hit wall
-  turn body by 150
-  swim forward 70
-end
-`;
-
-const SCOUT = `-- Sees people long before they can see it, using the radar.
---
--- The radar is a third thing you can point, alongside your body and your
--- turret. It reaches three times as far as your sense cone but is only a
--- fifth as wide, and it looks only when you ping — so it has to be aimed on
--- purpose. The trade is worth it: by the time somebody walks into your cone,
--- your gun is already pointing at them.
-name "Scout"
-chassis tank
-color #6ad98a
-
-on start
-  drive forward 45
-  -- The turret watches the near ground, the radar searches the far ground.
-  turret.sweep 30
-  radar.sweep 90
-end
-
-on tick
-  -- Ping whenever the beam has recovered. me.pingHeat counts down to zero.
-  if me.pingHeat is 0 then
-    ping
-  end
-end
-
-on ping robot
-  -- A contact far outside the cone. Hold the beam on it so the next ping says
-  -- whether it is still there, point the gun the same way, and turn to face it.
-  set name = "contact"
-  radar.aim at event.bearing
-  turret.aim at event.bearing
-  turn body by event.bearing
-end
-
-on ping wall
-  -- Nothing down that line, only the edge of the arena.
-  set name = "searching"
-end
-
-on ping ridge
-  -- The beam stopped at ground higher than we are, so there could be anything
-  -- behind it and we would not know. Sweep on rather than keep looking at it.
-  set name = "blocked"
-  radar.sweep 90
-end
-
-on sense robot
-  -- Close enough for the cone, and the gun is already looking the right way.
-  set name = "in range"
-  turret.aim at event.bearing
-  fire 3
-end
-
-on hit by bullet
-  -- Shot by someone the beam has not found: get off the line of fire.
-  turn body by event.bearing + 90
-  drive forward 80
-end
-
-on hit wall
-  turn body by 150
-  drive forward 50
-end
-`;
-
-const TOOLKIT = `-- A robot with no "on" blocks at all.
---
--- Each "can" block says which event it is for, and because nothing here
--- writes "on sense robot" out longhand, the blocks for an event *are* that
--- handler — running in the order they appear. Paste another one in and it
--- joins the end; delete one and the rest carry on.
---
--- That is the point of writing behaviour this way: each block is a whole
--- thought you can lift out and give to somebody else.
-name "Toolkit"
-chassis tank
-color #ffd166
-
-var target = 0
-
-can look given start
-  turret.sweep 40
-  radar.sweep 90
-  drive forward 55
-end
-
-can search given tick
-  if me.pingHeat is 0 then
-    ping
-  end
-end
-
--- A block can be handed something. With a starting value it still runs on its
--- own; without one it would be a block you could only "do" by hand.
-can engage with power=3 given sense robot
-  set name = "seen"
-  set target = event.bearing
-  turret.aim at event.bearing
-  fire power
-end
-
-can close given sense robot
-  turn body by target
-  if event.distance > 150 then
-    drive forward 80
-  else
-    drive forward 30
-  end
-end
-
-can point given ping robot
-  set name = "far contact"
-  radar.aim at event.bearing
-  turret.aim at event.bearing
-  turn body by event.bearing
-end
-
-can flinch given hit by bullet
-  set name = "hit"
-  turn body by event.bearing + 90
-  drive forward 90
-end
-
-can bounce given hit wall
-  turn body by 150
-  drive forward 60
-end
-`;
-
-const HUNGRY_HIPPO = `-- Never fights. Just eats.
---
--- Moving, turning, shooting and pinging all use up fuel. Thinking is free, and
--- so is the sense cone, which notices things all on its own.
---
--- So this robot does as little as it can. It never shoots, because shooting
--- does not find food. It never sweeps its turret, for the same reason. The one
--- thing it pays for is the ping, because the cone only sees a little way ahead
--- and the beam sees three times as far.
---
--- Finding food near or far leads to the same move: turn to face it, then drive.
-name "Hungry Hippo"
-chassis tank
-color #ff6b6b
-
-on start
-  radar.sweep 90
-  drive forward 60
-end
-
-on tick
-  -- Ping as often as you are allowed. me.pingHeat counts down to zero after
-  -- each one, and asking early does nothing at all.
-  if me.pingHeat is 0 then
-    ping
-  end
-end
-
-on sense fuel
-  -- The cone found food, so it is close. Turn to it and drive over it.
-  set name = "nom"
-  turn body by event.bearing
-  drive forward 100
-end
-
-on ping fuel
-  -- The beam found food a long way off. Keep the beam on it so the next ping
-  -- checks it is still there, then set off.
-  set name = "on my way"
-  radar.aim at event.bearing
-  turn body by event.bearing
-  drive forward 100
-end
-
-on ping wall
-  -- The beam hit the wall, so there is nothing that way. Aiming the beam
-  -- stopped it sweeping, so start it sweeping again.
-  set name = "hungry"
-  radar.sweep 90
-end
-
-on ping ridge
-  -- Same idea, different reason: high ground stopped the beam short. Look
-  -- somewhere else rather than staring at the hill.
-  set name = "hungry"
-  radar.sweep 90
-end
-
-on hit wall
-  turn body by 150
-  drive forward 40
-end
-
-on hit by bullet
-  -- Someone is shooting at it. It does not shoot back, but driving sideways
-  -- makes it harder to hit.
-  set name = "rude"
-  turn body by event.bearing + 90
-  drive forward 100
-end
-`;
-
-const APEX = `-- Apex: the robot to beat. It hunts, it eats, and it is careful.
+```roboscript
+-- Apex: the robot to beat. It hunts, it eats, and it is careful.
 --
 -- It is always doing one of four things. The variable called mode remembers
 -- which one, and the label under the robot says it out loud while you watch:
@@ -716,9 +708,14 @@ on hit wall
   turn body by 150
   drive forward 60
 end
-`;
+```
 
-const MOUSE = `-- Mouse does not fight for the room. It works out the shape of it.
+## Mouse
+
+Teaches: following a wall: the radar as a whisker, and solving a labyrinth
+
+```roboscript
+-- Mouse does not fight for the room. It works out the shape of it.
 --
 -- The rule is the oldest one there is for a maze: keep your left hand on the
 -- wall and walk. Never take your hand off, and you will trace the whole of it
@@ -729,7 +726,7 @@ const MOUSE = `-- Mouse does not fight for the room. It works out the shape of i
 --
 -- The first is something that looks SIDEWAYS. The sense cone only faces front,
 -- so the radar is used here as a whisker rather than as a way to find people —
--- aimed at -90, hard left, and pinged over and over. \`on ping wall\` comes back
+-- aimed at -90, hard left, and pinged over and over. `on ping wall` comes back
 -- with how much room is out that way, and that one number is the hand on the
 -- wall.
 --
@@ -947,27 +944,13 @@ on sense robot
   turret.aim at event.bearing
   fire 2
 end
-`;
+```
 
+## Wingman
 
-/**
- * Wingman — fighting as a side, and talking about it.
- *
- * The one sample that needs two of itself in the arena to make any sense. It
- * shows the three things teams add, in the order they matter:
- *
- *  - `event.friend`, so it does not shoot its own side;
- *  - `broadcast`, to call out what it has found;
- *  - `pack` and `field`, because a call-out is several things at once.
- *
- * The interesting part is the tag. `broadcast` reaches every robot alive,
- * enemies included, and says nothing about who sent it — so the first slot of
- * every message is a word both Wingmen know and nobody else does. That is not
- * security, and it is not meant to be: anyone who watches a match can read the
- * word and start sending it too. Working out what to do about that is the whole
- * game, and this robot is where a player meets the problem.
- */
-const WINGMAN = `
+Teaches: teams: event.friend, broadcast, and packing a message your side can read
+
+```roboscript
 name "Wingman"
 chassis tank
 color #4ea8ff
@@ -1033,74 +1016,13 @@ on hit by bullet
     drive 80
   end
 end
-`;
+```
 
-/**
- * Boid — Reynolds' flocking, with the radio standing in for eyesight.
- *
- * The three rules of a boid are all statements about your neighbours:
- * **separation** (do not crowd them), **alignment** (head the way they head)
- * and **cohesion** (drift towards the middle of them). Every one of them needs
- * to know where the neighbours ARE, and in the arena a robot can only see a
- * 30-degree cone in front of itself. A flock that had to look at each other
- * would spend the whole match turning round to check.
- *
- * So this one tells instead of looking. Each Boid broadcasts its own position
- * and heading every sixth tick, and builds its picture of the flock entirely
- * out of what it hears. Nobody ever senses a flockmate; the cone and the gun
- * are left free for whoever it is fighting. That is the point of the robot: the
- * radio is not a chat channel bolted on to a robot that already worked, it is
- * the sense organ the algorithm needs and the arena does not otherwise provide.
- *
- * ## Reading a flock out of a message queue
- *
- * There are no lists in RoboScript, so the flock is never assembled anywhere.
- * Each message adds one neighbour into a set of running totals — a count, a sum
- * of positions, a sum of heading vectors, a sum of separation pushes — and every
- * sixth tick the totals are turned into one steering direction and cleared. The
- * window is the radio's own cooldown, so each flockmate contributes exactly once
- * to each decision.
- *
- * ## Written as `can` blocks, and why the cadences are offset
- *
- * There is not one `on` block in it. Every behaviour is a named `can ... given`
- * block, which is also the most useful thing this robot demonstrates after the
- * flocking itself: each block keeps its OWN count, so `announce` and
- * `flock_together` can both say `every 6` without treading on each other, and
- * either can be lifted out and read on its own.
- *
- * `announce` says `every 6 after 3`, and the `after` is doing real work.
- * `after` starts the cadence counting, so that block fires on ticks 9, 15, 21
- * while the steering fires on 6, 12, 18 — talking lands halfway between
- * decisions rather than on top of them, which gives every message a clear run
- * at the totals before they are used and cleared. Putting them on the same beat
- * costs about a third of the flock's alignment and most of its win rate.
- *
- * Headings are summed as `cos`/`sin` and read back with `bearing`, because the
- * average of 350 degrees and 10 degrees is 0, not 180. Averaging the numbers
- * themselves points the flock backwards twice a turn.
- *
- * ## Two things it learned the hard way
- *
- * **Food is shared, because a flock cannot see it.** The radar reports a robot
- * in preference to fuel, and a Boid's radar is looking at flockmates every time
- * it sweeps — so `ping fuel` almost never fires for a robot in a flock. Instead
- * the first Boid whose cone happens to catch a cell broadcasts where it is, and
- * the whole flock knows. That is the honest version of a waggle dance, and it
- * is also why the messages carry a kind: `p` for position, `f` for food.
- *
- * **It flies slower when it is hungry.** A flock is fuel-expensive in a way a
- * lone robot is not: five of them clump together and then compete for the same
- * cells, so they run low sooner than five robots that spread out. Cruising at a
- * speed set by the tank means a hungry flock slows down instead of grinding
- * itself to bits at walking pace — which is worth about four survivors out of
- * five at two minutes, against three without it.
- *
- * The tag is `flock` plus `me.team`, so two flocks in the same arena do not
- * merge. Note what that is not: it is not a secret. Anybody can read a match
- * and work out what to send. `Wingman` is where that problem is spelled out.
- */
-const BOID = `
+## Boid
+
+Teaches: flocking: using the radio as a sense organ, and averaging a flock out of messages
+
+```roboscript
 -- Boid: Reynolds' three rules of flocking, with the radio doing the seeing.
 --
 -- There are no "on" blocks here at all. Every "can ... given <event>" block IS
@@ -1312,181 +1234,48 @@ can shoot given sense robot
     fire 2
   end
 end
-`;
+```
 
-/**
- * Where the onboarding tour starts you off.
- *
- * Deliberately harmless: it drives, it bounces off walls, and it cannot hurt
- * anybody. Against a Sitting Duck that never moves it still loses, because it
- * never fires a shot — which is the first thing the tour asks you to fix, and
- * it is a far better lesson when the arena has just demonstrated it.
- */
-const TOUR_SEED = `-- Your first robot. It drives around, and that is all it does.
--- Press Ctrl-Space in the editor to see what you can write.
-name "My First Robot"
-chassis tank
-color #7fd1e0
+## Hunter (biology words)
+
+Teaches: the same robot written in the biological vocabulary
+
+```roboscript
+-- The very same robot as Hunter, in biology words.
+name "Hunter"
+body ciliate
+color #ff8800
+
+var seen = 0
 
 on start
-  -- Sweep the turret so it notices things without being pointed at them.
-  turret.sweep 45
-  drive forward 60
+  stinger.sweep 45
+  swim forward 70
 end
 
-on hit wall
-  turn body by 150
-end
-`;
-
-/**
- * What the tour builds, and what somebody who skips it is handed instead.
- *
- * The two paths converge here on purpose: skipping the tour should cost you the
- * tour, not the robot it produces.
- *
- * The numbers behind the shape, measured over 200 trials at three seed bases:
- * with only the `on sense` block from the tour's first fix it beats a Sitting
- * Duck 80% of the time and loses to Hunter at 41%. Choosing its range — the
- * `if/else` below — is what turns Hunter into 56%. That crossover is the whole
- * point of the tour, so if this script is edited, re-measure it.
- */
-const TOUR_ROBOT = `-- Your first robot. Everything here is yours to change.
--- Press Ctrl-Space in the editor to see what you can write.
-name "My First Robot"
-chassis tank
-color #7fd1e0
-
-on start
-  -- Sweep the turret so it notices things without being pointed at them.
-  turret.sweep 45
-  drive forward 60
-end
-
-on sense robot
-  -- event.bearing is which way the thing you just spotted is.
-  turret.aim at event.bearing
+on sense organism
+  set seen = seen + 1
+  set name = "hunting"
+  stinger.aim at event.bearing
+  sting 3
+  -- Turn the whole organism toward the target as well as the stinger.
   turn body by event.bearing
-  -- Close range: hit hard and slow down to keep the shot lined up.
-  -- Long range: a cheap shot, and close the gap quickly.
-  if event.distance < 150 then
-    fire 3
-    drive forward 40
+  if event.distance > 120 then
+    swim forward 90
   else
-    fire 1
-    drive forward 100
+    swim forward 30
   end
 end
 
+on stung
+  -- Stung from behind? Turn side-on and flee.
+  set name = "ouch!"
+  turn body by event.bearing + 90
+  swim forward 100
+end
+
 on hit wall
   turn body by 150
+  swim forward 70
 end
-`;
-
-export const SAMPLE_BOTS: SampleBot[] = [
-  {
-    id: "sitting-duck",
-    title: "Sitting Duck",
-    teaches: "the smallest possible robot, and the name label",
-    source: SITTING_DUCK,
-  },
-  {
-    id: "spinner",
-    title: "Spinner",
-    teaches: "on tick, turret sweeping, and turning on the spot",
-    source: SPINNER,
-  },
-  {
-    id: "hunter",
-    title: "Hunter",
-    teaches: "event.bearing, chasing a target, reacting to being hit",
-    source: HUNTER,
-  },
-  {
-    id: "scout",
-    title: "Scout",
-    teaches: "the radar: aiming a third instrument, pinging, and on ping robot",
-    source: SCOUT,
-  },
-  {
-    id: "toolkit",
-    title: "Toolkit",
-    teaches: "can blocks: naming behaviour, and letting it run itself",
-    source: TOOLKIT,
-  },
-  {
-    id: "racer",
-    title: "Racer",
-    teaches: "a car's turning circle, variables, and if/else",
-    source: RACER,
-  },
-  {
-    id: "dodger",
-    title: "Dodger",
-    teaches: "sensing bullets, evading, and wait",
-    source: DODGER,
-  },
-  {
-    id: "hungry-hippo",
-    title: "Hungry Hippo",
-    teaches: "fuel: sensing it near and far, and spending nothing you don't have to",
-    source: HUNGRY_HIPPO,
-  },
-  {
-    id: "goat",
-    title: "Goat",
-    teaches: "me.slope and me.uphill: reading the ground and taking the high ground",
-    source: GOAT,
-  },
-  {
-    id: "apex",
-    title: "Apex",
-    teaches: "the one to beat: fighting and foraging, budgeted against the cost table",
-    source: APEX,
-  },
-  {
-    id: "mouse",
-    title: "Mouse",
-    teaches: "following a wall: the radar as a whisker, and solving a labyrinth",
-    source: MOUSE,
-  },
-  {
-    id: "wingman",
-    title: "Wingman",
-    teaches: "teams: event.friend, broadcast, and packing a message your side can read",
-    source: WINGMAN,
-  },
-  {
-    id: "boid",
-    title: "Boid",
-    teaches: "flocking: using the radio as a sense organ, and averaging a flock out of messages",
-    source: BOID,
-  },
-  {
-    id: "hunter-bio",
-    title: "Hunter (biology words)",
-    teaches: "the same robot written in the biological vocabulary",
-    source: HUNTER_BIO,
-  },
-];
-
-export function sampleById(id: string): SampleBot | undefined {
-  return SAMPLE_BOTS.find((b) => b.id === id);
-}
-
-export {
-  TOUR_SEED,
-  TOUR_ROBOT,
-  SITTING_DUCK,
-  SPINNER,
-  RACER,
-  HUNTER,
-  DODGER,
-  HUNTER_BIO,
-  SCOUT,
-  TOOLKIT,
-  HUNGRY_HIPPO,
-  GOAT,
-  APEX,
-  MOUSE,
-};
+```
