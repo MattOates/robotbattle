@@ -95,9 +95,12 @@ export function useTour(id: TourId, theme: Theme, enabled = true): TourApi {
       instance.stop();
       return;
     }
+    // Only ever one request in flight. Synthesising the next step while this
+    // one plays looked like free latency, but it is the one thing the game did
+    // that a bare Piper spike never does — two calls at once — and a spike
+    // doing exactly this, one at a time, is reliable. Half a second is not
+    // worth the risk of the helper going quiet for the rest of the tour.
     void instance.say(fillVocab(`${step.title}. ${step.body}`, theme));
-    const next = steps[index + 1];
-    if (next) void instance.prepare(fillVocab(`${next.title}. ${next.body}`, theme));
   }, [index, muted, step, steps, theme, voiceStatus]);
 
   // Autoplay is refused until the page has been interacted with, and arriving

@@ -97,7 +97,6 @@ describe("with no audio at all", () => {
       dispose: () => undefined,
     });
     await expect(speaker.say("hello")).resolves.toBeUndefined();
-    await expect(speaker.prepare("hello")).resolves.toBeUndefined();
     expect(speaker.speaking).toBe(false);
     expect(speaker.amplitude()).toBe(0);
     expect(synthesised).toBeGreaterThan(0);
@@ -119,6 +118,8 @@ describe("with no audio at all", () => {
   });
 
   it("only synthesises a repeated line once", async () => {
+    // Saying the same line again — unmuting, or replaying one autoplay
+    // refused — must not go back to the synthesiser for it.
     let synthesised = 0;
     const speaker = new Speaker({
       load: () => Promise.resolve(),
@@ -128,8 +129,29 @@ describe("with no audio at all", () => {
       },
       dispose: () => undefined,
     });
-    await speaker.prepare("the same line");
-    await speaker.prepare("the same line");
+    await speaker.say("the same line");
+    await speaker.say("the same line");
     expect(synthesised).toBe(1);
+  });
+
+  it("asks for only one line at a time", async () => {
+    // The one thing the game did that a bare Piper spike never does was fire
+    // two synthesis requests at once, and it was the difference between a
+    // helper that talks and one that says a single line and goes quiet.
+    let inFlight = 0;
+    let overlapped = false;
+    const speaker = new Speaker({
+      load: () => Promise.resolve(),
+      synthesise: async () => {
+        inFlight++;
+        if (inFlight > 1) overlapped = true;
+        await Promise.resolve();
+        inFlight--;
+        return new ArrayBuffer(8);
+      },
+      dispose: () => undefined,
+    });
+    await Promise.all([speaker.say("one"), speaker.say("two"), speaker.say("three")]);
+    expect(overlapped).toBe(false);
   });
 });

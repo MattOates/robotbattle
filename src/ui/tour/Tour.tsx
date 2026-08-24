@@ -187,23 +187,30 @@ export function Tour({ tour, theme, onInsert }: Props) {
    * both of which the face is already styled from.
    */
   const { amplitude } = tour;
-  const speaking = voice.status === "ready" && !voice.muted;
   useEffect(() => {
-    if (!speaking) return;
     let frame = 0;
     const tick = () => {
+      // Scheduled first, so that one bad frame cannot end the animation for
+      // the rest of the tour. An earlier version bailed out whenever the voice
+      // was not currently ready and only restarted if a dependency happened to
+      // change again — which left the face frozen mid-tour while the audio
+      // carried on playing behind it, and made the helper look broken when it
+      // was talking perfectly well.
+      frame = requestAnimationFrame(tick);
       const card = cardRef.current;
-      if (card) {
+      if (!card) return;
+      try {
         const level = amplitude();
         card.style.setProperty("--amp", level.toFixed(3));
         const face = card.querySelector<SVGElement>(".avatar");
         if (face) face.dataset["state"] = level > 0.02 ? "talking" : "idle";
+      } catch {
+        // Cosmetic. Never worth interrupting a tour over.
       }
-      frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [amplitude, speaking, step?.id]);
+  }, [amplitude]);
 
   // Escape leaves, like every other dismissible thing in the game. Confirmed,
   // because losing your place by brushing a key would be worse than a prompt.
@@ -309,7 +316,12 @@ function VoiceLoading({ tour, character }: { tour: TourApi; character: string })
         </p>
       </div>
       <div className="progress">
-        <div className="progress-bar" style={{ width: `${percent ?? 4}%` }} />
+        {/* The fill is the `i`, not the bar: `.progress-bar` is the track, and
+            it is `flex: 1`, so a width set on it is ignored and the bar never
+            moves however honest the percentage next to it is. */}
+        <div className="progress-bar">
+          <i style={{ width: `${percent ?? 4}%` }} />
+        </div>
       </div>
       <div className="tour-actions">
         <span className="roster-meta">{percent === null ? "Starting…" : `${percent}%`}</span>

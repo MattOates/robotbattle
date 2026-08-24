@@ -123,24 +123,37 @@ class PiperVoice implements VoiceProvider {
     this.voiceId = voiceId;
   }
 
+  private spawn(): Worker {
+    // `.ts`, not `.js`: this is the specifier the bundler resolves, and the
+    // same form the other workers in this project use.
+    return new Worker(new URL("./piper.worker.ts", import.meta.url), { type: "module" });
+  }
+
   private channel(): Worker {
-    return (this.worker ??= new Worker(
-      // `.ts`, not `.js`: this is the specifier the bundler resolves, and the
-      // same form the other workers in this project use.
-      new URL("./piper.worker.ts", import.meta.url),
-      { type: "module" },
-    ));
+    return (this.worker ??= this.spawn());
   }
 
   /** One request, one reply, with progress reports along the way. */
   private ask<T>(
+    worker: Worker,
     request: DistributiveOmit<PiperWorkerIn, "id">,
     want: PiperWorkerOut["kind"],
     onProgress?: (fraction: number | null) => void,
   ): Promise<T> {
-    const worker = this.channel();
     const id = ++this.nextId;
     return new Promise<T>((resolve, reject) => {
+      const done = () => {
+        worker.removeEventListener("message", onMessage);
+        worker.removeEventListener("error", onError);
+      };
+      // A worker that dies never answers, and without this the promise it owed
+      // is simply never settled — the helper sits there looking ready and
+      // saying nothing, with no error anywhere. Whatever killed it, the caller
+      // needs to be told something.
+      const onError = (event: ErrorEvent) => {
+        done();
+        reject(new Error(event.message || "the speech worker stopped"));
+      };
       const onMessage = (event: MessageEvent<PiperWorkerOut>) => {
         const reply = event.data;
         if (reply.id !== id) return;
@@ -148,25 +161,47 @@ class PiperVoice implements VoiceProvider {
           onProgress?.(reply.fraction);
           return;
         }
-        worker.removeEventListener("message", onMessage);
+        done();
         if (reply.kind === "error") reject(new Error(reply.error));
         else if (reply.kind === want) resolve(reply as T);
         else reject(new Error(`unexpected reply ${reply.kind}`));
       };
       worker.addEventListener("message", onMessage);
+      worker.addEventListener("error", onError);
       worker.postMessage({ ...request, id } as PiperWorkerIn);
     });
   }
 
+  /**
+   * Fetch the voice, in a worker of its own that is then thrown away.
+   *
+   * Downloading sixty megabytes means holding it in memory as chunks, joining
+   * it into a blob, and writing it out. Doing that in the worker that then has
+   * to load the same model into the WebAssembly heap asks it to hold the thing
+   * three times over, and it does not survive: it dies quietly, and a dead
+   * worker answers nothing. That is why the voice worked perfectly on every
+   * visit except the first one, which is the only visit that matters here.
+   *
+   * A separate worker, terminated as soon as the file is on disk, gives the
+   * one that does the synthesising a clean heap to do it in.
+   */
   load(onProgress?: (progress: VoiceProgress) => void): Promise<void> {
-    this.ready ??= this.ask<void>({ kind: "load", voiceId: this.voiceId }, "loaded", (fraction) =>
-      onProgress?.({ fraction }),
-    ).then(() => undefined);
+    this.ready ??= (async () => {
+      const fetcher = this.spawn();
+      try {
+        await this.ask<void>(fetcher, { kind: "load", voiceId: this.voiceId }, "loaded", (f) =>
+          onProgress?.({ fraction: f }),
+        );
+      } finally {
+        fetcher.terminate();
+      }
+    })();
     return this.ready;
   }
 
   async synthesise(text: string): Promise<ArrayBuffer> {
     const reply = await this.ask<{ wav: ArrayBuffer }>(
+      this.channel(),
       { kind: "say", voiceId: this.voiceId, wasmPaths: wasmPaths(), text },
       "wav",
     );
@@ -200,7 +235,10 @@ export class Speaker {
   private analyser: AnalyserNode | null = null;
   private source: AudioBufferSourceNode | null = null;
   private samples = new Uint8Array(0);
-  /** Synthesised lines, so a step already prepared plays instantly. */
+  /**
+   * Lines already synthesised, so saying one again is instant — unmuting, or
+   * replaying a line that autoplay refused the first time.
+   */
   private cache = new Map<string, ArrayBuffer>();
   private disposed = false;
   /**
@@ -216,6 +254,17 @@ export class Speaker {
   private utterance = 0;
   /** A line autoplay would not let us play, kept for the first user gesture. */
   private blocked: string | null = null;
+  /**
+   * The tail of the synthesis chain.
+   *
+   * One request at a time, always. A bare Piper spike doing six utterances one
+   * after another is perfectly reliable; the one thing this wrapper used to do
+   * that the spike never did was ask for two at once, and the symptom was a
+   * helper that said its first line and then went quiet for good. Pressing
+   * Next twice quickly is enough to cause that, so it is enforced here rather
+   * than left to callers to remember.
+   */
+  private work: Promise<unknown> = Promise.resolve();
 
   constructor(provider: VoiceProvider) {
     this.provider = provider;
@@ -245,18 +294,6 @@ export class Speaker {
     }
   }
 
-  /** Synthesise a line and keep it, so that saying it later is immediate. */
-  async prepare(text: string): Promise<void> {
-    const line = speakable(text);
-    if (line === "" || this.cache.has(line) || this.disposed) return;
-    try {
-      this.cache.set(line, await this.provider.synthesise(line));
-    } catch (error) {
-      // A line that will not synthesise is a line said silently.
-      console.warn("[voice] could not prepare:", error);
-    }
-  }
-
   async say(text: string): Promise<void> {
     const line = speakable(text);
     if (line === "" || this.disposed) return;
@@ -267,7 +304,11 @@ export class Speaker {
     let wav = this.cache.get(line);
     if (!wav) {
       try {
-        wav = await this.provider.synthesise(line);
+        const mine2 = this.work.then(() => this.provider.synthesise(line));
+        // Kept as the tail whatever happens, so one failure does not leave
+        // every later line queued behind a rejected promise.
+        this.work = mine2.catch(() => undefined);
+        wav = await mine2;
         this.cache.set(line, wav);
       } catch (error) {
         // Reported rather than swallowed. A silent tour is a supported outcome,

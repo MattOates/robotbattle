@@ -86,14 +86,6 @@ export type PiperWorkerOut =
  */
 let session: Promise<TtsSession> | null = null;
 
-/**
- * Inference, one at a time.
- *
- * A session is not re-entrant, and the queue costs nothing here: the work is
- * CPU-bound and single-threaded anyway, so overlapping it would not make it
- * finish sooner even if it were safe.
- */
-let queue: Promise<unknown> = Promise.resolve();
 
 const post = (message: PiperWorkerOut, transfer?: Transferable[]) =>
   (self as unknown as Worker).postMessage(message, transfer ?? []);
@@ -123,13 +115,7 @@ self.onmessage = async (event: MessageEvent<PiperWorkerIn>) => {
       wasmPaths: request.wasmPaths,
     });
     const ready = await session;
-
-    const mine = queue.then(() => ready.predict(request.text));
-    // Kept as the tail whatever happens, so one failure does not wedge the
-    // queue behind a rejected promise.
-    queue = mine.catch(() => undefined);
-
-    const wav = await (await mine).arrayBuffer();
+    const wav = await (await ready.predict(request.text)).arrayBuffer();
     post({ id: request.id, kind: "wav", wav }, [wav]);
   } catch (error) {
     post({
