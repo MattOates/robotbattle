@@ -1994,7 +1994,10 @@ function TrialPane({
 
   return (
     <div className={`trial-body${expanded ? " has-expanded" : ""}`}>
-      <section className={`panel arena-panel${expanded ? " expanded" : ""}`}>
+      <section
+        className={`panel arena-panel${expanded ? " expanded" : ""}`}
+        data-tour="arena"
+      >
         <div className="panel-head">
           <span className="silkscreen">{words.arena}</span>
           <span className="spacer" />

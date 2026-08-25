@@ -21,6 +21,7 @@ import type { TourId } from "../../store/tour.js";
  * that silently loses its arrow and centres itself.
  */
 export const TOUR_ANCHORS = [
+  "arena",
   "menu-modes",
   "menu-workshop",
   "editor",
@@ -114,6 +115,14 @@ export interface TourStep {
   title: string;
   body: string;
   gate: Gate;
+  /**
+   * Things this step has asked the player to look at.
+   *
+   * The card is moved out of their way, by however much the screen allows. A
+   * step saying "watch what it does" that then sits on the arena is worse than
+   * one on the wrong side of its anchor, so this outranks `placement`.
+   */
+  keepClear?: readonly TourAnchor[];
   /**
    * A one-click "put this in my {robot}" button.
    *
@@ -307,6 +316,7 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
     id: "pick-duck",
     anchor: "opponent-chips",
     placement: "top",
+    keepClear: ["opponent-chips"],
     title: "Pick a fight",
     body: "These are who you can fight. Start with **Sitting Duck** — tick it, and untick everything else. One opponent at a time tells you far more than five at once.",
     gate: { kind: "opponents", exactly: ["sitting-duck"] },
@@ -315,6 +325,7 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
     id: "duck-first-go",
     anchor: "trial-start",
     placement: "top",
+    keepClear: ["arena"],
     title: "Go on then",
     body: "The Duck does not move, does not aim and does not shoot. How hard can it be?",
     gate: { kind: "trialStarted", against: ["sitting-duck"] },
@@ -323,6 +334,7 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
     id: "arm-it",
     anchor: "editor",
     placement: "right",
+    keepClear: ["arena"],
     title: "You are going to lose this",
     body: "Watch for a moment. Neither of you can shoot, so nobody dies and the clock decides it — and you have been wearing yourself down on the walls while the Duck sat there untouched. Losing to something that does nothing at all is a good place to start. `on sense {robot}` wakes up when something comes into view, `event.bearing` is which way it is, and `event.distance` is how far. Point the {turret} at it, {fire}, and go after it.",
     gate: { kind: "sourceHas", needle: "on sense" },
@@ -345,6 +357,7 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
     id: "beat-duck",
     anchor: "trial-start",
     placement: "top",
+    keepClear: ["arena"],
     title: "Try that again",
     body: "Same {robot}, same Duck. Run it.",
     gate: { kind: "trialWon", against: ["sitting-duck"] },
@@ -361,6 +374,7 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
     id: "pick-hunter",
     anchor: "opponent-chips",
     placement: "top",
+    keepClear: ["opponent-chips"],
     title: "Now fight the Hunter",
     body: "Untick the Duck and tick **Hunter** instead. It does everything yours does — sweeps, spots, chases, shoots — and it has been doing it for longer.",
     gate: { kind: "opponents", exactly: ["hunter"] },
@@ -369,6 +383,7 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
     id: "meet-the-wall",
     anchor: "trial-start",
     placement: "top",
+    keepClear: ["arena"],
     title: "Run it",
     body: "Watch where the shots come from, and how close you are when they land.",
     gate: { kind: "trialRan", against: ["hunter"] },
@@ -390,6 +405,7 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
     id: "beat-hunter",
     anchor: "trial-start",
     placement: "top",
+    keepClear: ["arena"],
     title: "Again",
     body: "Same fight, better {robot}. It will not win every time — nothing does — but it now wins more of them than it loses.",
     gate: { kind: "trialWon", against: ["hunter"] },

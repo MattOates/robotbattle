@@ -17,6 +17,7 @@ import { Avatar } from "../character/Avatar.js";
 import { BRANDING } from "../branding.js";
 import { fillVocab } from "../../learn/markdown.js";
 import { Prose } from "../Prose.js";
+import { placeCard, type Box } from "./placement.js";
 import type { TourApi } from "./useTour.js";
 import type { Theme } from "../../lang/vocab.js";
 
@@ -74,16 +75,56 @@ function Speaker({ muted }: { muted: boolean }) {
   );
 }
 
-interface Rect {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
+/** Read an element's box in viewport coordinates, or null if it is not there. */
+function measure(anchor: string): Box | null {
+  const node = document.querySelector(`[data-tour="${anchor}"]`);
+  if (!node) return null;
+  const box = node.getBoundingClientRect();
+  return { top: box.top, left: box.left, width: box.width, height: box.height };
+}
+
+function sameBox(a: Box | null, b: Box | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height;
+}
+
+/**
+ * The boxes this step has asked the player to look at, followed live.
+ *
+ * Same polling loop and same identity-preserving update as the anchor: these
+ * feed the placement scorer every frame, and a new array each frame would move
+ * the card on every frame too.
+ */
+function useKeepClear(anchors: readonly string[]): Box[] {
+  const key = anchors.join(",");
+  const [boxes, setBoxes] = useState<Box[]>([]);
+
+  useLayoutEffect(() => {
+    if (key === "") {
+      setBoxes((current) => (current.length === 0 ? current : []));
+      return;
+    }
+    const names = key.split(",");
+    let frame = 0;
+    const loop = () => {
+      const next = names.map(measure).filter((b): b is Box => b !== null);
+      setBoxes((current) =>
+        current.length === next.length && current.every((b, i) => sameBox(b, next[i]!))
+          ? current
+          : next,
+      );
+      frame = requestAnimationFrame(loop);
+    };
+    frame = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frame);
+  }, [key]);
+
+  return boxes;
 }
 
 /** Follow an element's box as the page moves under it. */
-function useAnchor(anchor: string | null): Rect | null {
-  const [rect, setRect] = useState<Rect | null>(null);
+function useAnchor(anchor: string | null): Box | null {
+  const [rect, setRect] = useState<Box | null>(null);
 
   useLayoutEffect(() => {
     if (!anchor) {
@@ -92,31 +133,14 @@ function useAnchor(anchor: string | null): Rect | null {
     }
 
     let frame = 0;
-    const measure = () => {
-      const node = document.querySelector(`[data-tour="${anchor}"]`);
-      if (!node) {
-        setRect(null);
-        return;
-      }
-      const box = node.getBoundingClientRect();
-      setRect((current) =>
-        current &&
-        current.top === box.top &&
-        current.left === box.left &&
-        current.width === box.width &&
-        current.height === box.height
-          ? // Same box: returning the same object avoids re-rendering on every
-            // scroll event of a page that has not moved.
-            current
-          : { top: box.top, left: box.left, width: box.width, height: box.height },
-      );
-    };
-
     // The anchor may not be mounted yet — a tab the step is about to ask for.
     // Polling on the animation frame covers that as well as scrolling, resizing
     // and panels opening, without needing to know which of them happened.
+    // Returning the same object when nothing moved avoids re-rendering the
+    // screen sixty times a second on a page that is sitting still.
     const loop = () => {
-      measure();
+      const next = measure(anchor);
+      setRect((current) => (sameBox(current, next) ? current : next));
       frame = requestAnimationFrame(loop);
     };
     frame = requestAnimationFrame(loop);
@@ -126,44 +150,10 @@ function useAnchor(anchor: string | null): Rect | null {
   return rect;
 }
 
-const CARD_WIDTH = 340;
-/** Enough for the tallest card. Only used to keep one on screen, not to size it. */
-const CARD_HEIGHT = 260;
-const MARGIN = 14;
+const CARD = { width: 340, height: 260 };
 
-/**
- * Where to put the card.
- *
- * The requested placement is a preference, not an instruction: a panel near the
- * top of the window has no room above it, and a card that is half off the
- * screen is worse than one on the wrong side of its anchor. So both axes are
- * clamped into the viewport, and `top` flips below when there is no room above.
- */
-function place(rect: Rect | null, placement: string): React.CSSProperties {
-  if (!rect) {
-    return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
-  }
-  const clampX = (value: number) =>
-    Math.max(MARGIN, Math.min(value, window.innerWidth - CARD_WIDTH - MARGIN));
-  const clampY = (value: number) =>
-    Math.max(MARGIN, Math.min(value, window.innerHeight - CARD_HEIGHT - MARGIN));
-
-  switch (placement) {
-    case "top": {
-      const above = rect.top - MARGIN - CARD_HEIGHT;
-      // No room above: drop below the anchor rather than off the top edge.
-      return above < MARGIN
-        ? { top: clampY(rect.top + rect.height + MARGIN), left: clampX(rect.left) }
-        : { top: above, left: clampX(rect.left) };
-    }
-    case "left":
-      return { top: clampY(rect.top), left: Math.max(MARGIN, rect.left - CARD_WIDTH - MARGIN) };
-    case "right":
-      return { top: clampY(rect.top), left: clampX(rect.left + rect.width + MARGIN) };
-    default:
-      return { top: clampY(rect.top + rect.height + MARGIN), left: clampX(rect.left) };
-  }
-}
+/** Module level, so an absent `keepClear` is not a new array every render. */
+const EMPTY: readonly string[] = [];
 
 interface Props {
   tour: TourApi;
@@ -177,6 +167,7 @@ interface Props {
 export function Tour({ tour, theme, playerName, onInsert }: Props) {
   const { step, voice } = tour;
   const rect = useAnchor(step?.anchor ?? null);
+  const keepClear = useKeepClear(step?.keepClear ?? EMPTY);
   const character = BRANDING[theme].character;
   const cardRef = useRef<HTMLDivElement | null>(null);
 
@@ -238,9 +229,20 @@ export function Tour({ tour, theme, playerName, onInsert }: Props) {
 
   return (
     <>
-      {rect ? <Scrim rect={rect} /> : <div className="tour-scrim-full" />}
+      {rect ? (
+        <Scrim rect={rect} keepClear={keepClear} />
+      ) : (
+        <div className="tour-scrim-full" />
+      )}
 
-      <div className="tour-card" ref={cardRef} style={place(rect, step.placement)}>
+      <div
+        className="tour-card"
+        ref={cardRef}
+        style={placeCard(rect, keepClear, CARD, {
+          width: window.innerWidth,
+          height: window.innerHeight,
+        }, step.placement)}
+      >
         <div className="tour-head">
           <Avatar theme={theme} state={waiting ? "thinking" : "idle"} size={40} />
           <div className="tour-who">
@@ -342,13 +344,30 @@ function VoiceLoading({ tour, character }: { tour: TourApi; character: string })
   );
 }
 
-/** Four rectangles around the anchor, leaving it lit and clickable. */
-function Scrim({ rect }: { rect: Rect }) {
+/**
+ * Four rectangles around what matters, leaving it lit and clickable.
+ *
+ * "What matters" is the anchor together with anything the step asked the
+ * player to watch, so the arena is not dimmed while somebody is being told to
+ * look at it. Four rectangles around the union rather than a mask with several
+ * holes: it keeps the lit region clickable, which the whole design depends on,
+ * and the extra strip of undimmed screen between the two costs nothing.
+ *
+ * The halo stays on the anchor alone — it is pointing, not framing.
+ */
+function Scrim({ rect, keepClear }: { rect: Box; keepClear: readonly Box[] }) {
   const pad = 6;
-  const top = Math.max(0, rect.top - pad);
-  const left = Math.max(0, rect.left - pad);
-  const right = rect.left + rect.width + pad;
-  const bottom = rect.top + rect.height + pad;
+  const lit = [rect, ...keepClear];
+  const top = Math.max(0, Math.min(...lit.map((b) => b.top)) - pad);
+  const left = Math.max(0, Math.min(...lit.map((b) => b.left)) - pad);
+  const right = Math.max(...lit.map((b) => b.left + b.width)) + pad;
+  const bottom = Math.max(...lit.map((b) => b.top + b.height)) + pad;
+  const halo = {
+    top: Math.max(0, rect.top - pad),
+    left: Math.max(0, rect.left - pad),
+    width: rect.width + pad * 2,
+    height: rect.height + pad * 2,
+  };
 
   return (
     <>
@@ -356,10 +375,7 @@ function Scrim({ rect }: { rect: Rect }) {
       <div className="tour-scrim" style={{ top: bottom, left: 0, right: 0, bottom: 0 }} />
       <div className="tour-scrim" style={{ top, left: 0, width: left, height: bottom - top }} />
       <div className="tour-scrim" style={{ top, left: right, right: 0, height: bottom - top }} />
-      <div
-        className="tour-halo"
-        style={{ top, left, width: right - left, height: bottom - top }}
-      />
+      <div className="tour-halo" style={halo} />
     </>
   );
 }
