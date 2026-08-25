@@ -629,6 +629,7 @@ export function releaseShot(world: World, robot: Robot, powerRaw: number): void 
     y: robot.y + sinDeg(robot.turret) * muzzle,
     heading: robot.turret,
     tick: world.tick,
+    actorId: robot.id,
   });
   // `bullet hit` / `bullet missed` are raised later, by the bullet's own fate
   // in step.ts — not here, because at this point we don't know which it is.
@@ -731,6 +732,7 @@ export function ping(world: World, robot: Robot, powerRaw: number = RADAR.minPow
     y: robot.y,
     heading: robot.radar,
     tick: world.tick,
+    actorId: robot.id,
     // Whatever stopped it first, so the drawn wedge ends where the beam really
     // ended -- at a contact, at a wall, or against a ridge.
     range: Math.min(reach, best ? bestDist : cell ? cellDist : Infinity),
