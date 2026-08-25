@@ -64,6 +64,16 @@ const LINES: Record<Beat["kind"], readonly string[]> = {
     "{who} is limping badly now.",
     "Not much left of {who}. {hp}, and fading.",
   ],
+  advance: [
+    "{who} goes through, past {over}. That is the {round} settled.",
+    "And it is {who} who advances — {over} is out.",
+    "{who} takes the {round} from {over}.",
+  ],
+  champion: [
+    "And there it is — {who} wins the whole thing!",
+    "{who}! Champion, and deservedly so.",
+    "That is the tournament. {who} takes it all.",
+  ],
   end: [
     "That is it! {winner} takes it.",
     "And it is over — {winner} wins it.",
@@ -104,6 +114,10 @@ function slotsFor(beat: Beat): Slots {
       // `hp` rather than `health`, which is a vocabulary word: `fillVocab`
       // runs first and would turn "{health} left" into "integrity left".
       return { who: beat.who, hp: beat.health };
+    case "advance":
+      return { who: beat.who, over: beat.over, round: beat.round };
+    case "champion":
+      return { who: beat.who };
     case "end":
       // Ticks are meaningless to a listener; seconds are not.
       return { winner: beat.winner ?? "", seconds: Math.round(beat.ticks / 30) };
@@ -146,6 +160,8 @@ export const SLOT_NAMES: readonly string[] = [
   "damage",
   "remaining",
   "hp",
+  "over",
+  "round",
   "winner",
   "seconds",
 ];

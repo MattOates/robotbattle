@@ -18,6 +18,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Lobby } from "./Lobby.js";
+import { CommentaryBox } from "../commentary/CommentaryBox.js";
+import { useCommentator } from "../commentary/useCommentator.js";
 import { TourOffer } from "../tour/TourOffer.js";
 import { useTour } from "../tour/useTour.js";
 import { BracketView } from "../BracketView.js";
@@ -566,6 +568,62 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
   );
 
   const viewingRecord = viewing ? records[viewing.matchIds[viewing.index] ?? ""] : undefined;
+  // Rounds themselves run headless in a worker, so there are no per-tick events
+  // for them; a showcase replay is a real match on screen and gets the full
+  // account. Seeded from the showcase, so the same replay is narrated the same
+  // way twice and on every screen watching it.
+  const commentary = useCommentator(theme, viewingRecordSeed());
+
+  function viewingRecordSeed(): number {
+    return viewingRecord?.result.showcase?.seed ?? 0;
+  }
+
+  /**
+   * Call the result of every tie as the bracket fills in, and the champion.
+   *
+   * Rounds are played headless in a worker, so there is nothing to watch —
+   * but the result is the thing a tournament most wants announced, and it
+   * arrives as data rather than as ticks. Said once each: the set of ties
+   * already called is remembered, because the bracket object is rebuilt on
+   * every message from the room.
+   */
+  const called = useRef(new Set<string>());
+  const { announce } = commentary;
+  useEffect(() => {
+    if (!bracket) return;
+    for (const [index, round] of bracket.rounds.entries()) {
+      for (const tie of round) {
+        // A bye is somebody being handed a slot, which is not a result and not
+        // worth announcing as one.
+        if (!tie.winner || tie.bye || called.current.has(tie.id)) continue;
+        called.current.add(tie.id);
+        const winner = entrant(bracket, tie.winner);
+        const loserId = tie.winner === tie.a ? tie.b : tie.a;
+        const loser = loserId ? entrant(bracket, loserId) : undefined;
+        if (!winner || !loser) continue;
+        announce({
+          kind: "advance",
+          who: winner.robot.name,
+          over: loser.robot.name,
+          round: roundName(bracket, index).toLowerCase(),
+        });
+      }
+    }
+    if (bracket.champion && !called.current.has("champion")) {
+      called.current.add("champion");
+      const who = entrant(bracket, bracket.champion);
+      if (who) announce({ kind: "champion", who: who.robot.name });
+    }
+  }, [announce, bracket]);
+
+  // A new showcase is a new match; the commentator remembers first blood and
+  // who is limping, and would carry both into the next one.
+  const { reset: resetCommentary } = commentary;
+  const showcaseKey = viewingRecord ? `${viewingRecord.matchId}` : "";
+  useEffect(() => {
+    resetCommentary();
+  }, [resetCommentary, showcaseKey]);
+
   const viewingManifest = useMemo(() => {
     if (!bracket || !viewingRecord?.result.showcase) return null;
     const a = entrant(bracket, viewingRecord.aId);
@@ -618,8 +676,13 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
           running
           speed={speed}
           fit="contain"
-          onFinished={onFinished}
+          onTick={commentary.onTick}
+          onFinished={(outcome) => {
+            commentary.flush(outcome.result.ticks);
+            onFinished(outcome);
+          }}
         />
+        <CommentaryBox commentary={commentary} />
         <div className="match-overlay">
           <span className="lamp live">{roundName(bracket, viewing.round)}</span>
           {/* One line rather than a labelled field: this is a sentence about
@@ -698,6 +761,7 @@ export function Tournament({ theme, lib, playerName, onPlayerName, initialRoom }
       </div>
 
       <div className="panel-body">
+        <CommentaryBox commentary={commentary} inline />
         <TourOffer
           tour={tour}
           theme={theme}

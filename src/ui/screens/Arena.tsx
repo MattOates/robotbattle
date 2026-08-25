@@ -14,6 +14,8 @@ import {
   type ArenaChoiceValue,
 } from "../ArenaChoice.js";
 import { Lobby } from "./Lobby.js";
+import { CommentaryBox } from "../commentary/CommentaryBox.js";
+import { useCommentator } from "../commentary/useCommentator.js";
 import { TourOffer } from "../tour/TourOffer.js";
 import { useTour } from "../tour/useTour.js";
 import { Countdown } from "../Countdown.js";
@@ -82,6 +84,15 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
   const [drifted, setDrifted] = useState(false);
   /** Held still for the 3-2-1 before anything moves. */
   const [counting, setCounting] = useState(false);
+  // Seeded from the match, so the same fight is narrated the same way on every
+  // screen watching it — the commentary is as reproducible as the battle.
+  const commentary = useCommentator(theme, match?.manifest.seed ?? 0);
+  // A new battle is a new match. The commentator remembers first blood and who
+  // is limping, and would otherwise carry both into the next one.
+  const { reset: resetCommentary } = commentary;
+  useEffect(() => {
+    resetCommentary();
+  }, [match?.matchId, resetCommentary]);
   const [nudge, setNudge] = useState<{ at: number; text: string } | null>(null);
   // Host-only, and only read when the host presses start: it rides to everyone
   // else inside the manifest, so there is nothing here to keep in sync.
@@ -239,8 +250,15 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           running={!counting}
           fit="contain"
           onStatus={onStatus}
-          onFinished={onFinished}
+          onTick={commentary.onTick}
+          onFinished={(outcome) => {
+            // The result and the death that caused it are still waiting; a loop
+            // that stops when the match is over has only heard the first.
+            commentary.flush(outcome.result.ticks);
+            onFinished(outcome);
+          }}
         />
+        <CommentaryBox commentary={commentary} />
 
         <div className="match-overlay">
           <span className="lamp live">Arena</span>

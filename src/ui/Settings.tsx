@@ -14,6 +14,7 @@ import { THEMES, type Theme } from "../lang/vocab.js";
 import { assistantRuntime, downloadSizeGB, type AssistantModel } from "../assistant/runtime.js";
 import { useAssistantUsable } from "../assistant/useAssistant.js";
 import { Tours } from "../store/tour.js";
+import { presenterFor } from "./commentary/useCommentator.js";
 import type { LibraryApi } from "./useLibrary.js";
 import type { Profile } from "./useLibrary.js";
 
@@ -79,6 +80,9 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
   const usedKb = Math.round((lib.storage.used / 1024) * 10) / 10;
   const percent = Math.min(100, (lib.storage.used / lib.storage.budget) * 100);
   const words = THEMES[profile.theme];
+  // The commentator is the character from the world the player did not pick.
+  const presenter = presenterFor(profile.theme).character;
+  const [commentary, setCommentary] = useState(() => new Tours().commentary());
 
   return (
     <div className="settings">
@@ -223,6 +227,24 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
                 chat and name are not included — check it over before you post.
               </span>
             </div>
+
+            <label className="field-row">
+              <span className="silkscreen">Commentary</span>
+              <input
+                type="checkbox"
+                checked={commentary}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  new Tours().setCommentary(on);
+                  setCommentary(on);
+                }}
+              />
+              <span className="roster-meta">
+                {presenter.name} calls the {words.arena} and tournament matches. Captions
+                straight away; the voice is another {presenter.voiceMB} MB, fetched the first
+                time it is wanted and kept afterwards.
+              </span>
+            </label>
 
             <div className="settings-danger">
               <button

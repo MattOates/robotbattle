@@ -31,6 +31,8 @@ export type TourState = "unseen" | "skipped" | "done" | { step: string };
 interface Stored {
   tours?: Partial<Record<TourId, string>>;
   muted?: boolean;
+  /** Whether a match is narrated. Off until asked for; see `Settings`. */
+  commentary?: boolean;
 }
 
 /** Storage holds a plain string; only `unseen` is absent rather than stored. */
@@ -94,12 +96,28 @@ export class Tours {
     return this.all().muted === true;
   }
 
+  /**
+   * Is a match narrated?
+   *
+   * Off unless somebody says otherwise, and deliberately so: switching it on
+   * is what fetches a second voice, and a lobby with other people waiting is
+   * the worst possible place to be stuck behind a download nobody asked for.
+   */
+  commentary(): boolean {
+    return this.all().commentary === true;
+  }
+
+  setCommentary(on: boolean): void {
+    this.write({ ...this.all(), commentary: on });
+  }
+
   setMuted(muted: boolean): void {
     this.write({ ...this.all(), muted });
   }
 
-  /** Offer every tour again. Keeps the mute setting, which is a preference. */
+  /** Offer every tour again. Keeps the preferences, which are not progress. */
   reset(): void {
-    this.write({ muted: this.all().muted === true });
+    const current = this.all();
+    this.write({ muted: current.muted === true, commentary: current.commentary === true });
   }
 }

@@ -24,6 +24,8 @@ const EVERY_BEAT: Beat[] = [
   { kind: "kill", by: "Hunter", on: "Spinner", remaining: 2 },
   { kind: "selfDestruct", who: "Lemming" },
   { kind: "limping", who: "Spinner", health: 14 },
+  { kind: "advance", who: "Hunter", over: "Spinner", round: "semi-final" },
+  { kind: "champion", who: "Hunter" },
   { kind: "end", winner: "Hunter", ticks: 900 },
   { kind: "end", winner: null, ticks: 900 },
 ];

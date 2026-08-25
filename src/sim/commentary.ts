@@ -31,7 +31,16 @@ export type Beat =
   /** Drove into a wall once too often. A different sentence from being shot. */
   | { kind: "selfDestruct"; who: string }
   | { kind: "limping"; who: string; health: number }
-  | { kind: "end"; winner: string | null; ticks: number };
+  | { kind: "end"; winner: string | null; ticks: number }
+  /**
+   * Bracket-level, not from watching a match.
+   *
+   * Tournament rounds are played headless in a worker, so there are no ticks to
+   * observe for them — but "who won" is exactly what a tournament most needs
+   * announced, and that arrives as a result rather than as an event.
+   */
+  | { kind: "advance"; who: string; over: string; round: string }
+  | { kind: "champion"; who: string };
 
 export interface Candidate {
   beat: Beat;
@@ -48,6 +57,8 @@ export interface Candidate {
  * because there are so many of them.
  */
 const SIGNIFICANCE = {
+  champion: 110,
+  advance: 95,
   end: 100,
   start: 90,
   kill: 70,
