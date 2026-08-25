@@ -19,6 +19,7 @@ import { fillVocab } from "../../learn/markdown.js";
 import { Prose } from "../Prose.js";
 import type { EditorView } from "@codemirror/view";
 import { placeCard, type Box } from "./placement.js";
+import { wantsAClick } from "./steps.js";
 import type { TourApi } from "./useTour.js";
 import type { Theme } from "../../lang/vocab.js";
 
@@ -316,7 +317,7 @@ export function Tour({ tour, theme, playerName, editorView, spotlight, onInsert 
   return (
     <>
       {rect ? (
-        <Scrim rect={rect} keepClear={keepClear} />
+        <Scrim rect={rect} keepClear={keepClear} pulse={wantsAClick(step.gate)} />
       ) : (
         <div className="tour-scrim-full" />
       )}
@@ -441,7 +442,16 @@ function VoiceLoading({ tour, character }: { tour: TourApi; character: string })
  *
  * The halo stays on the anchor alone — it is pointing, not framing.
  */
-function Scrim({ rect, keepClear }: { rect: Box; keepClear: readonly Box[] }) {
+function Scrim({
+  rect,
+  keepClear,
+  pulse,
+}: {
+  rect: Box;
+  keepClear: readonly Box[];
+  /** Beckon, rather than merely frame. See `wantsAClick`. */
+  pulse: boolean;
+}) {
   const pad = 6;
   const lit = [rect, ...keepClear];
   const top = Math.max(0, Math.min(...lit.map((b) => b.top)) - pad);
@@ -461,7 +471,7 @@ function Scrim({ rect, keepClear }: { rect: Box; keepClear: readonly Box[] }) {
       <div className="tour-scrim" style={{ top: bottom, left: 0, right: 0, bottom: 0 }} />
       <div className="tour-scrim" style={{ top, left: 0, width: left, height: bottom - top }} />
       <div className="tour-scrim" style={{ top, left: right, right: 0, height: bottom - top }} />
-      <div className="tour-halo" style={halo} />
+      <div className={`tour-halo${pulse ? " beckon" : ""}`} style={halo} />
     </>
   );
 }

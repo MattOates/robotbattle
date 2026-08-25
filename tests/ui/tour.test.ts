@@ -5,6 +5,7 @@ import {
   WORKSHOP_TOUR,
   findLines,
   isSatisfied,
+  wantsAClick,
   type Gate,
   type TourSignal,
 } from "../../src/ui/tour/steps.js";
@@ -187,6 +188,64 @@ describe("Tours storage", () => {
     expect(tours.state("workshop")).toBe("unseen");
     // Muting is a preference about audio, not a fact about the tour.
     expect(tours.muted()).toBe(true);
+  });
+});
+
+describe("which frames beckon", () => {
+  it("pulses for a step waiting on a click, and not otherwise", () => {
+    // Once everything pulses, nothing does. A frame throbbing around code
+    // being explained is a button that never gets pressed.
+    expect(wantsAClick({ kind: "pane", pane: "trial" })).toBe(true);
+    expect(wantsAClick({ kind: "opponents", exactly: ["hunter"] })).toBe(true);
+    expect(wantsAClick({ kind: "saved" })).toBe(true);
+    expect(wantsAClick({ kind: "trialWon", against: ["hunter"] })).toBe(true);
+    expect(wantsAClick({ kind: "screen", screen: "workshop" })).toBe(true);
+
+    expect(wantsAClick({ kind: "next" })).toBe(false);
+    expect(wantsAClick({ kind: "sourceHas", needle: "fire" })).toBe(false);
+  });
+
+  it("never pulses a step that is pointing at code", () => {
+    for (const step of WORKSHOP_TOUR) {
+      if (!step.code) continue;
+      expect(wantsAClick(step.gate), `${step.id} pulses around code`).toBe(false);
+    }
+  });
+});
+
+describe("every step gives the player something to aim at", () => {
+  it("never waits for a fight while pointing at a tab that is shut", () => {
+    // Steps 15 and 16 asked for a rerun while the editor was open, so the
+    // Start button they pointed at did not exist, the card drifted to the
+    // middle of the screen, and the only button on it said "Skip the tour".
+    // A step that waits on a trial must be preceded by one that opens it.
+    const ids = WORKSHOP_TOUR.map((s) => s.id);
+    for (const [i, step] of WORKSHOP_TOUR.entries()) {
+      const waitsOnAFight =
+        step.gate.kind === "trialWon" ||
+        step.gate.kind === "trialLost" ||
+        step.gate.kind === "trialRan" ||
+        step.gate.kind === "trialStarted";
+      if (!waitsOnAFight) continue;
+      // Somewhere before it, and after the last time we were in the editor,
+      // a step must have put the player on the Trial pane.
+      const opened = WORKSHOP_TOUR.slice(0, i).some(
+        (earlier) => earlier.gate.kind === "pane" && earlier.gate.pane === "trial",
+      );
+      expect(opened, `${ids[i]} waits for a fight with no step that opens the Trial`).toBe(
+        true,
+      );
+    }
+  });
+
+  it("gives a step with no Next button something else to do", () => {
+    // A card whose only control is "Skip the tour" is a dead end unless the
+    // thing to do is somewhere else on screen and pointed at.
+    for (const step of WORKSHOP_TOUR) {
+      if (step.gate.kind === "next") continue;
+      const hasTarget = step.anchor !== null || step.code !== undefined || step.insert;
+      expect(hasTarget, `${step.id} asks for something with nothing to point at`).toBeTruthy();
+    }
   });
 });
 

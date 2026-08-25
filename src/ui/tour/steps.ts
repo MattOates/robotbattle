@@ -152,6 +152,36 @@ export interface TourStep {
   };
 }
 
+/**
+ * Does this step want the player to do something to the thing it points at?
+ *
+ * Only those get a pulsing frame. A halo that throbs around a region of code
+ * being *explained* is a button that never gets pressed, and once everything
+ * pulses nothing does — the movement has to mean "this one, here" or it means
+ * nothing at all.
+ *
+ * Derived from the gate rather than declared per step, because the gate already
+ * says what has to happen: waiting for a tab, a tick, a save or a fight means
+ * waiting for a click. Waiting for the Next button, or for words to appear in
+ * the script, does not.
+ */
+export function wantsAClick(gate: Gate): boolean {
+  switch (gate.kind) {
+    case "next":
+    case "sourceHas":
+      return false;
+    case "screen":
+    case "pane":
+    case "opponents":
+    case "saved":
+    case "trialStarted":
+    case "trialRan":
+    case "trialWon":
+    case "trialLost":
+      return true;
+  }
+}
+
 /** Set equality, order-insensitive — the chips have no meaningful order. */
 function sameSet(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false;
@@ -404,12 +434,20 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
     },
   },
   {
+    id: "back-to-duck",
+    anchor: "trial-tab",
+    placement: "bottom",
+    title: "Now try it again",
+    body: "The Trial is where the Duck is waiting. Back you go.",
+    gate: { kind: "pane", pane: "trial" },
+  },
+  {
     id: "beat-duck",
     anchor: "trial-start",
     placement: "top",
     keepClear: ["arena"],
-    title: "Try that again",
-    body: "Same {robot}, same Duck. Run it.",
+    title: "Same {robot}, same Duck",
+    body: "Press **Start** and watch the difference one line makes.",
     gate: { kind: "trialWon", against: ["sitting-duck"] },
   },
   {
@@ -444,21 +482,29 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
     code: { find: "on sense robot", through: "end" },
     placement: "right",
     title: "That one fights back",
-    body: "Against the Hunter your {robot} wins about four times in ten — a coin toss you lose slightly more than you win. It charges in at one speed whatever the range, so it arrives slowly and shoots cheaply. Decide instead: far away, close the gap fast and save your shot. Up close, hit hard and hold still enough to aim.",
+    body: "Your {robot} charges in at one speed whatever the range, so it arrives slowly and shoots cheaply — against the Hunter that wins about four times in ten. It needs to decide instead: far away, close the gap fast and save the shot; up close, hit hard and slow down enough to aim.\n\nThat is an `if` — and it is more typing than the last one, so take the button below unless you fancy writing it.",
     gate: { kind: "sourceHas", needle: "if event.distance" },
     insert: {
-      label: "Rewrite it to pick its range",
+      label: "Write it for me",
       snippet: PICK_YOUR_RANGE,
       replaces: "sense robot",
     },
+  },
+  {
+    id: "back-to-hunter",
+    anchor: "trial-tab",
+    placement: "bottom",
+    title: "Back to the Hunter",
+    body: "Same opponent, better {robot}. Open the Trial again.",
+    gate: { kind: "pane", pane: "trial" },
   },
   {
     id: "beat-hunter",
     anchor: "trial-start",
     placement: "top",
     keepClear: ["arena"],
-    title: "Again",
-    body: "Same fight, better {robot}. It will not win every time — nothing does — but it now wins more of them than it loses.",
+    title: "Now beat it",
+    body: "Press **Start**. It will not win every time — nothing does — but it now wins more of these than it loses.",
     gate: { kind: "trialWon", against: ["hunter"] },
   },
   {

@@ -4037,6 +4037,14 @@ button {
   border-radius: var(--radius);
   box-shadow: 0 0 0 1px rgb(0 0 0 / 40%), 0 0 18px var(--signal-dim);
   pointer-events: none;
+}
+
+/*
+ * Only things that want pressing beckon. A frame throbbing around a region of
+ * code being explained is a button that never gets pressed, and once everything
+ * pulses nothing does.
+ */
+.tour-halo.beckon {
   animation: tour-halo-breathe 2.4s ease-in-out infinite;
 }
 

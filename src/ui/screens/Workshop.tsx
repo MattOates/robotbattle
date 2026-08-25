@@ -66,6 +66,7 @@ import { AssistantPanel } from "../../assistant/AssistantPanel.js";
 import { Tour } from "../tour/Tour.js";
 import { useTour } from "../tour/useTour.js";
 import { applySnippet, findLines } from "../tour/steps.js";
+import { TrialPrefs } from "../../store/trial.js";
 import { useAssistantUsable } from "../../assistant/useAssistant.js";
 
 interface Props {
@@ -1886,7 +1887,21 @@ function TrialPane({
   /** How a fight went, once it is over. Also only the tour. */
   onTrialFinished?: (ids: readonly string[], won: boolean) => void;
 }) {
-  const [opponents, setOpponents] = useState<string[]>(["spinner", "racer"]);
+  // Remembered between sessions: tuning a robot means running the same fight
+  // over and over, and having the panel put its own two back each time is a
+  // small insult repeated twenty times.
+  const trialPrefs = useMemo(() => new TrialPrefs(), []);
+  const [opponents, setOpponentsState] = useState<string[]>(() => trialPrefs.opponents());
+  const setOpponents = useCallback(
+    (next: string[] | ((prev: string[]) => string[])) => {
+      setOpponentsState((prev) => {
+        const chosen = typeof next === "function" ? next(prev) : next;
+        trialPrefs.setOpponents(chosen);
+        return chosen;
+      });
+    },
+    [trialPrefs],
+  );
   /**
    * Copies of each robot per side, and 1 means the free-for-all this has always
    * been rather than a 1v1 — the Trial pits you against everything you ticked
