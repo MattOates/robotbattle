@@ -12,7 +12,7 @@
  * point at is still a step worth reading.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Avatar } from "../character/Avatar.js";
 import { BRANDING } from "../branding.js";
 import { fillVocab } from "../../learn/markdown.js";
@@ -113,18 +113,25 @@ function useCodeAnchor(
     const loop = () => {
       frame = requestAnimationFrame(loop);
       const view = viewRef.current;
-      const [from, to] = key.split(":").map(Number) as [number, number];
+      // Only the end matters here: the range is read off the lit elements, and
+      // this is just a guard against measuring a document the effect has not
+      // caught up with yet.
+      const to = Number(key.split(":")[1]);
       let next: Box | null = null;
       if (view && to <= view.state.doc.length) {
-        const content = view.contentDOM.getBoundingClientRect();
-        const first = view.lineBlockAt(from);
-        const last = view.lineBlockAt(to);
-        next = {
-          top: content.top + first.top,
-          left: content.left,
-          width: content.width,
-          height: Math.max(first.bottom, last.bottom) - first.top,
-        };
+        // Measured off the lit elements themselves rather than computed from
+        // line geometry. The editor's own line height, padding and wrapping all
+        // land in that box already, so the frame ends up exactly around what is
+        // highlighted — arithmetic that agrees with it to within a pixel is
+        // arithmetic that will stop agreeing the next time the theme changes.
+        const rows = view.contentDOM.querySelectorAll(".cm-robo-spotlight");
+        if (rows.length > 0) {
+          const boxes = [...rows].map((row) => row.getBoundingClientRect());
+          const top = Math.min(...boxes.map((b) => b.top));
+          const bottom = Math.max(...boxes.map((b) => b.bottom));
+          const content = view.contentDOM.getBoundingClientRect();
+          next = { top, left: content.left, width: content.width, height: bottom - top };
+        }
       }
       setRect((current) => (sameBox(current, next) ? current : next));
     };
@@ -225,7 +232,28 @@ export function Tour({ tour, theme, playerName, editorView, spotlight, onInsert 
   // The lines win when they are on screen; the panel is the fallback for a
   // step whose code the player has since deleted or rewritten.
   const rect = codeRect ?? elementRect;
-  const keepClear = useKeepClear(step?.keepClear ?? EMPTY);
+  const namedKeepClear = useKeepClear(step?.keepClear ?? EMPTY);
+  /**
+   * A step about code is about to ask for a line to be typed under the one it
+   * is pointing at, so the space below it is kept free as well. Without this
+   * the card lands directly beneath the highlight, over the very gap the player
+   * has just been told to write in.
+   */
+  const keepClear = useMemo(
+    () =>
+      codeRect
+        ? [
+            ...namedKeepClear,
+            {
+              top: codeRect.top + codeRect.height,
+              left: codeRect.left,
+              width: codeRect.width,
+              height: 140,
+            },
+          ]
+        : namedKeepClear,
+    [codeRect, namedKeepClear],
+  );
   const character = BRANDING[theme].character;
   const cardRef = useRef<HTMLDivElement | null>(null);
 

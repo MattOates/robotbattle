@@ -392,7 +392,8 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
     id: "add-fire",
     anchor: "editor",
     code: { find: "turret.aim at event.bearing" },
-    placement: "right",
+    // Beside the line, not under it: under it is where they are about to type.
+    placement: "left",
     title: "Now make it shoot",
     body: "That block now points the {turret} at whatever it sees and goes after it — but it still never pulls the trigger. Put `{fire} 2` on its own line just under the `turret.aim` line, and mind the indentation. The 2 is how much of a shot to spend: harder shots hurt more and cost more.",
     gate: { kind: "sourceHas", needle: "fire" },
