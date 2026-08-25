@@ -11,7 +11,12 @@ import { useEffect, useRef, useState } from "react";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { startCompletion } from "@codemirror/autocomplete";
-import { completionCompartment, completionExtension, roboExtensions } from "./roboscript-editor.js";
+import {
+  completionCompartment,
+  completionExtension,
+  roboExtensions,
+  setSpotlight,
+} from "./roboscript-editor.js";
 import { checkScript } from "../sim/world.js";
 import type { Theme } from "../lang/vocab.js";
 import { GrammarGuide } from "./GrammarGuide.js";
@@ -74,6 +79,14 @@ interface Props {
    */
   viewRef?: React.MutableRefObject<EditorView | null>;
   /**
+   * Document range to light up, or null for none.
+   *
+   * For the guided tour, which needs to say "this line" rather than "somewhere
+   * in this panel". Lesson `robo` blocks are real editors too, so it works
+   * there as well if a lesson ever wants it.
+   */
+  spotlight?: { from: number; to: number } | null;
+  /**
    * Something was dragged in from outside. Given the document and where the
    * drop landed, return the edit to make, or null to ignore it.
    *
@@ -103,6 +116,7 @@ export function CodeEditor({
   statusSuffix,
   guide = false,
   viewRef: exposedRef,
+  spotlight = null,
   onDrop,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -236,6 +250,22 @@ export function CodeEditor({
       selection: { anchor: Math.min(source.length, source.length) },
     });
   }, [source]);
+
+  // Lines the tour is pointing at. Dispatched as an effect rather than being
+  // rebuilt into the editor, for the same reason as read-only below: the
+  // player is mid-edit and must not lose their place.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: [
+        setSpotlight.of(spotlight ?? null),
+        // Pointing at a line below the fold and leaving it there would be a
+        // coach mark indicating nothing.
+        ...(spotlight ? [EditorView.scrollIntoView(spotlight.from, { y: "center" })] : []),
+      ],
+    });
+  }, [spotlight?.from, spotlight?.to]);
 
   // Read-only is toggled in place rather than by rebuilding the editor, so
   // scroll position and history survive browsing away and back.

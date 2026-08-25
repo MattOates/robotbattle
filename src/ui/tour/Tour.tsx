@@ -17,6 +17,7 @@ import { Avatar } from "../character/Avatar.js";
 import { BRANDING } from "../branding.js";
 import { fillVocab } from "../../learn/markdown.js";
 import { Prose } from "../Prose.js";
+import type { EditorView } from "@codemirror/view";
 import { placeCard, type Box } from "./placement.js";
 import type { TourApi } from "./useTour.js";
 import type { Theme } from "../../lang/vocab.js";
@@ -89,6 +90,52 @@ function sameBox(a: Box | null, b: Box | null): boolean {
 }
 
 /**
+ * The box around the lines the editor is currently lighting up.
+ *
+ * CodeMirror reports line geometry relative to the top of the document, so it
+ * is converted against the content element's own box. Measured on the same
+ * animation frame loop as everything else, which is what makes it follow
+ * scrolling and typing without anyone having to say when.
+ */
+function useCodeAnchor(
+  viewRef: React.MutableRefObject<EditorView | null> | undefined,
+  range: { from: number; to: number } | null,
+): Box | null {
+  const [rect, setRect] = useState<Box | null>(null);
+  const key = range ? `${range.from}:${range.to}` : "";
+
+  useLayoutEffect(() => {
+    if (!viewRef || key === "") {
+      setRect((current) => (current === null ? current : null));
+      return;
+    }
+    let frame = 0;
+    const loop = () => {
+      frame = requestAnimationFrame(loop);
+      const view = viewRef.current;
+      const [from, to] = key.split(":").map(Number) as [number, number];
+      let next: Box | null = null;
+      if (view && to <= view.state.doc.length) {
+        const content = view.contentDOM.getBoundingClientRect();
+        const first = view.lineBlockAt(from);
+        const last = view.lineBlockAt(to);
+        next = {
+          top: content.top + first.top,
+          left: content.left,
+          width: content.width,
+          height: Math.max(first.bottom, last.bottom) - first.top,
+        };
+      }
+      setRect((current) => (sameBox(current, next) ? current : next));
+    };
+    frame = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frame);
+  }, [key, viewRef]);
+
+  return rect;
+}
+
+/**
  * The boxes this step has asked the player to look at, followed live.
  *
  * Same polling loop and same identity-preserving update as the anchor: these
@@ -158,15 +205,26 @@ const EMPTY: readonly string[] = [];
 interface Props {
   tour: TourApi;
   theme: Theme;
+  /**
+   * The live editor, so a step about two lines of code can point at those two
+   * lines rather than at five hundred pixels of panel.
+   */
+  editorView?: React.MutableRefObject<EditorView | null>;
+  /** Document range currently lit up, matching what the editor was told. */
+  spotlight?: { from: number; to: number } | null;
   /** So the helper can greet somebody by name rather than at them. */
   playerName?: string;
   /** Put the step's snippet into the script. Absent where nothing is editable. */
   onInsert?: (snippet: string) => void;
 }
 
-export function Tour({ tour, theme, playerName, onInsert }: Props) {
+export function Tour({ tour, theme, playerName, editorView, spotlight, onInsert }: Props) {
   const { step, voice } = tour;
-  const rect = useAnchor(step?.anchor ?? null);
+  const elementRect = useAnchor(step?.anchor ?? null);
+  const codeRect = useCodeAnchor(editorView, spotlight ?? null);
+  // The lines win when they are on screen; the panel is the fallback for a
+  // step whose code the player has since deleted or rewritten.
+  const rect = codeRect ?? elementRect;
   const keepClear = useKeepClear(step?.keepClear ?? EMPTY);
   const character = BRANDING[theme].character;
   const cardRef = useRef<HTMLDivElement | null>(null);

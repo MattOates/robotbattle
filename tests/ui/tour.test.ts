@@ -3,6 +3,7 @@ import {
   TOUR_ANCHORS,
   TOURS,
   WORKSHOP_TOUR,
+  findLines,
   isSatisfied,
   type Gate,
   type TourSignal,
@@ -215,5 +216,59 @@ describe("the opening on the menu", () => {
     expect(isSatisfied(gate, { kind: "screen", screen: "workshop" })).toBe(true);
     expect(isSatisfied(gate, { kind: "screen", screen: "arena" })).toBe(false);
     expect(isSatisfied(gate, { kind: "next" })).toBe(false);
+  });
+});
+
+describe("finding the lines a step points at", () => {
+  const script = [
+    'name "Test"',
+    "chassis tank",
+    "",
+    "on sense robot",
+    "  turret.aim at event.bearing",
+    "  fire 2",
+    "end",
+  ].join("\n");
+
+  it("finds a line and returns its exact span", () => {
+    const at = findLines(script, "turret.aim at event.bearing")!;
+    expect(script.slice(at.from, at.to)).toBe("  turret.aim at event.bearing");
+  });
+
+  it("ignores indentation the player has changed", () => {
+    // Matched on the trimmed text, so re-indenting does not lose the pointer.
+    expect(findLines(script, "  turret.aim at event.bearing")).not.toBeNull();
+    expect(findLines(script, "turret.aim at event.bearing")).not.toBeNull();
+  });
+
+  it("spans from one line through another", () => {
+    const at = findLines(script, "on sense robot", "end")!;
+    expect(script.slice(at.from, at.to)).toBe(
+      "on sense robot\n  turret.aim at event.bearing\n  fire 2\nend",
+    );
+  });
+
+  it("survives lines being added above it", () => {
+    // The reason this matches text rather than counting lines: the tour points
+    // at a document the player is editing.
+    const edited = "-- a note\n-- and another\n" + script;
+    const at = findLines(edited, "fire 2")!;
+    expect(edited.slice(at.from, at.to)).toBe("  fire 2");
+  });
+
+  it("returns null when the line is gone", () => {
+    expect(findLines(script, "drive forward 60")).toBeNull();
+  });
+
+  it("keeps the opening line when the closing one is missing", () => {
+    const at = findLines(script, "on sense robot", "no such line")!;
+    expect(script.slice(at.from, at.to)).toBe("on sense robot");
+  });
+
+  it("handles the first and last lines", () => {
+    expect(script.slice(...Object.values(findLines(script, 'name "Test"')!) as [number, number]))
+      .toBe('name "Test"');
+    const last = findLines(script, "end")!;
+    expect(script.slice(last.from, last.to)).toBe("end");
   });
 });

@@ -116,6 +116,14 @@ export interface TourStep {
   body: string;
   gate: Gate;
   /**
+   * Lines of the player's script to light up, instead of the whole editor.
+   *
+   * Matched on text — see `findLines` — so it keeps pointing at the right line
+   * while they edit around it. Used with `anchor: "editor"`, which is what it
+   * falls back to when the text is not found.
+   */
+  code?: { find: string; through?: string };
+  /**
    * Things this step has asked the player to look at.
    *
    * The card is moved out of their way, by however much the screen allows. A
@@ -183,6 +191,45 @@ export function isSatisfied(gate: Gate, signal: TourSignal): boolean {
     case "saved":
       return signal.kind === "saved";
   }
+}
+
+/**
+ * Find the document range of the line matching `find`, through `through`.
+ *
+ * Matched on the text rather than by line number, and that is the whole point:
+ * the player is editing the very document the tour is pointing at, so any line
+ * number written today is wrong the moment they add a line above it. Leading
+ * and trailing space is ignored, so indentation the player has changed does not
+ * lose the highlight.
+ *
+ * Returns null when the text is not there — a step whose code has been deleted
+ * or rewritten falls back to pointing at the editor as a whole rather than at
+ * the wrong line.
+ */
+export function findLines(
+  source: string,
+  find: string,
+  through?: string,
+): { from: number; to: number } | null {
+  const lines = source.split("\n");
+  const needle = find.trim();
+  const start = lines.findIndex((line) => line.trim() === needle);
+  if (start === -1) return null;
+
+  let end = start;
+  if (through !== undefined) {
+    const tail = through.trim();
+    const found = lines.findIndex((line, i) => i >= start && line.trim() === tail);
+    // A closing line that is missing leaves the range on the opening one,
+    // which is still a better pointer than the whole panel.
+    if (found !== -1) end = found;
+  }
+
+  // Document positions are character offsets, and every line but the last
+  // contributes its newline.
+  const offset = (n: number) =>
+    lines.slice(0, n).reduce((total, line) => total + line.length + 1, 0);
+  return { from: offset(start), to: offset(end) + lines[end]!.length };
 }
 
 /**
@@ -299,6 +346,7 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
   {
     id: "on-start",
     anchor: "editor",
+    code: { find: "on start", through: "end" },
     placement: "right",
     title: "`on start` runs once",
     body: "It fires the moment the match begins, and then never again. Right now it sets off driving, and that is genuinely everything your {robot} knows how to do.",
@@ -343,6 +391,7 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
   {
     id: "add-fire",
     anchor: "editor",
+    code: { find: "turret.aim at event.bearing" },
     placement: "right",
     title: "Now make it shoot",
     body: "That block now points the {turret} at whatever it sees and goes after it — but it still never pulls the trigger. Put `{fire} 2` on its own line just under the `turret.aim` line, and mind the indentation. The 2 is how much of a shot to spend: harder shots hurt more and cost more.",
@@ -391,6 +440,7 @@ export const WORKSHOP_TOUR: readonly TourStep[] = [
   {
     id: "pick-your-range",
     anchor: "editor",
+    code: { find: "on sense robot", through: "end" },
     placement: "right",
     title: "That one fights back",
     body: "Against the Hunter your {robot} wins about four times in ten — a coin toss you lose slightly more than you win. It charges in at one speed whatever the range, so it arrives slowly and shoots cheaply. Decide instead: far away, close the gap fast and save your shot. Up close, hit hard and hold still enough to aim.",

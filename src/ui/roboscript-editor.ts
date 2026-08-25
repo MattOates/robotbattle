@@ -24,7 +24,13 @@ import {
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { linter, lintGutter, lintKeymap, type Diagnostic } from "@codemirror/lint";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import {
+  Compartment,
+  EditorState,
+  StateEffect,
+  StateField,
+  type Extension,
+} from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -375,6 +381,50 @@ class NoteWidget extends WidgetType {
   }
 }
 
+/**
+ * Lighting up the lines a coach mark is talking about.
+ *
+ * The tour used to point at the whole editor panel, which is five hundred
+ * pixels of nothing in particular when the sentence is "put this under the
+ * `turret.aim` line". A line decoration rather than a mark, so the whole line
+ * lights up including the part past the last character — and so it survives
+ * `lineWrapping`, where a mark would only cover the text.
+ *
+ * Null clears it. The range is in document positions, and it is mapped through
+ * every change, so the highlight follows the code while somebody types above
+ * it.
+ */
+export const setSpotlight = StateEffect.define<{ from: number; to: number } | null>();
+
+const spotlightMark = Decoration.line({ class: "cm-robo-spotlight" });
+
+function spotlightDecorations(
+  doc: EditorState["doc"],
+  range: { from: number; to: number } | null,
+): DecorationSet {
+  if (!range) return Decoration.none;
+  const first = doc.lineAt(Math.max(0, Math.min(range.from, doc.length)));
+  const last = doc.lineAt(Math.max(0, Math.min(range.to, doc.length)));
+  const marks = [];
+  for (let n = first.number; n <= last.number; n++) {
+    // One decoration per line, anchored at its start and in ascending order,
+    // which is what `Decoration.set` requires of line decorations.
+    marks.push(spotlightMark.range(doc.line(n).from));
+  }
+  return Decoration.set(marks);
+}
+
+const spotlightField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(marks, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setSpotlight)) return spotlightDecorations(tr.state.doc, effect.value);
+    }
+    return marks.map(tr.changes);
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
 function routineNotes(view: EditorView, theme: Theme): DecorationSet {
   const source = view.state.doc.toString();
   if (!source.includes("can")) return Decoration.none;
@@ -457,6 +507,12 @@ const roboTheme = EditorView.theme(
     },
     ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--signal)" },
     ".cm-activeLine": { backgroundColor: "rgba(255, 255, 255, 0.028)" },
+    // Deliberately far stronger than the active line, and in the signal colour:
+    // this is somebody being pointed at a line, not a cursor resting on one.
+    ".cm-robo-spotlight": {
+      backgroundColor: "rgba(232, 163, 61, 0.16)",
+      boxShadow: "inset 3px 0 0 var(--signal)",
+    },
     ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--signal)", borderLeftWidth: "2px" },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
       backgroundColor: "rgba(232, 163, 61, 0.22)",
@@ -563,6 +619,7 @@ export function roboExtensions(theme: Theme): Extension[] {
     indentUnit.of("  "),
     EditorState.tabSize.of(2),
     completionCompartment.of(completionExtension(theme)),
+    spotlightField,
     routineNotePlugin(theme),
     keymap.of([
       // Completion goes first, or `defaultKeymap` claims Return and the

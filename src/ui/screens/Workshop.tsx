@@ -65,7 +65,7 @@ import { ARENA_SIZE } from "../../net/matchsetup.js";
 import { AssistantPanel } from "../../assistant/AssistantPanel.js";
 import { Tour } from "../tour/Tour.js";
 import { useTour } from "../tour/useTour.js";
-import { applySnippet } from "../tour/steps.js";
+import { applySnippet, findLines } from "../tour/steps.js";
 import { useAssistantUsable } from "../../assistant/useAssistant.js";
 
 interface Props {
@@ -448,6 +448,18 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
   const editable = inSession ? viewingId !== null && viewingId === sessionRobotId : true;
   const viewedName = inSession && !isHost ? (guestView?.name ?? "") : (selected?.name ?? "");
 
+  /**
+   * The lines the tour is pointing at, if it is pointing at any.
+   *
+   * Recomputed from the live script rather than remembered, so it follows the
+   * player's edits — including the one the step is asking them to make.
+   */
+  const spotlight = useMemo(() => {
+    const want = tour.step?.code;
+    if (!want || !selected) return null;
+    return findLines(selected.source, want.find, want.through);
+  }, [selected, tour.step]);
+
   // Getting here is what completes the menu step that asked them to come.
   // Sent once on mount: the two screens share the tour through storage rather
   // than through React, so this is how one hands over to the other.
@@ -791,6 +803,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                   key={`${viewingId ?? "none"}-${editable ? "live" : "read"}`}
                   source={editorSource}
                   theme={theme}
+                  spotlight={spotlight}
                   collab={collab}
                   readOnly={inSession && !editable}
                   onChange={inSession ? () => undefined : updateSource}
@@ -880,6 +893,8 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
         tour={tour.step?.screen === "menu" ? { ...tour, step: null } : tour}
         theme={theme}
         playerName={playerName}
+        editorView={editorViewRef}
+        spotlight={pane === "editor" ? spotlight : null}
         onInsert={(snippet) => {
           if (!selected) return;
           // Applied to the stored script rather than to the editor's buffer, so
