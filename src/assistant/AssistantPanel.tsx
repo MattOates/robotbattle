@@ -24,6 +24,8 @@ import {
   type ToolContext,
 } from "./tools.js";
 import { checkScript } from "../sim/world.js";
+import { Avatar, type AvatarState } from "../ui/character/Avatar.js";
+import { BRANDING } from "../ui/branding.js";
 import { CodeEditor } from "../ui/CodeEditor.js";
 import { assistantRuntime, downloadSizeGB, type LoadProgress } from "./runtime.js";
 import { useAssistantUsable } from "./useAssistant.js";
@@ -70,6 +72,13 @@ export function AssistantPanel({
   editable,
 }: Props) {
   const [status, setStatus] = useState<Status>("asking");
+  /**
+   * The same helper who ran the tour, wearing the same face.
+   *
+   * Whoever showed a beginner around the Workshop should still be there
+   * afterwards; an anonymous "Assistant" throws that away for no reason.
+   */
+  const character = BRANDING[theme].character;
   const [progress, setProgress] = useState<LoadProgress | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [draft, setDraft] = useState("");
@@ -299,10 +308,16 @@ export function AssistantPanel({
   // reached by a machine that changed its mind mid-session.
   if (supported !== true) return null;
 
+  // The face reports what the panel is doing: fetching weights and composing an
+  // answer are both thinking, from where the player sits.
+  const avatarState: AvatarState =
+    thinking || status === "loading" ? "thinking" : "idle";
+
   return (
     <section className="panel chat-panel assistant-panel">
       <div className="panel-head">
-        <span className="silkscreen">Assistant</span>
+        <Avatar theme={theme} state={avatarState} size={26} />
+        <span className="silkscreen">{character.name}</span>
         <span className="spacer" />
         {status === "ready" && entries.length > 0 ? (
           <button
@@ -374,7 +389,9 @@ export function AssistantPanel({
                   <span className="chat-text">It {entry.text}.</span>
                 ) : (
                   <>
-                    <span className="chat-who">{entry.kind === "player" ? "You" : "Assistant"}</span>
+                    <span className="chat-who">
+                      {entry.kind === "player" ? "You" : character.name}
+                    </span>
                     {entry.text ? <span className="chat-text">{entry.text}</span> : null}
                     {/* The editor's own highlighter, in preview mode: the same
                         colours as the script it is talking about, and no second

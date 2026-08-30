@@ -65,6 +65,16 @@ interface Props {
   /** Fired once when a match ends, with everything worth keeping. */
   onFinished?: (outcome: MatchOutcome) => void;
   /**
+   * Called once per simulated tick, with the world as it now stands.
+   *
+   * The one place anything can see `world.effects` before the next `step`
+   * throws them away, which is what a commentator needs and what the renderer
+   * already uses. **Strictly read-only**: writing here, or drawing from
+   * `world.rng`, would change the match and every peer would disagree about
+   * what happened.
+   */
+  onTick?: (world: World) => void;
+  /**
    * Menu background: when a match ends, start another with a fresh seed.
    * Returns the seed to use.
    */
@@ -91,6 +101,7 @@ export function MatchCanvas({
   onStatus,
   onFinished,
   autoRestart,
+  onTick,
   fit = "contain",
   ambient = false,
   className,
@@ -104,6 +115,9 @@ export function MatchCanvas({
   const runningRef = useRef(running);
   const speedRef = useRef(speed);
   const statusRef = useRef(onStatus);
+  // Held in a ref for the same reason as the others here: the loop is built
+  // once, and a caller passing a fresh closure each render must not rebuild it.
+  const tickRef = useRef(onTick);
   const finishedRef = useRef(onFinished);
   const restartRef = useRef(autoRestart);
   /** Guards against reporting the same match's end twice. */
@@ -114,6 +128,7 @@ export function MatchCanvas({
   runningRef.current = running;
   speedRef.current = speed;
   statusRef.current = onStatus;
+  tickRef.current = onTick;
   finishedRef.current = onFinished;
   restartRef.current = autoRestart;
 
@@ -226,6 +241,7 @@ export function MatchCanvas({
         while (accumulator >= TICK_MS && !ended()) {
           step(world);
           renderer.onStep(world);
+          tickRef.current?.(world);
           accumulator -= TICK_MS;
         }
       } else {
@@ -284,6 +300,7 @@ export function MatchCanvas({
     if (!world || world.over) return;
     step(world);
     rendererRef.current?.onStep(world);
+    tickRef.current?.(world);
     redrawRef.current = true;
     statusRef.current?.(readStatus(world));
     // eslint-disable-next-line react-hooks/exhaustive-deps

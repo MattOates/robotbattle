@@ -1314,6 +1314,75 @@ can shoot given sense robot
 end
 `;
 
+/**
+ * Where the onboarding tour starts you off.
+ *
+ * Deliberately harmless: it drives, it bounces off walls, and it cannot hurt
+ * anybody. Against a Sitting Duck that never moves it still loses, because it
+ * never fires a shot — which is the first thing the tour asks you to fix, and
+ * it is a far better lesson when the arena has just demonstrated it.
+ */
+const TOUR_SEED = `-- Your first robot. It drives around, and that is all it does.
+-- Press Ctrl-Space in the editor to see what you can write.
+name "My First Robot"
+chassis tank
+color #7fd1e0
+
+on start
+  -- Sweep the turret so it notices things without being pointed at them.
+  turret.sweep 45
+  drive forward 60
+end
+
+on hit wall
+  turn body by 150
+end
+`;
+
+/**
+ * What the tour builds, and what somebody who skips it is handed instead.
+ *
+ * The two paths converge here on purpose: skipping the tour should cost you the
+ * tour, not the robot it produces.
+ *
+ * The numbers behind the shape, measured over 200 trials at three seed bases:
+ * with only the `on sense` block from the tour's first fix it beats a Sitting
+ * Duck 80% of the time and loses to Hunter at 41%. Choosing its range — the
+ * `if/else` below — is what turns Hunter into 56%. That crossover is the whole
+ * point of the tour, so if this script is edited, re-measure it.
+ */
+const TOUR_ROBOT = `-- Your first robot. Everything here is yours to change.
+-- Press Ctrl-Space in the editor to see what you can write.
+name "My First Robot"
+chassis tank
+color #7fd1e0
+
+on start
+  -- Sweep the turret so it notices things without being pointed at them.
+  turret.sweep 45
+  drive forward 60
+end
+
+on sense robot
+  -- event.bearing is which way the thing you just spotted is.
+  turret.aim at event.bearing
+  turn body by event.bearing
+  -- Close range: hit hard and slow down to keep the shot lined up.
+  -- Long range: a cheap shot, and close the gap quickly.
+  if event.distance < 150 then
+    fire 3
+    drive forward 40
+  else
+    fire 1
+    drive forward 100
+  end
+end
+
+on hit wall
+  turn body by 150
+end
+`;
+
 export const SAMPLE_BOTS: SampleBot[] = [
   {
     id: "sitting-duck",
@@ -1406,6 +1475,8 @@ export function sampleById(id: string): SampleBot | undefined {
 }
 
 export {
+  TOUR_SEED,
+  TOUR_ROBOT,
   SITTING_DUCK,
   SPINNER,
   RACER,

@@ -349,6 +349,7 @@ function moveRobots(world: World): void {
         y: r.y,
         heading: hitWall.normal,
         tick: world.tick,
+        actorId: r.id,
       });
       if (r.health <= 0) killRobot(world, r, null);
     }
@@ -550,6 +551,9 @@ function moveBullets(world: World): void {
         y: impactY,
         heading: b.heading,
         tick: world.tick,
+        actorId: b.ownerId,
+        targetId: hitRobot.id,
+        damage,
       });
 
       hitRobot.vm.enqueue("hit by bullet", {
@@ -659,7 +663,14 @@ function collectFuel(world: World): void {
       r.fuel = Math.min(MAX_FUEL, r.fuel + f.amount);
       f.amount = 0;
       taken = true;
-      world.effects.push({ type: "pickup", x: f.x, y: f.y, heading: 0, tick: world.tick });
+      world.effects.push({
+        type: "pickup",
+        x: f.x,
+        y: f.y,
+        heading: 0,
+        tick: world.tick,
+        actorId: r.id,
+      });
     }
   }
 
@@ -822,7 +833,17 @@ function killRobot(world: World, victim: Robot, killer: Robot | null): void {
   victim.diedAtTick = world.tick;
   if (killer && killer.id !== victim.id) killer.kills++;
 
-  world.effects.push({ type: "explosion", x: victim.x, y: victim.y, heading: 0, tick: world.tick });
+  world.effects.push({
+    type: "explosion",
+    x: victim.x,
+    y: victim.y,
+    heading: 0,
+    tick: world.tick,
+    // Null for a robot that drove itself into a wall once too often, which is
+    // a different sentence from one that was shot.
+    ...(killer && killer.id !== victim.id ? { actorId: killer.id } : {}),
+    targetId: victim.id,
+  });
 
   for (const r of world.robots) {
     if (!r.alive || r.id === victim.id) continue;

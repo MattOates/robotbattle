@@ -15,7 +15,8 @@ import { THEMES, type Theme } from "../../lang/vocab.js";
 interface Props {
   /** Where they were heading, if they arrived on a shared link. */
   invitedTo: string | null;
-  onDone: (name: string, theme: Theme) => void;
+  /** `tour` is false when they would rather just get on with it. */
+  onDone: (name: string, theme: Theme, tour: boolean) => void;
 }
 
 export function Welcome({ invitedTo, onDone }: Props) {
@@ -30,7 +31,7 @@ export function Welcome({ invitedTo, onDone }: Props) {
     document.documentElement.dataset["arena"] = theme;
   }, [theme]);
 
-  const submit = () => onDone(name, theme);
+  const submit = (tour: boolean) => onDone(name, theme, tour);
 
   return (
     <div className="welcome">
@@ -88,7 +89,7 @@ export function Welcome({ invitedTo, onDone }: Props) {
             placeholder="Your name"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && name.trim()) submit();
+              if (e.key === "Enter" && name.trim()) submit(!invitedTo);
             }}
           />
           <span className="roster-meta">
@@ -96,16 +97,44 @@ export function Welcome({ invitedTo, onDone }: Props) {
           </span>
         </label>
 
-        <div className="join-actions">
-          <button
-            type="button"
-            className="btn primary"
-            disabled={name.trim() === ""}
-            onClick={submit}
-          >
-            {invitedTo ? "Join the room" : `Start playing ${chosen.full}`}
-          </button>
-        </div>
+        {invitedTo ? (
+          <div className="join-actions">
+            <button
+              type="button"
+              className="btn primary"
+              disabled={name.trim() === ""}
+              onClick={() => submit(false)}
+            >
+              Join the room
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="join-actions">
+              <button
+                type="button"
+                className="btn primary"
+                disabled={name.trim() === ""}
+                onClick={() => submit(true)}
+              >
+                Show me how it works
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={name.trim() === ""}
+                onClick={() => submit(false)}
+              >
+                I'll find my own way
+              </button>
+            </div>
+            <p className="welcome-note">
+              {chosen.character.name} will walk you through building a {words.robot} that
+              wins a fight — about five minutes. Skip it and you still get the finished{" "}
+              {words.robot}; you just get to take it apart yourself.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

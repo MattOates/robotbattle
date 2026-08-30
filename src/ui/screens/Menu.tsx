@@ -15,10 +15,13 @@ import { DODGER, HUNTER, RACER, SPINNER } from "../../bots/index.js";
 import { THEMES, type Theme } from "../../lang/vocab.js";
 import { BRANDING } from "../branding.js";
 import { NEWS, formatNewsDate, newsBody, newsTitle } from "../news.js";
+import { Tour } from "../tour/Tour.js";
+import { useTour } from "../tour/useTour.js";
 
 interface Props {
   theme: Theme;
   robotCount: number;
+  playerName: string;
 }
 
 interface ModeCard {
@@ -87,7 +90,12 @@ const BACKGROUND_BOTS = [
   { source: DODGER },
 ];
 
-export function Menu({ theme, robotCount }: Props) {
+export function Menu({ theme, robotCount, playerName }: Props) {
+  // The tour opens here — a greeting and what the modes are for — before
+  // sending somebody to the Workshop. Both screens mount it and each shows
+  // only its own steps; the state lives in storage, so walking between them
+  // carries on where it left off.
+  const tour = useTour("workshop", theme, true, playerName);
   const [seed] = useState(() => Math.floor(Math.random() * 1e9));
 
   const manifest = useMemo(
@@ -127,12 +135,13 @@ export function Menu({ theme, robotCount }: Props) {
           <p className="menu-strap">{brand.strap}</p>
         </header>
 
-        <nav className="menu-modes" aria-label="Game modes">
+        <nav className="menu-modes" aria-label="Game modes" data-tour="menu-modes">
           {MODES.map((mode) => (
             <button
               key={mode.screen}
               type="button"
               className={`mode-card${mode.underConstruction ? " soon" : ""}`}
+              data-tour={mode.screen === "workshop" ? "menu-workshop" : undefined}
               onClick={() => navigate(mode.screen)}
             >
               <span className="mode-title">
@@ -186,6 +195,10 @@ export function Menu({ theme, robotCount }: Props) {
           </button>
         </footer>
       </div>
+
+      {tour.step?.screen === "menu" ? (
+        <Tour tour={tour} theme={theme} playerName={playerName} />
+      ) : null}
     </div>
   );
 }

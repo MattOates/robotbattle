@@ -134,6 +134,22 @@ export function writeJson(store: KeyValueStore, key: string, value: unknown): vo
   store.set(key, JSON.stringify(value));
 }
 
+/**
+ * Remove everything this game has ever stored.
+ *
+ * Every key, not a list of the ones we happen to remember: robots, arenas,
+ * battles, chat, Learn progress, tours, name, world. Enumerating them by hand
+ * is how "delete everything" quietly stops covering whatever was added last —
+ * which is exactly what happened, leaving no way to see the game as a new
+ * player sees it without opening devtools.
+ *
+ * `keys()` only ever returns our own, so this cannot touch anything else the
+ * page has put in local storage.
+ */
+export function wipe(store: KeyValueStore): void {
+  for (const key of store.keys()) store.remove(key);
+}
+
 /** Approximate bytes held, for the Workshop's storage meter. */
 export function usedBytes(store: KeyValueStore): number {
   let total = 0;

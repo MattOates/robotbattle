@@ -707,6 +707,20 @@ export interface Effect {
   tick: number;
   /** How far the effect reaches, for the ones that are not point-sized. */
   range?: number;
+  /**
+   * Who caused it: the shooter, the robot that drove into the wall, whoever
+   * took the fuel. Absent where nobody did, such as a bullet expiring.
+   *
+   * The renderer has never needed to know, but a commentator has nothing to
+   * say without it — "an explosion at (412, 190)" is not commentary. Safe to
+   * add here because effects are excluded from `hashWorld` and thrown away
+   * every tick, so nothing about the simulation depends on them.
+   */
+  actorId?: number;
+  /** Who it happened to, where that is somebody other than the actor. */
+  targetId?: number;
+  /** How much damage an impact did. */
+  damage?: number;
 }
 
 export interface World {

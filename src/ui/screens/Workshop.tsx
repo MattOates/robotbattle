@@ -63,6 +63,10 @@ import { blankArena } from "../../store/arenas.js";
 import { MapEditor } from "../MapEditor.js";
 import { ARENA_SIZE } from "../../net/matchsetup.js";
 import { AssistantPanel } from "../../assistant/AssistantPanel.js";
+import { Tour } from "../tour/Tour.js";
+import { useTour } from "../tour/useTour.js";
+import { applySnippet, findLines } from "../tour/steps.js";
+import { TrialPrefs } from "../../store/trial.js";
 import { useAssistantUsable } from "../../assistant/useAssistant.js";
 
 interface Props {
@@ -128,6 +132,13 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
    */
   const [selectedArenaId, setSelectedArenaId] = useState<string | null>(null);
   const [pane, setPane] = useState<Pane>("editor");
+  /**
+   * The guided tour, if one is running.
+   *
+   * Off in a shared session: a coach mark telling somebody to press Start when
+   * only the host can is worse than no help at all.
+   */
+  const tour = useTour("workshop", theme, !initialRoom, playerName);
   const [showCones, setShowCones] = useState(true);
   /**
    * Whether the assistant tray is out.
@@ -438,13 +449,34 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
   const editable = inSession ? viewingId !== null && viewingId === sessionRobotId : true;
   const viewedName = inSession && !isHost ? (guestView?.name ?? "") : (selected?.name ?? "");
 
+  /**
+   * The lines the tour is pointing at, if it is pointing at any.
+   *
+   * Recomputed from the live script rather than remembered, so it follows the
+   * player's edits — including the one the step is asking them to make.
+   */
+  const spotlight = useMemo(() => {
+    const want = tour.step?.code;
+    if (!want || !selected) return null;
+    return findLines(selected.source, want.find, want.through);
+  }, [selected, tour.step]);
+
+  // Getting here is what completes the menu step that asked them to come.
+  // Sent once on mount: the two screens share the tour through storage rather
+  // than through React, so this is how one hands over to the other.
+  const announceArrival = tour.signal;
+  useEffect(() => {
+    announceArrival({ kind: "screen", screen: "workshop" });
+  }, [announceArrival]);
+
   const updateSource = useCallback(
     (source: string) => {
       if (!selected) return;
       library.updateSource(selected.id, source);
       refresh();
+      tour.signal({ kind: "source", text: source });
     },
-    [library, refresh, selected],
+    [library, refresh, selected, tour],
   );
 
   // In a session the shared document is the working copy, so the owner's
@@ -640,6 +672,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               onSelect={setSelectedId}
               theme={theme}
               sessionRobotId={inSession ? sessionRobotId : null}
+              onSaved={() => tour.signal({ kind: "saved" })}
             />
           )}
 
@@ -711,7 +744,11 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                 role="tab"
                 aria-selected={pane === name}
                 className="pane-tab"
-                onClick={() => setPane(name)}
+                data-tour={`${name}-tab`}
+                onClick={() => {
+                  setPane(name);
+                  tour.signal({ kind: "pane", pane: name });
+                }}
               >
                 {PANE_LABELS[name]}
               </button>
@@ -723,7 +760,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
           </div>
 
           {pane === "editor" ? (
-            <section className="panel editor-panel">
+            <section className="panel editor-panel" data-tour="editor">
               {inSession && !editable ? (
                 <div className="viewing-banner">
                   <span>
@@ -767,6 +804,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                   key={`${viewingId ?? "none"}-${editable ? "live" : "read"}`}
                   source={editorSource}
                   theme={theme}
+                  spotlight={spotlight}
                   collab={collab}
                   readOnly={inSession && !editable}
                   onChange={inSession ? () => undefined : updateSource}
@@ -805,6 +843,11 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               inSession={inSession}
               arenaOverride={benchArena}
               arenaName={selectedArena?.name ?? null}
+              onOpponents={(ids) => tour.signal({ kind: "opponents", ids })}
+              onTrialStarted={(ids) => tour.signal({ kind: "trialStart", opponents: ids })}
+              onTrialFinished={(ids, won) =>
+                tour.signal({ kind: "trial", opponents: ids, won })
+              }
             />
           ) : null}
           {pane === "bench" ? (
@@ -845,6 +888,29 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
           ) : null}
         </div>
       </div>
+
+      {/* Menu steps belong to the menu, which mounts its own copy. */}
+      <Tour
+        tour={tour.step?.screen === "menu" ? { ...tour, step: null } : tour}
+        theme={theme}
+        playerName={playerName}
+        editorView={editorViewRef}
+        spotlight={pane === "editor" ? spotlight : null}
+        onInsert={(snippet) => {
+          if (!selected) return;
+          // Applied to the stored script rather than to the editor's buffer, so
+          // that the same tour step behaves the same whether or not the editor
+          // happens to be the pane on screen. `updateSource` signals the tour.
+          setPane("editor");
+          updateSource(
+            applySnippet(selected.source, {
+              label: "",
+              snippet,
+              ...(tour.step?.insert?.replaces ? { replaces: tour.step.insert.replaces } : {}),
+            }),
+          );
+        }}
+      />
     </div>
   );
 }
@@ -1521,12 +1587,15 @@ function RobotLibrary({
   onSelect,
   theme,
   sessionRobotId,
+  onSaved,
 }: {
   lib: LibraryApi;
   selectedId: string | null;
   onSelect: (id: string) => void;
   theme: Theme;
   sessionRobotId: string | null;
+  /** Told when a version is saved, so the tour can notice. */
+  onSaved?: () => void;
 }) {
   const { library, robots, refresh, storage, chat } = lib;
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -1607,6 +1676,7 @@ function RobotLibrary({
           <button
             type="button"
             className="btn small"
+            data-tour="save-version"
             disabled={!selected}
             onClick={() => {
               if (!selected) return;
@@ -1618,6 +1688,7 @@ function RobotLibrary({
               library.saveSnapshot(selected.id, label);
               refresh();
               setExpanded(selected.id);
+              onSaved?.();
             }}
           >
             Save version
@@ -1784,6 +1855,9 @@ function TrialPane({
   inSession,
   arenaOverride,
   arenaName,
+  onOpponents,
+  onTrialStarted,
+  onTrialFinished,
 }: {
   robot: StoredRobot | null;
   theme: Theme;
@@ -1806,8 +1880,28 @@ function TrialPane({
    */
   arenaOverride: ArenaSpec | null;
   arenaName: string | null;
+  /** Who is ticked, whenever that changes. For the tour; nothing else uses it. */
+  onOpponents?: (ids: readonly string[]) => void;
+  /** A fight has begun. For the tour; nothing else uses it. */
+  onTrialStarted?: (ids: readonly string[]) => void;
+  /** How a fight went, once it is over. Also only the tour. */
+  onTrialFinished?: (ids: readonly string[], won: boolean) => void;
 }) {
-  const [opponents, setOpponents] = useState<string[]>(["spinner", "racer"]);
+  // Remembered between sessions: tuning a robot means running the same fight
+  // over and over, and having the panel put its own two back each time is a
+  // small insult repeated twenty times.
+  const trialPrefs = useMemo(() => new TrialPrefs(), []);
+  const [opponents, setOpponentsState] = useState<string[]>(() => trialPrefs.opponents());
+  const setOpponents = useCallback(
+    (next: string[] | ((prev: string[]) => string[])) => {
+      setOpponentsState((prev) => {
+        const chosen = typeof next === "function" ? next(prev) : next;
+        trialPrefs.setOpponents(chosen);
+        return chosen;
+      });
+    },
+    [trialPrefs],
+  );
   /**
    * Copies of each robot per side, and 1 means the free-for-all this has always
    * been rather than a 1v1 — the Trial pits you against everything you ticked
@@ -1859,11 +1953,23 @@ function TrialPane({
   // what is wrong; the button just has to stop asking.
   const broken = robot ? !checkScript(robot.source).ok : false;
 
+  /**
+   * Who this match is against, fixed at the moment Start was pressed.
+   *
+   * A ref rather than state because it must not re-render anything, and it
+   * exists at all because the ticked list can change while a battle is still
+   * running — reporting the result against the new list would say the player
+   * beat somebody they never fought.
+   */
+  const foughtRef = useRef<readonly string[]>([]);
+
   const start = () => {
     if (!robot || !canRun || broken) return;
     // Filtered through the live list, so a version deleted since it was ticked
     // simply drops out rather than failing to compile.
     const chosen = contenders.filter((c) => opponents.includes(c.id));
+    foughtRef.current = chosen.map((c) => c.id);
+    onTrialStarted?.(foughtRef.current);
     // At size 1 this is the free-for-all it has always been: no teams stated,
     // so the manifest is byte-identical to the ones this panel used to build.
     // Above 1, your copies are one side and everything you ticked is the other.
@@ -1907,13 +2013,21 @@ function TrialPane({
         myRobotId: robot.id,
         myEntryIndex: 0,
       });
+      // The player is always entry zero in a trial, so first place is a win.
+      // Reported with the opponents that were actually fought rather than
+      // whatever is ticked now, which they may already have changed.
+      const mine = outcome.result.standings.find((s) => s.id === 0);
+      onTrialFinished?.(foughtRef.current, mine?.place === 1);
     },
-    [canRun, lib.battles, manifest, robot],
+    [canRun, lib.battles, manifest, onTrialFinished, robot],
   );
 
   return (
     <div className={`trial-body${expanded ? " has-expanded" : ""}`}>
-      <section className={`panel arena-panel${expanded ? " expanded" : ""}`}>
+      <section
+        className={`panel arena-panel${expanded ? " expanded" : ""}`}
+        data-tour="arena"
+      >
         <div className="panel-head">
           <span className="silkscreen">{words.arena}</span>
           <span className="spacer" />
@@ -1963,6 +2077,7 @@ function TrialPane({
               <button
                 type="button"
                 className="btn primary"
+                data-tour="trial-start"
                 onClick={start}
                 disabled={!robot || broken}
                 title={broken ? "Fix the line the editor is complaining about first" : undefined}
@@ -1995,7 +2110,7 @@ function TrialPane({
       </section>
 
       {canRun ? (
-        <section className="panel">
+        <section className="panel" data-tour="opponent-chips">
           <div className="panel-head">
             <span className="silkscreen">Who to fight</span>
             <span className="spacer" />
@@ -2067,9 +2182,13 @@ function TrialPane({
                         type="checkbox"
                         checked={opponents.includes(c.id)}
                         onChange={(e) =>
-                          setOpponents((prev) =>
-                            e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id),
-                          )
+                          setOpponents((prev) => {
+                            const next = e.target.checked
+                              ? [...prev, c.id]
+                              : prev.filter((id) => id !== c.id);
+                            onOpponents?.(next);
+                            return next;
+                          })
                         }
                       />
                       {c.label}

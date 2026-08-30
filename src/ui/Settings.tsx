@@ -13,6 +13,8 @@ import { openBugReport } from "./bugReport.js";
 import { THEMES, type Theme } from "../lang/vocab.js";
 import { assistantRuntime, downloadSizeGB, type AssistantModel } from "../assistant/runtime.js";
 import { useAssistantUsable } from "../assistant/useAssistant.js";
+import { Tours } from "../store/tour.js";
+import { presenterFor } from "./commentary/useCommentator.js";
 import type { LibraryApi } from "./useLibrary.js";
 import type { Profile } from "./useLibrary.js";
 
@@ -78,6 +80,9 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
   const usedKb = Math.round((lib.storage.used / 1024) * 10) / 10;
   const percent = Math.min(100, (lib.storage.used / lib.storage.budget) * 100);
   const words = THEMES[profile.theme];
+  // The commentator is the character from the world the player did not pick.
+  const presenter = presenterFor(profile.theme).character;
+  const [commentary, setCommentary] = useState(() => new Tours().commentary());
 
   return (
     <div className="settings">
@@ -223,7 +228,35 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
               </span>
             </div>
 
+            <label className="field-row">
+              <span className="silkscreen">Commentary</span>
+              <input
+                type="checkbox"
+                checked={commentary}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  new Tours().setCommentary(on);
+                  setCommentary(on);
+                }}
+              />
+              <span className="roster-meta">
+                {presenter.name} calls the {words.arena} and tournament matches. Captions
+                straight away; the voice is another {presenter.voiceMB} MB, fetched the first
+                time it is wanted and kept afterwards.
+              </span>
+            </label>
+
             <div className="settings-danger">
+              <button
+                type="button"
+                className="btn small"
+                onClick={() => {
+                  new Tours().reset();
+                  window.location.reload();
+                }}
+              >
+                Show the tours again
+              </button>
               <button
                 type="button"
                 className="btn small"
@@ -240,12 +273,19 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
                 onClick={() => {
                   if (
                     !window.confirm(
-                      "Delete every robot, every saved version and every battle? This cannot be undone.",
+                      "Delete everything and start over as a new player?\n\n" +
+                        "Every robot, saved version, arena, battle and conversation, " +
+                        "which lessons you have read, and your name and world. " +
+                        "You will be asked to choose again. This cannot be undone.",
                     )
                   ) {
                     return;
                   }
                   lib.clearAll();
+                  // Reloaded rather than re-rendered: the name and world are
+                  // read once at start-up and live above this component, so
+                  // without this the screen would still think it knows you.
+                  window.location.reload();
                 }}
               >
                 Delete everything

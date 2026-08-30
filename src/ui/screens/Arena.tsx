@@ -14,6 +14,10 @@ import {
   type ArenaChoiceValue,
 } from "../ArenaChoice.js";
 import { Lobby } from "./Lobby.js";
+import { CommentaryBox } from "../commentary/CommentaryBox.js";
+import { useCommentator } from "../commentary/useCommentator.js";
+import { TourOffer } from "../tour/TourOffer.js";
+import { useTour } from "../tour/useTour.js";
 import { Countdown } from "../Countdown.js";
 import { MatchCanvas, type MatchOutcome, type MatchStatus } from "../MatchCanvas.js";
 import { useAutoJoin, useRoom } from "../useRoom.js";
@@ -64,6 +68,7 @@ interface LiveMatch {
 }
 
 export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Props) {
+  const tour = useTour("arena", theme);
   const { robots } = lib;
   const [robotId, setRobotId] = useState<string | null>(robots[0]?.id ?? null);
   const robot = robots.find((r) => r.id === robotId) ?? robots[0] ?? null;
@@ -79,6 +84,15 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
   const [drifted, setDrifted] = useState(false);
   /** Held still for the 3-2-1 before anything moves. */
   const [counting, setCounting] = useState(false);
+  // Seeded from the match, so the same fight is narrated the same way on every
+  // screen watching it — the commentary is as reproducible as the battle.
+  const commentary = useCommentator(theme, match?.manifest.seed ?? 0);
+  // A new battle is a new match. The commentator remembers first blood and who
+  // is limping, and would otherwise carry both into the next one.
+  const { reset: resetCommentary } = commentary;
+  useEffect(() => {
+    resetCommentary();
+  }, [match?.matchId, resetCommentary]);
   const [nudge, setNudge] = useState<{ at: number; text: string } | null>(null);
   // Host-only, and only read when the host presses start: it rides to everyone
   // else inside the manifest, so there is nothing here to keep in sync.
@@ -236,8 +250,15 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           running={!counting}
           fit="contain"
           onStatus={onStatus}
-          onFinished={onFinished}
+          onTick={commentary.onTick}
+          onFinished={(outcome) => {
+            // The result and the death that caused it are still waiting; a loop
+            // that stops when the match is over has only heard the first.
+            commentary.flush(outcome.result.ticks);
+            onFinished(outcome);
+          }}
         />
+        <CommentaryBox commentary={commentary} />
 
         <div className="match-overlay">
           <span className="lamp live">Arena</span>
@@ -319,8 +340,14 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
           : undefined
       }
     >
+      <TourOffer
+        tour={tour}
+        theme={theme}
+        ready={room.phase === "connected"}
+        offer="First time in the {arena}? I can show you how a room is set up."
+      />
       {room.isHost ? (
-        <>
+        <div data-tour="lobby-config">
           <div className="panel-head">
             <span className="silkscreen" title="Everyone against everyone, or two or more sides. On a side you can tell friend from foe with `event.friend`, and talk to each other with `broadcast` — though everybody hears that, including the other side.">Sides</span>
           </div>
@@ -399,7 +426,7 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
             level={terrainLevel}
             onLevel={setTerrainLevel}
           />
-        </>
+        </div>
       ) : null}
       <div className="panel-head">
         <span className="silkscreen">How it works</span>

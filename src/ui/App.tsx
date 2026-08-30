@@ -8,7 +8,8 @@
 
 import { Suspense, lazy, useEffect } from "react";
 import { useRoute, type ScreenName } from "./router.js";
-import { useLibrary, useProfile } from "./useLibrary.js";
+import { useLibrary, useProfile, starterRobot } from "./useLibrary.js";
+import { navigate } from "./router.js";
 import { branding } from "./branding.js";
 import { Welcome } from "./screens/Welcome.js";
 import { Settings } from "./Settings.js";
@@ -39,7 +40,9 @@ const ROOM_SCREENS: ReadonlySet<ScreenName> = new Set<ScreenName>([
 export function App() {
   const route = useRoute();
   const { profile, setName, setTheme, setAssistantModel, complete } = useProfile();
-  const lib = useLibrary();
+  // Nothing is seeded until a world has been chosen, because which robot a new
+  // player starts with depends on whether they took the tour.
+  const lib = useLibrary(starterRobot(profile.onboarded));
   const brand = branding(profile.onboarded ? profile.theme : null);
 
   // The tab is named after the world you chose.
@@ -53,7 +56,12 @@ export function App() {
     return (
       <Welcome
         invitedTo={ROOM_SCREENS.has(route.screen) ? route.room : null}
-        onDone={(name, theme) => complete(name, theme)}
+        onDone={(name, theme, wantsTour) => {
+          complete(name, theme, wantsTour);
+          // The tour opens on the menu — a greeting, and what the modes are
+          // for — and walks them to the Workshop itself.
+          if (wantsTour && !ROOM_SCREENS.has(route.screen)) navigate("menu");
+        }}
       />
     );
   }
@@ -69,7 +77,7 @@ export function App() {
       />
       <Suspense fallback={<div className="splash">Loading…</div>}>
       {route.screen === "menu" ? (
-        <Menu theme={profile.theme} robotCount={lib.robots.length} />
+        <Menu theme={profile.theme} robotCount={lib.robots.length} playerName={profile.name} />
       ) : null}
 
       {route.screen === "workshop" ? (

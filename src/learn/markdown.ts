@@ -130,6 +130,13 @@ export function fillVocab(body: string, theme: Theme): string {
     ping: w.pingVerb,
     Ping: w.pingVerb[0]!.toUpperCase() + w.pingVerb.slice(1),
     arena: w.arena,
+    Arena: w.arena[0]!.toUpperCase() + w.arena.slice(1),
+    // Talking to the whole arena. Both were used in prose long before either
+    // reached this table, so `working-together` showed readers the braces.
+    radio: w.radio,
+    Radio: w.radio[0]!.toUpperCase() + w.radio.slice(1),
+    broadcast: w.broadcastVerb,
+    Broadcast: w.broadcastVerb[0]!.toUpperCase() + w.broadcastVerb.slice(1),
     health: w.health,
     fire: w.fireVerb,
     drive: w.driveVerb,
@@ -144,7 +151,24 @@ export function fillVocab(body: string, theme: Theme): string {
     uphill: w.uphill,
     downhill: w.downhill,
   };
-  return body.replace(/\{(\w+)\}/g, (whole, key: string) => map[key] ?? whole);
+  // An indefinite article immediately before a placeholder is corrected to
+  // match whatever the placeholder turns into. Both worlds need this and in
+  // opposite directions: "a {robot}" is a robot but an organism, and
+  // "an {arena}" is an arena but a microcosm. Without it every lesson that
+  // says "a {robot}" — and there are ten — reads as "a organism" in biology.
+  return body.replace(
+    /(\b[Aa]n?)(\s+)\{(\w+)\}|\{(\w+)\}/g,
+    (whole, article: string | undefined, gap: string | undefined, keyed: string | undefined, bare: string | undefined) => {
+      const key = keyed ?? bare!;
+      const value = map[key];
+      if (value === undefined) return whole;
+      if (article === undefined) return value;
+      const vowel = /^[aeiou]/i.test(value);
+      const capital = article[0] === "A";
+      const corrected = `${capital ? "A" : "a"}${vowel ? "n" : ""}`;
+      return `${corrected}${gap}${value}`;
+    },
+  );
 }
 
 export interface FenceInfo {

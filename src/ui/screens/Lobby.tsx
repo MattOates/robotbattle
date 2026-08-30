@@ -271,7 +271,7 @@ export function Lobby({
               ))}
             </div>
             {requiresRobot ? (
-              <div className="lobby-robot">
+              <div className="lobby-robot" data-tour="lobby-robot">
                 <label className="field-row">
                   <span className="silkscreen">Your robot</span>
                   <select
@@ -303,6 +303,7 @@ export function Lobby({
                 <button
                   type="button"
                   className={`btn ${iAmReady ? "" : "primary"}${nudging ? " nudged" : ""}`}
+                  data-tour="lobby-ready"
                   disabled={!selectedRobotId}
                   onClick={() => room.session?.setReady(!iAmReady)}
                 >
@@ -319,7 +320,7 @@ export function Lobby({
         </div>
 
         {action ? (
-          <div className="lobby-action">
+          <div className="lobby-action" data-tour="lobby-start">
             {action.hint ? <span className="roster-meta">{action.hint}</span> : null}
             <button
               type="button"
@@ -352,6 +353,7 @@ export function Lobby({
           <input
             className="text-input"
             value={playerName}
+            data-tour="lobby-name"
             maxLength={24}
             placeholder="What should people call you?"
             onChange={(e) => onPlayerName(e.target.value)}
