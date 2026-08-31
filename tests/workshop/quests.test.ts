@@ -7,6 +7,7 @@ import {
   nextStep,
   questsFor,
   satisfies,
+  settle,
   unlocks,
   type QuestSignal,
 } from "../../src/workshop/quests.js";
@@ -16,6 +17,7 @@ import { SCREENS } from "../../src/ui/router.js";
 import { SAMPLE_BOTS } from "../../src/bots/index.js";
 import { fillVocab } from "../../src/learn/markdown.js";
 import { Quests } from "../../src/store/quests.js";
+import { TOUR_ROBOT, TOUR_SEED } from "../../src/bots/index.js";
 import { MemoryStore } from "../../src/store/storage.js";
 
 const ALL_PANES: Pane[] = [...new Set([...ROBOT_PANES, ...ARENA_PANES])];
@@ -166,18 +168,45 @@ describe("gates", () => {
 });
 
 describe("advancing", () => {
-  it("ticks a step nobody has asked for yet", () => {
-    // Rule 2: being ahead of the game is not a reason to be made to do it again.
-    const out = advance("explorer", new Set(), { kind: "saved" });
-    expect(out.steps).toContain("keep-it-safe/save");
+  /**
+   * The bug this exists to stop coming back.
+   *
+   * `TOUR_ROBOT`, the {robot} handed to anybody who skips the tour, already
+   * contains `drive`, `on sense robot`, `fire` and an `if`. When every quest
+   * at the level was offered every signal, that one script finished three of
+   * the five Explorer quests on the first render — so "Notice things" sat in
+   * the trophy shelf above "Have a fight", and the fight quest then
+   * congratulated the player with "the Duck cannot shoot — but neither can
+   * you" about a {robot} that shoots very well.
+   */
+  it("does not let a later quest finish before an earlier one", () => {
+    const finished = TOUR_ROBOT;
+    const out = advance("explorer", new Set(), { kind: "source", text: finished });
+    // The first quest's script step, and nothing from the third.
+    expect(out.steps).toEqual(["first-spark/make-it-move"]);
+    expect(out.steps).not.toContain("open-your-eyes/sense");
+    expect(out.steps).not.toContain("open-your-eyes/shoot");
   });
 
-  it("meets several steps from one signal", () => {
-    // A pasted script can sense and fire in one keystroke.
-    const out = advance("explorer", new Set(), src2("on sense robot\n  fire 3\nend"));
+  it("ignores a signal for a quest that is not current yet", () => {
+    // Saving is the fourth quest. Doing it during the first is not an error,
+    // it just is not this quest — `settle` cannot recover it either, because
+    // saving is an event and not a fact about the world.
+    expect(advance("explorer", new Set(), { kind: "saved" }).steps).toEqual([]);
+  });
+
+  it("meets several steps of the current quest from one signal", () => {
+    // A pasted script can sense and fire in one keystroke — within one quest
+    // the steps are a checklist, not an order.
+    const done = new Set([
+      "first-spark/open-workshop",
+      "first-spark/make-it-move",
+      "watch-it-lose/fight",
+    ]);
+    const out = advance("explorer", done, src2("on sense robot\n  fire 3\nend"));
     expect(out.steps).toContain("open-your-eyes/sense");
     expect(out.steps).toContain("open-your-eyes/shoot");
-    expect(out.quests.map((q) => q.id)).toContain("open-your-eyes");
+    expect(out.quests.map((q) => q.id)).toEqual(["open-your-eyes"]);
   });
 
   it("never reports the same step twice", () => {
@@ -189,6 +218,13 @@ describe("advancing", () => {
   it("ignores quests belonging to another level", () => {
     const out = advance("explorer", new Set(), { kind: "benchRun" });
     expect(out.steps).toEqual([]);
+  });
+
+  it("does nothing once the level is finished", () => {
+    const all = new Set(
+      questsFor("explorer").flatMap((q) => q.steps.map((st) => `${q.id}/${st.id}`)),
+    );
+    expect(advance("explorer", all, { kind: "saved" }).steps).toEqual([]);
   });
 
   function src2(text: string): QuestSignal {
@@ -214,6 +250,24 @@ describe("an Explorer, start to finish", () => {
       quests.meet(out.steps);
       seen.push(...out.quests.map((q) => q.id));
       if (out.levelUp) levelUps++;
+      check();
+    };
+
+    /*
+     * The invariant, asserted after every single signal rather than only at
+     * the end: the finished quests are always a prefix of the level's list.
+     * A "done" sitting above a "to do" in the quest log is the exact shape of
+     * the bug this arc had, and checking only the final state would not have
+     * caught it — the end state was right all along.
+     */
+    const order = questsFor("explorer").map((q) => q.id);
+    const check = () => {
+      const done = quests.done();
+      const finished = questsFor("explorer").map((q) => isQuestDone(q, done));
+      const firstOpen = finished.indexOf(false);
+      if (firstOpen !== -1) {
+        expect(finished.slice(firstOpen).every((f) => !f), order.join(" → ")).toBe(true);
+      }
     };
 
     expect(currentQuest("explorer", quests.done())?.id).toBe("first-spark");
@@ -248,6 +302,50 @@ describe("an Explorer, start to finish", () => {
     for (const quest of questsFor("explorer")) {
       expect(isQuestDone(quest, quests.done())).toBe(true);
     }
+  });
+});
+
+describe("settling what is already true", () => {
+  it("credits the current quest without making them type it again", () => {
+    // The seed {robot} already drives, so the step asking for one is met the
+    // moment the Workshop shows the script — no deleting and retyping a line
+    // to make the editor speak.
+    const done = new Set(["first-spark/open-workshop"]);
+    const out = settle("explorer", done, { source: TOUR_SEED });
+    expect(out.steps).toEqual(["first-spark/make-it-move"]);
+    expect(out.quests.map((q) => q.id)).toEqual(["first-spark"]);
+  });
+
+  it("stops at the first quest it cannot settle", () => {
+    /*
+     * The finished {robot} satisfies quests one and three. It must settle one
+     * and stop dead at two, which needs an actual fight — otherwise it has
+     * simply reintroduced the bug by another route.
+     */
+    const done = new Set(["first-spark/open-workshop"]);
+    const out = settle("explorer", done, { source: TOUR_ROBOT });
+    expect(out.quests.map((q) => q.id)).toEqual(["first-spark"]);
+    expect(out.steps).not.toContain("open-your-eyes/sense");
+  });
+
+  it("cascades through consecutive quests that are all already true", () => {
+    // Builder's first two quests are both pure script checks, so a script with
+    // an `if` and a `var` settles both at once and stops at the third.
+    const out = settle("builder", new Set(), {
+      source: "var seen = 0\non tick\n  if me.health < 50 then\n    set seen = 1\n  end\nend",
+    });
+    expect(out.quests.map((q) => q.id)).toEqual(["make-a-choice", "remember-something"]);
+  });
+
+  it("does nothing with no script open", () => {
+    expect(settle("explorer", new Set(), { source: null }).steps).toEqual([]);
+  });
+
+  it("is idempotent", () => {
+    const world = { source: TOUR_SEED };
+    const first = settle("explorer", new Set(["first-spark/open-workshop"]), world);
+    const after = new Set(["first-spark/open-workshop", ...first.steps]);
+    expect(settle("explorer", after, world).steps).toEqual([]);
   });
 });
 

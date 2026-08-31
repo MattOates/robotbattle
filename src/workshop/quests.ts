@@ -19,10 +19,14 @@
  *     Everything a quest would unlock is reachable by changing your level in
  *     settings, and a locked pane says which quest opens it rather than
  *     pretending not to exist.
- *  2. **Signals are recorded whether or not a quest is watching.** A child who
- *     wanders off and saves a robot before being asked to finds that step
- *     already ticked. Being ahead of the game is not a reason to be made to do
- *     it again.
+ *  2. **They are in order, and the order is the argument.** Each reward line is
+ *     a remark about what just happened — "nothing happened, did it?" only
+ *     means anything after the fight it refers to — so only the current quest
+ *     listens. What keeps that from becoming busywork is `settle`: a quest
+ *     whose condition is already true when it becomes current finishes on the
+ *     spot, in its place in the order. Being ahead of the game is not a reason
+ *     to be made to do it again; it is also not a reason to be told the
+ *     punchline first.
  *  3. **This module is pure.** No React, no storage, no DOM. `advance` is a
  *     function from (what has happened, what just happened) to (what is now
  *     true), which is what lets `tests/workshop/quests.test.ts` drive a player
@@ -468,49 +472,124 @@ export function stepKey(quest: Quest, step: Step): string {
 }
 
 export interface Advance {
-  /** Step keys newly met by this signal. */
+  /** Step keys newly met. */
   steps: string[];
-  /** Quests finished by those steps. */
+  /** Quests finished by those steps, in the order they finished. */
   quests: Quest[];
   /** True when one of them was the level's last. */
   levelUp: boolean;
 }
 
 /**
+ * Is this gate a fact about the world, or a report of something that happened?
+ *
+ * The distinction is what lets the quests be a sequence without making anybody
+ * repeat themselves. A *state* gate — "your script contains `drive`" — can be
+ * checked at any moment against the script as it stands, so a quest that
+ * becomes current with its condition already true finishes on the spot. An
+ * *event* gate — "you fought", "you saved" — cannot be recovered after the
+ * fact, so it is only ever met by the signal that reports it.
+ */
+function isStateGate(gate: QuestGate): boolean {
+  return gate.kind === "sourceHas";
+}
+
+/** The world, for the state gates to be checked against. */
+export interface World {
+  /** The script currently being edited, if any. */
+  source: string | null;
+}
+
+/**
  * What one signal changes.
  *
- * Every quest at the level is offered the signal, not only the current one —
- * see rule 2 at the top. A player who saves a {robot} three quests before
- * being asked to should find that step already ticked when they get there, and
- * the alternative is telling somebody to do a thing they have just done.
+ * **Only the current quest listens.** This was the whole of a bug worth
+ * recording: it used to offer every signal to every quest at the level, on the
+ * reasoning that somebody who is ahead of the game should not be made to do it
+ * again. That reasoning is right and the implementation of it was wrong,
+ * because these quests are not a set of achievements — they are an argument,
+ * in order:
  *
- * Steps within a quest are *not* ordered by this function either. They read as
- * a checklist and they are one: doing the second thing first ticks the second
- * box.
+ *   move → have a fight → *notice that nothing happened* → add shooting → win
+ *
+ * and the starter {robot} handed to anybody who skips the tour already
+ * contains `drive`, `on sense robot`, `fire` and an `if`. So three quests
+ * completed on the first render, "Notice things" sat in the trophy shelf above
+ * "Have a fight", and the fight quest congratulated the player with "the Duck
+ * cannot shoot — but neither can you" about a {robot} that shoots very well.
+ * The reward lines are only true in order, because each one is a remark about
+ * what just happened.
+ *
+ * What is kept from the old reasoning is `settle` below, which is the honest
+ * form of "you have already done this".
+ *
+ * Steps *within* a quest stay unordered. They read as a checklist and they are
+ * one: doing the second thing first ticks the second box, and no reward line
+ * depends on which came first.
  */
-export function advance(
-  level: Level,
-  done: ReadonlySet<string>,
-  signal: QuestSignal,
-): Advance {
+export function advance(level: Level, done: ReadonlySet<string>, signal: QuestSignal): Advance {
+  const quest = currentQuest(level, done);
+  if (!quest) return { steps: [], quests: [], levelUp: false };
+
+  const steps: string[] = [];
+  for (const step of quest.steps) {
+    const key = stepKey(quest, step);
+    if (done.has(key)) continue;
+    if (!satisfies(step.gate, signal)) continue;
+    steps.push(key);
+  }
+  if (steps.length === 0) return { steps: [], quests: [], levelUp: false };
+
+  const after = new Set([...done, ...steps]);
+  if (!isQuestDone(quest, after)) return { steps, quests: [], levelUp: false };
+  return {
+    steps,
+    quests: [quest],
+    levelUp: quest.reward.kind === "levelUp",
+  };
+}
+
+/**
+ * Credit whatever is already true, without waiting to be told again.
+ *
+ * Called whenever the world changes or a quest completes. It walks forward
+ * through the quests — settling one can make the next current, and that one
+ * may also already be satisfied — and meets every *state* gate that the world
+ * currently answers.
+ *
+ * This is what stops the ordering rule above from becoming busywork. A player
+ * whose {robot} already drives does not have to delete the line and type it
+ * again to be told they have a {robot} that drives; the quest simply arrives
+ * already finished, in its place in the order, with its reward line still
+ * making sense.
+ *
+ * The loop is bounded by the number of quests at the level, since each pass
+ * either finishes one or stops.
+ */
+export function settle(level: Level, done: ReadonlySet<string>, world: World): Advance {
   const steps: string[] = [];
   const quests: Quest[] = [];
   let levelUp = false;
+  let known = new Set(done);
 
-  for (const quest of questsFor(level)) {
-    const before = isQuestDone(quest, done);
-    let touched = false;
+  for (let guard = questsFor(level).length; guard > 0; guard--) {
+    const quest = currentQuest(level, known);
+    if (!quest) break;
+
+    const met: string[] = [];
     for (const step of quest.steps) {
       const key = stepKey(quest, step);
-      if (done.has(key) || steps.includes(key)) continue;
-      if (!satisfies(step.gate, signal)) continue;
-      steps.push(key);
-      touched = true;
+      if (known.has(key) || !isStateGate(step.gate)) continue;
+      if (world.source === null) continue;
+      if (!satisfies(step.gate, { kind: "source", text: world.source })) continue;
+      met.push(key);
     }
-    if (!touched || before) continue;
+    if (met.length === 0) break;
 
-    const after = new Set([...done, ...steps]);
-    if (!isQuestDone(quest, after)) continue;
+    steps.push(...met);
+    known = new Set([...known, ...met]);
+    if (!isQuestDone(quest, known)) break;
+
     quests.push(quest);
     if (quest.reward.kind === "levelUp") levelUp = true;
   }

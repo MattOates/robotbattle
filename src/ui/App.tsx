@@ -49,7 +49,7 @@ export function App() {
   const { profile, setName, setTheme, setLevel, setAssistantModel, complete } = useProfile();
   // Nothing is seeded until a world has been chosen, because which robot a new
   // player starts with depends on whether they took the tour.
-  const lib = useLibrary(starterRobot(profile.onboarded));
+  const lib = useLibrary(starterRobot(profile.onboarded, profile.level));
   const brand = branding(profile.onboarded ? profile.theme : null);
 
   // The tab is named after the world you chose.
@@ -166,6 +166,7 @@ function AppShell({
           level={profile.level}
           unlocked={quests.unlocked}
           onQuestSignal={quests.signal}
+          onQuestObserve={quests.observe}
         />
       ) : null}
 

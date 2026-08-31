@@ -109,6 +109,8 @@ interface Props {
    * met here has to still be true after navigating away from this screen.
    */
   onQuestSignal: (signal: TourSignal) => void;
+  /** The script as it stands, whenever it changes. See `settle`. */
+  onQuestObserve: (world: { source: string | null }) => void;
 }
 
 
@@ -140,6 +142,7 @@ export function Workshop({
   level,
   unlocked,
   onQuestSignal,
+  onQuestObserve,
 }: Props) {
   const { library, robots, refresh, chat } = lib;
   const workshopPrefs = useMemo(() => new WorkshopPrefs(), []);
@@ -527,20 +530,18 @@ export function Workshop({
   }, [announceArrival]);
 
   /*
-   * Announce the script as it stands, not only as it changes.
+   * Show the quests the script as it stands, not only as it changes.
    *
    * `updateSource` below signals on every edit, which is all the tour ever
-   * needed — it is choreographing what somebody is doing right now. A quest is
-   * a claim about what they have ever done, and the starter {robot} already
-   * drives: without this, a step asking for a `drive` sat unticked in front of
-   * a script containing one until the player typed something, anything, to
-   * make the editor speak. Being ahead of the game is not a reason to be made
-   * to do it again.
+   * needed — it is choreographing what somebody is doing right now. A quest
+   * asks a different question, about the world rather than the moment, so this
+   * is an observation rather than an event: it credits whatever the *current*
+   * quest already asks for, and stops there. That is the difference between
+   * "you have already done this one" and "here is the end of the story".
    */
   useEffect(() => {
-    if (!selected) return;
-    onQuestSignal({ kind: "source", text: selected.source });
-  }, [onQuestSignal, selected?.id, selected?.source]);
+    onQuestObserve({ source: selected?.source ?? null });
+  }, [onQuestObserve, selected?.id, selected?.source]);
 
   const updateSource = useCallback(
     (source: string) => {

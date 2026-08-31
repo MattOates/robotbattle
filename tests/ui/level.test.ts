@@ -15,6 +15,10 @@ import {
 import { ARENA_PANES, ROBOT_PANES, type Pane, type PanelName } from "../../src/ui/panes.js";
 import { SCREENS } from "../../src/ui/router.js";
 import { FIRE_SETTINGS, FUEL_SETTINGS, TERRAIN_SETTINGS } from "../../src/ui/matchSettings.js";
+import { starterRobot } from "../../src/ui/useLibrary.js";
+import { TOUR_ROBOT, TOUR_SEED } from "../../src/bots/index.js";
+import { Tours } from "../../src/store/tour.js";
+import { MemoryStore } from "../../src/store/storage.js";
 
 const ALL_PANES: Pane[] = ["editor", "map", "trial", "bench", "history"];
 const ALL_PANELS: PanelName[] = ["robots", "behaviours", "arenas", "room", "chat", "session"];
@@ -130,4 +134,39 @@ describe("filtering", () => {
   it("never invents a pane the thing does not have, even when unlocked", () => {
     expect(panesFor("explorer", "arena", ["editor"])).not.toContain("editor");
   });
+});
+
+describe("what a new player is handed", () => {
+  it("gives an Explorer the robot that cannot fight, tour or no tour", () => {
+    /*
+     * The Explorer quests are the tour told in five steps, and the third of
+     * them turns on discovering that your robot never fired. `TOUR_ROBOT` —
+     * what skipping the tour normally gets you — already senses and fires, so
+     * handing it to an Explorer finishes the argument before it is made.
+     */
+    const skipped = skippedTours();
+    expect(starterRobot(true, "explorer", skipped)).toBe(TOUR_SEED);
+    expect(starterRobot(true, "explorer", new Tours(new MemoryStore()))).toBe(TOUR_SEED);
+  });
+
+  it("still gives everybody else the finished robot when they skip the tour", () => {
+    // Unchanged: skipping the tour should cost you the tour, not the robot it
+    // would have produced.
+    const skipped = skippedTours();
+    expect(starterRobot(true, "builder", skipped)).toBe(TOUR_ROBOT);
+    expect(starterRobot(true, "engineer", skipped)).toBe(TOUR_ROBOT);
+  });
+
+  it("seeds nothing before a world has been chosen", () => {
+    expect(starterRobot(false, "explorer")).toBeNull();
+    expect(starterRobot(false, "engineer")).toBeNull();
+  });
+
+  /** Built through the public API rather than by hand: the stored shape is
+      `Tours`' own business, and a test that reimplements it tests itself. */
+  function skippedTours() {
+    const tours = new Tours(new MemoryStore());
+    tours.skip("workshop");
+    return tours;
+  }
 });

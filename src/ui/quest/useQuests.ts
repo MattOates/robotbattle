@@ -16,6 +16,7 @@ import { Quests } from "../../store/quests.js";
 import {
   advance,
   currentQuest,
+  settle,
   nextStep,
   questsFor,
   stepKey,
@@ -42,6 +43,14 @@ export interface Celebration {
 export interface QuestApi {
   /** Tell the quests something happened. Cheap and safe to call constantly. */
   signal: (signal: QuestSignal) => void;
+  /**
+   * Tell the quests what the world looks like now.
+   *
+   * Separate from `signal` because it is a fact rather than an event: it may
+   * be called on every render and on every keystroke, and it credits whatever
+   * the current quest already asks for. See `settle`.
+   */
+  observe: (world: { source: string | null }) => void;
   done: ReadonlySet<string>;
   quests: readonly Quest[];
   current: Quest | null;
@@ -81,10 +90,15 @@ export function useQuests(
     return () => window.removeEventListener("focus", reread);
   }, [store]);
 
-  const signal = useCallback(
-    (incoming: QuestSignal) => {
-      const before = store.done();
-      const out = advance(level, before, incoming);
+  /**
+   * Turn an `Advance` into stored progress and cards to show.
+   *
+   * Shared by `signal` and `observe` because the two differ only in how they
+   * work out what was met — everything after that, the storing and the
+   * celebrating, is identical.
+   */
+  const apply = useCallback(
+    (out: ReturnType<typeof advance>) => {
       if (out.steps.length === 0) return;
 
       store.meet(out.steps);
@@ -128,6 +142,21 @@ export function useQuests(
     [fill, level, say, store],
   );
 
+  const signal = useCallback(
+    (incoming: QuestSignal) => apply(advance(level, store.done(), incoming)),
+    [apply, level, store],
+  );
+
+  /*
+   * Settling can cascade — finishing one quest can make the next current, and
+   * that one may already be satisfied too — so `settle` walks forward itself
+   * and returns everything it met in one go.
+   */
+  const observe = useCallback(
+    (world: { source: string | null }) => apply(settle(level, store.done(), world)),
+    [apply, level, store],
+  );
+
   const dismiss = useCallback((id: number) => {
     setCelebrations((queue) => queue.filter((c) => c.id !== id));
   }, []);
@@ -141,6 +170,7 @@ export function useQuests(
 
   return {
     signal,
+    observe,
     done,
     quests: questsFor(level),
     current,

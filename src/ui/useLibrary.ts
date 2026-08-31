@@ -89,8 +89,27 @@ export interface LibraryApi {
  * Seeding before that point would hand out the wrong one and then have to take
  * it back.
  */
-export function starterRobot(onboarded: boolean, tours = new Tours()): string | null {
+export function starterRobot(
+  onboarded: boolean,
+  level: Level,
+  tours = new Tours(),
+): string | null {
   if (!onboarded) return null;
+  /*
+   * An Explorer always starts from the {robot} that cannot fight, whatever
+   * they said about the tour.
+   *
+   * For everybody else the rule below still holds: skipping the tour should
+   * cost you the tour, not the {robot} it produces. But `TOUR_ROBOT` is the
+   * finished article — it drives, senses, fires and branches — and the
+   * Explorer quests are that same lesson told in five steps, ending at a
+   * {robot} exactly like it. Handing it over at the start finishes the
+   * argument before it is made: "nothing happened, did it?" is not a thing you
+   * can say to somebody whose first fight they won.
+   *
+   * So for an Explorer the quests *are* the tour, and they need the seed.
+   */
+  if (level === "explorer") return TOUR_SEED;
   return tours.state("workshop") === "skipped" ? TOUR_ROBOT : TOUR_SEED;
 }
 
