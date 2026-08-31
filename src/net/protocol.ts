@@ -178,10 +178,67 @@ export type Message =
  * should be dropped quietly rather than crashing everyone's lobby.
  */
 export function isMessage(payload: unknown): payload is Message {
-  if (typeof payload !== "object" || payload === null) return false;
-  const t = (payload as { t?: unknown }).t;
-  return typeof t === "string" && KNOWN_TYPES.has(t);
+  if (!record(payload) || typeof payload.t !== "string" || !KNOWN_TYPES.has(payload.t)) {
+    return false;
+  }
+  const p = payload;
+  switch (p.t as Message["t"]) {
+    case "hello": return string(p.displayName) && (p.robot === null || robotEntry(p.robot));
+    case "roster": return Array.isArray(p.peers) && p.peers.every(peerInfo);
+    case "ready": return boolean(p.ready);
+    case "team": return p.team === null || number(p.team);
+    case "entry": return p.robot === null || robotEntry(p.robot);
+    case "notice": case "nudge": return string(p.text);
+    case "start": return string(p.matchId) && record(p.manifest) && string(p.label);
+    case "hash": return string(p.matchId) && number(p.tick) && string(p.hash);
+    case "result": return string(p.matchId) && record(p.result);
+    case "bracket": return record(p.bracket);
+    case "tourQualifier": return records(p.standings) && number(p.done) && number(p.total);
+    case "tourField": return Array.isArray(p.entrants) && p.entrants.every((entrant) =>
+      record(entrant) && string(entrant.id) && string(entrant.ownerName) && robotEntry(entrant.robot));
+    case "tourProgress": return number(p.round) && number(p.done) && number(p.total);
+    case "tourRound": return number(p.round) && records(p.records);
+    case "view": return strings(p, "robotId", "name", "color", "source");
+    case "session": return strings(p, "robotId", "name", "color");
+    case "chatHistory": return string(p.robotId) && records(p.messages);
+    case "chat": return string(p.robotId) && string(p.text) && number(p.at);
+    case "say": return string(p.text) && number(p.at);
+    case "ydoc": return (p.kind === "sync" || p.kind === "awareness") && string(p.data);
+    case "bench": return string(p.robotId) && p.report !== undefined;
+    case "history": return string(p.robotId) && Array.isArray(p.entries);
+    case "kick": return string(p.reason);
+    case "endSession": return true;
+    case "shelf": return Array.isArray(p.items) && p.items.every(shelfItem);
+    case "peek": case "copyRequest": return tradeKind(p.kind) && string(p.id);
+    case "peekResult": return tradeKind(p.kind) && string(p.id) && (p.goods === null || record(p.goods));
+    case "copyResponse": return tradeKind(p.kind) && string(p.id) &&
+      (p.goods === null || record(p.goods)) && (p.reason === null || string(p.reason));
+    case "offer": return tradeKind(p.kind) && string(p.id) && record(p.goods);
+    case "offerResult": return tradeKind(p.kind) && string(p.id) && boolean(p.accepted);
+    default: return false;
+  }
 }
+
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+const string = (value: unknown): value is string => typeof value === "string";
+const number = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+const boolean = (value: unknown): value is boolean => typeof value === "boolean";
+const records = (value: unknown): value is Record<string, unknown>[] =>
+  Array.isArray(value) && value.every(record);
+const strings = (value: Record<string, unknown>, ...keys: string[]): boolean =>
+  keys.every((key) => string(value[key]));
+const tradeKind = (value: unknown): value is TradeKind =>
+  value === "robot" || value === "block" || value === "arena";
+const robotEntry = (value: unknown): value is RobotEntry =>
+  record(value) && strings(value, "name", "color", "source");
+const peerInfo = (value: unknown): value is PeerInfo =>
+  record(value) && strings(value, "id", "displayName") && boolean(value.isHost) &&
+  boolean(value.ready) && (value.robot === null || (record(value.robot) && strings(value.robot, "name", "color"))) &&
+  (value.team === null || number(value.team));
+const shelfItem = (value: unknown): value is ShelfItem =>
+  record(value) && tradeKind(value.kind) && strings(value, "id", "name");
 
 const KNOWN_TYPES: ReadonlySet<string> = new Set<Message["t"]>([
   "hello", "roster", "ready", "entry", "notice", "nudge",
@@ -201,8 +258,8 @@ export const MAX_SOURCE_LENGTH = 64 * 1024;
 /**
  * Clean an arena arriving from another browser.
  *
- * `isMessage` only checks the type tag, so everything inside a message is still
- * unvalidated at this point. An arena is the one payload that goes straight
+ * `isMessage` checks the wire shape, while this function also clamps values to
+ * the simulation's permitted ranges. An arena is the one payload that goes straight
  * into a simulation, where a NaN coordinate is not a display glitch but a
  * desync — so it is clamped through exactly the same functions `createWorld`
  * uses, and a peer cannot hand over a map that its own build would refuse.

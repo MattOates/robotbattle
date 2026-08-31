@@ -325,7 +325,7 @@ export class Session {
 
       case "roster": {
         // Only the host is believed about membership.
-        if (this.transport.isHost) return;
+        if (this.transport.isHost || !this.transport.isHostPeer(from)) return;
         this.roster = message.peers.map((p) => ({
           id: p.id,
           displayName: sanitiseText(p.displayName, 24) || "Player",
@@ -344,7 +344,7 @@ export class Session {
       }
 
       case "notice": {
-        if (this.transport.isHost) return;
+        if (this.transport.isHost || !this.transport.isHostPeer(from)) return;
         this.notice = sanitiseText(message.text, 200);
         this.publish();
         return;

@@ -653,10 +653,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               thing you reach for every time belongs above the thing you reach
               for occasionally. */}
           {inSession && !isHost ? (
-            <section className="panel">
-              <div className="panel-head">
-                <span className="silkscreen">Session</span>
-              </div>
+            <SidebarAccordion title="Session">
               <div className="panel-body">
                 <p className="empty small">
                   You are in {hostName(room)}&rsquo;s session, working on{" "}
@@ -664,7 +661,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                   leave.
                 </p>
               </div>
-            </section>
+            </SidebarAccordion>
           ) : (
             <RobotLibrary
               lib={lib}
@@ -925,6 +922,40 @@ function hashString(value: string): number {
   return hash;
 }
 
+function SidebarAccordion({
+  title,
+  meta,
+  defaultOpen = true,
+  className = "",
+  children,
+}: {
+  title: string;
+  meta?: React.ReactNode;
+  defaultOpen?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className={`panel accordion${open ? " open" : ""}${className ? ` ${className}` : ""}`}>
+      <button
+        type="button"
+        className="panel-head accordion-head"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="silkscreen">{title}</span>
+        <span className="spacer" />
+        {meta === undefined ? null : <span className="roster-meta">{meta}</span>}
+        <span className="accordion-mark" aria-hidden="true">
+          {open ? "−" : "+"}
+        </span>
+      </button>
+      {open ? children : null}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Session panel
 // ---------------------------------------------------------------------------
@@ -975,10 +1006,11 @@ function SessionPanel({
 
   if (inSession && room.state) {
     return (
-      <section className="panel">
-        <div className="panel-head">
-          <span className="silkscreen">In this room</span>
-          <span className="spacer" />
+      <SidebarAccordion
+        title="In this room"
+        meta={room.state.peers.length}
+      >
+        <div className="roster-actions">
           <button
             type="button"
             className="btn small"
@@ -1033,7 +1065,7 @@ function SessionPanel({
             </span>
           </div>
         ) : null}
-      </section>
+      </SidebarAccordion>
     );
   }
 
@@ -1136,12 +1168,12 @@ function ChatPanel({
   if (!inSession && messages.length === 0) return null;
 
   return (
-    <section className="panel chat-panel">
-      <div className="panel-head">
-        <span className="silkscreen">Chat</span>
-        <span className="spacer" />
-        <span className="roster-meta">{robotName}</span>
-      </div>
+    <SidebarAccordion
+      title="Chat"
+      meta={robotName}
+      defaultOpen={inSession}
+      className="chat-panel"
+    >
       <div className="chat-log">
         {messages.length === 0 ? (
           <p className="empty small">Say hello. Everyone here is editing the same robot.</p>
@@ -1192,7 +1224,7 @@ function ChatPanel({
           </span>
         </div>
       )}
-    </section>
+    </SidebarAccordion>
   );
 }
 
@@ -1225,15 +1257,11 @@ function BlockShelf({
   const total = groups.reduce((n, g) => n + g.blocks.length, 0);
 
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <span className="silkscreen">
-          Your {THEMES[theme].blockPlural}
-        </span>
-        <span className="spacer" />
-        {total > 0 ? <span className="roster-meta">{total}</span> : null}
-      </div>
-
+    <SidebarAccordion
+      title={`Your ${THEMES[theme].blockPlural}`}
+      meta={total > 0 ? total : undefined}
+      defaultOpen={total > 0}
+    >
       <div className="panel-body">
         {total === 0 ? (
           <p className="empty small">
@@ -1288,7 +1316,7 @@ function BlockShelf({
           </>
         )}
       </div>
-    </section>
+    </SidebarAccordion>
   );
 }
 
@@ -1321,13 +1349,11 @@ function ArenaShelf({
   const selected = arenas.find((a) => a.id === selectedId) ?? null;
 
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <span className="silkscreen">Your {words.arenaPlural}</span>
-        <span className="spacer" />
-        {arenas.length > 0 ? <span className="roster-meta">{arenas.length}</span> : null}
-      </div>
-
+    <SidebarAccordion
+      title={`Your ${words.arenaPlural}`}
+      meta={arenas.length > 0 ? arenas.length : undefined}
+      defaultOpen={arenas.length > 0 || selected !== null}
+    >
       <div className="panel-body flush">
         {arenas.length === 0 ? (
           <p className="empty small">
@@ -1401,7 +1427,7 @@ function ArenaShelf({
           </button>
         </div>
       </div>
-    </section>
+    </SidebarAccordion>
   );
 }
 
@@ -1603,13 +1629,10 @@ function RobotLibrary({
   const selected = robots.find((r) => r.id === selectedId);
 
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <span className="silkscreen">Your {words.robotPlural}</span>
-        <span className="spacer" />
-        <span className="roster-meta">{Math.round((storage.used / 1024) * 10) / 10} kB used</span>
-      </div>
-
+    <SidebarAccordion
+      title={`Your ${words.robotPlural}`}
+      meta={`${Math.round((storage.used / 1024) * 10) / 10} kB used`}
+    >
       <div className="panel-body flush">
         {robots.map((robot) => (
           <div key={robot.id}>
@@ -1709,7 +1732,7 @@ function RobotLibrary({
           </button>
         </div>
       </div>
-    </section>
+    </SidebarAccordion>
   );
 }
 

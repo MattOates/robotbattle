@@ -40,6 +40,8 @@ export interface Transport {
   readonly peers: readonly PeerId[];
   /** True once this peer has a link it can actually send over. */
   readonly ready: boolean;
+  /** Whether this id is the room authority on this transport. */
+  isHostPeer(peerId: PeerId): boolean;
   send(to: PeerId | "all", payload: unknown): void;
   on<K extends keyof TransportEvents>(event: K, fn: TransportEvents[K]): () => void;
   /**
@@ -60,6 +62,40 @@ type Envelope =
   | { k: "peers"; peers: PeerId[] }
   /** One slice of a message too big to send in one go. */
   | { k: "chunk"; id: string; i: number; n: number; part: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** Parse the framing we own before reading any property supplied by a peer. */
+function parseEnvelope(raw: string): Envelope | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!isRecord(value) || typeof value.k !== "string") return null;
+  if (value.k === "msg") {
+    return typeof value.from === "string" && typeof value.to === "string"
+      ? { k: "msg", from: value.from, to: value.to, payload: value.payload }
+      : null;
+  }
+  if (value.k === "peers") {
+    return Array.isArray(value.peers) && value.peers.every((peer) => typeof peer === "string")
+      ? { k: "peers", peers: value.peers }
+      : null;
+  }
+  if (value.k === "chunk") {
+    return typeof value.id === "string" &&
+      typeof value.i === "number" &&
+      typeof value.n === "number" &&
+      typeof value.part === "string"
+      ? { k: "chunk", id: value.id, i: value.i, n: value.n, part: value.part }
+      : null;
+  }
+  return null;
+}
 
 /**
  * Chunking.
@@ -136,6 +172,12 @@ export abstract class StarTransport implements Transport {
     return this.isHost || this.links.size > 0;
   }
 
+  isHostPeer(peerId: PeerId): boolean {
+    // A guest has exactly one direct link and it is always the host. The host
+    // itself is authoritative locally.
+    return this.isHost ? peerId === this.selfId : this.links.has(peerId);
+  }
+
   on<K extends keyof TransportEvents>(event: K, fn: TransportEvents[K]): () => void {
     this.listeners[event].add(fn as never);
     return () => {
@@ -205,14 +247,16 @@ export abstract class StarTransport implements Transport {
 
   protected linkData(from: PeerId, raw: string): void {
     if (this.closed) return;
-    let envelope: Envelope;
-    try {
-      envelope = JSON.parse(raw) as Envelope;
-    } catch {
+    // Only accept data from a link this transport actually owns. In
+    // particular, a guest's sole authenticated source is its host.
+    if (!this.links.has(from)) return;
+    const parsed = parseEnvelope(raw);
+    if (parsed === null) {
       // A peer sending us junk is not a reason to tear down the room.
       this.emit("error", new Error(`unreadable message from ${from}`));
       return;
     }
+    let envelope = parsed;
 
     if (envelope.k === "chunk") {
       const whole = this.reassemble(from, envelope);
@@ -222,12 +266,16 @@ export abstract class StarTransport implements Transport {
 
     if (envelope.k === "peers") {
       // Only the host is authoritative about who is present.
+      if (this.isHost) return;
       this.syncRoster(envelope.peers);
       return;
     }
     if (envelope.k !== "msg") return;
 
     if (this.isHost) {
+      // `from` belongs to the authenticated link. Never let a guest choose the
+      // identity that session and mode handlers will use for authorisation.
+      envelope = { ...envelope, from };
       this.route(envelope);
       return;
     }
