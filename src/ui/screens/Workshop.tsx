@@ -34,7 +34,7 @@ import {
   libraryBlocks,
   type LibraryBlock,
 } from "../../workshop/blocks.js";
-import { accuracy, executionWarning } from "../../sim/telemetry.js";
+import { accuracy, executionWarning, explainBattle } from "../../sim/telemetry.js";
 import { shortAgo } from "../../store/chat.js";
 import { MAX_CHAT_LENGTH, sanitiseChat, sanitiseText } from "../../net/protocol.js";
 import type { Message } from "../../net/protocol.js";
@@ -55,7 +55,13 @@ import {
   type TerrainLevel,
 } from "../matchSettings.js";
 import type { TrialWorkerIn, TrialWorkerOut } from "../../workshop/trials.worker.js";
-import type { BattleRecord, ChatMessage, StoredArena, StoredRobot } from "../../store/types.js";
+import type {
+  BattleRecord,
+  ChatMessage,
+  RobotTelemetry,
+  StoredArena,
+  StoredRobot,
+} from "../../store/types.js";
 import type { ArenaSpec, TerrainConfig } from "../../sim/types.js";
 import { WALL } from "../../sim/types.js";
 import { drivableMazeGrid, generateFittingMaze } from "../../sim/maze.js";
@@ -67,6 +73,7 @@ import { Tour } from "../tour/Tour.js";
 import { useTour } from "../tour/useTour.js";
 import { applySnippet, findLines } from "../tour/steps.js";
 import { TrialPrefs } from "../../store/trial.js";
+import { WorkshopPrefs } from "../../store/workshop.js";
 import { useAssistantUsable } from "../../assistant/useAssistant.js";
 
 interface Props {
@@ -121,7 +128,11 @@ interface ViewedRobot {
 
 export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }: Props) {
   const { library, robots, refresh, chat } = lib;
-  const [selectedId, setSelectedId] = useState<string | null>(robots[0]?.id ?? null);
+  const workshopPrefs = useMemo(() => new WorkshopPrefs(), []);
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const remembered = workshopPrefs.selectedRobotId();
+    return robots.some((robot) => robot.id === remembered) ? remembered : (robots[0]?.id ?? null);
+  });
   /**
    * Which arena is being edited, or null when a robot is.
    *
@@ -130,8 +141,11 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
    * Test bench on a map need something to run on it, and it should be whatever
    * you were last working on rather than a second thing to pick.
    */
-  const [selectedArenaId, setSelectedArenaId] = useState<string | null>(null);
-  const [pane, setPane] = useState<Pane>("editor");
+  const [selectedArenaId, setSelectedArenaId] = useState<string | null>(() => {
+    const remembered = workshopPrefs.selectedArenaId();
+    return lib.arenas.some((arena) => arena.id === remembered) ? remembered : null;
+  });
+  const [pane, setPane] = useState<Pane>(() => workshopPrefs.pane<Pane>("editor"));
   /**
    * The guided tour, if one is running.
    *
@@ -200,6 +214,10 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
   const selectedArena = lib.arenas.find((a) => a.id === selectedArenaId) ?? null;
   const editingArena = selectedArena !== null;
   const panes = editingArena ? ARENA_PANES : ROBOT_PANES;
+
+  useEffect(() => workshopPrefs.setSelectedRobotId(selectedId), [selectedId, workshopPrefs]);
+  useEffect(() => workshopPrefs.setSelectedArenaId(selectedArenaId), [selectedArenaId, workshopPrefs]);
+  useEffect(() => workshopPrefs.setPane(pane), [pane, workshopPrefs]);
 
   /**
    * The map Trial and Test bench fight on.
@@ -653,7 +671,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               thing you reach for every time belongs above the thing you reach
               for occasionally. */}
           {inSession && !isHost ? (
-            <SidebarAccordion title="Session">
+            <SidebarAccordion id="session" title="Session">
               <div className="panel-body">
                 <p className="empty small">
                   You are in {hostName(room)}&rsquo;s session, working on{" "}
@@ -670,6 +688,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               theme={theme}
               sessionRobotId={inSession ? sessionRobotId : null}
               onSaved={() => tour.signal({ kind: "saved" })}
+              forceOpen={tour.step?.anchor === "save-version" || tour.step?.anchor === "robot-list"}
             />
           )}
 
@@ -677,6 +696,17 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
             groups={shelfGroups}
             theme={theme}
             usable={editable}
+            onCreate={() => {
+              if (!selected || !editable) return;
+              const base = "dodge";
+              let name = base;
+              let suffix = 2;
+              while (new RegExp(`^\\s*can\\s+${name}\\b`, "m").test(selected.source)) {
+                name = `${base}${suffix++}`;
+              }
+              setPane("editor");
+              updateSource(`${selected.source.trimEnd()}\n\ncan ${name} given hit by bullet\n  turn body by event.bearing + 90\n  drive forward 80\nend\n`);
+            }}
             onTake={(block) => {
               setPane("editor");
               setPendingBlock(block);
@@ -810,7 +840,20 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                   onDrop={onEditorDrop}
                 />
               ) : (
-                <div className="empty">Add a robot to start writing.</div>
+                <div className="empty onboarding-empty">
+                  <p>Add a robot to start writing, testing and saving versions.</p>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => {
+                      const created = library.create();
+                      refresh();
+                      setSelectedId(created.id);
+                    }}
+                  >
+                    Create your first {THEMES[theme].robot}
+                  </button>
+                </div>
               )}
             </section>
           ) : null}
@@ -845,6 +888,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               onTrialFinished={(ids, won) =>
                 tour.signal({ kind: "trial", opponents: ids, won })
               }
+              onHistory={() => setPane("history")}
             />
           ) : null}
           {pane === "bench" ? (
@@ -881,6 +925,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                 })
               }
               inSession={inSession}
+              onGoToTrial={() => setPane("trial")}
             />
           ) : null}
         </div>
@@ -923,26 +968,40 @@ function hashString(value: string): number {
 }
 
 function SidebarAccordion({
+  id,
   title,
   meta,
   defaultOpen = true,
   className = "",
+  forceOpen = false,
   children,
 }: {
+  id: string;
   title: string;
   meta?: React.ReactNode;
   defaultOpen?: boolean;
   className?: string;
+  forceOpen?: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const prefs = useMemo(() => new WorkshopPrefs(), []);
+  const [open, setOpen] = useState(() => prefs.accordion(id, defaultOpen));
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
+  const toggle = () => {
+    setOpen((value) => {
+      prefs.setAccordion(id, !value);
+      return !value;
+    });
+  };
   return (
     <section className={`panel accordion${open ? " open" : ""}${className ? ` ${className}` : ""}`}>
       <button
         type="button"
         className="panel-head accordion-head"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={toggle}
       >
         <span className="silkscreen">{title}</span>
         <span className="spacer" />
@@ -998,15 +1057,25 @@ function SessionPanel({
 }) {
   const [code, setCode] = useState("");
   const [kind, setKind] = useState<TransportKind>("online");
+  const prefs = useMemo(() => new WorkshopPrefs(), []);
   // Collapsed by default: most of the time someone is here to write a robot on
   // their own, and an invitation they are not acting on should not cost them
   // half the sidebar. It opens itself if they arrived on an invite link, since
   // then joining is the whole reason they are here.
-  const [open, setOpen] = useState(() => room.roomCode !== null || room.phase === "connecting");
+  const [open, setOpen] = useState(() =>
+    prefs.accordion("work-together", room.roomCode !== null || room.phase === "connecting"),
+  );
+  const toggleOpen = () => {
+    setOpen((value) => {
+      prefs.setAccordion("work-together", !value);
+      return !value;
+    });
+  };
 
   if (inSession && room.state) {
     return (
       <SidebarAccordion
+        id="room"
         title="In this room"
         meta={room.state.peers.length}
       >
@@ -1075,7 +1144,7 @@ function SessionPanel({
         type="button"
         className="panel-head accordion-head"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
       >
         <span className="silkscreen">Work together</span>
         <span className="spacer" />
@@ -1169,6 +1238,7 @@ function ChatPanel({
 
   return (
     <SidebarAccordion
+      id="chat"
       title="Chat"
       meta={robotName}
       defaultOpen={inSession}
@@ -1247,27 +1317,35 @@ function BlockShelf({
   theme,
   usable,
   onTake,
+  onCreate,
 }: {
   groups: ReturnType<typeof groupBlocks>;
   theme: Theme;
   /** False when the script on screen is not yours to change. */
   usable: boolean;
   onTake: (block: LibraryBlock) => void;
+  onCreate: () => void;
 }) {
   const total = groups.reduce((n, g) => n + g.blocks.length, 0);
 
   return (
     <SidebarAccordion
+      id="behaviours"
       title={`Your ${THEMES[theme].blockPlural}`}
       meta={total > 0 ? total : undefined}
       defaultOpen={total > 0}
     >
       <div className="panel-body">
         {total === 0 ? (
-          <p className="empty small">
-            Nothing yet. Write a <code>can … given</code> block in any of your scripts and it
-            appears here, ready to drop into the others.
-          </p>
+          <div className="onboarding-empty">
+            <p className="empty small">
+              Nothing yet. Write a <code>can … given</code> block in any of your scripts and it
+              appears here, ready to drop into the others.
+            </p>
+            <button type="button" className="btn small primary" disabled={!usable} onClick={onCreate}>
+              Add a starter {theme === "biological" ? "behaviour" : "block"}
+            </button>
+          </div>
         ) : (
           <>
             <p className="roster-meta shelf-hint">
@@ -1350,6 +1428,7 @@ function ArenaShelf({
 
   return (
     <SidebarAccordion
+      id="arenas"
       title={`Your ${words.arenaPlural}`}
       meta={arenas.length > 0 ? arenas.length : undefined}
       defaultOpen={arenas.length > 0 || selected !== null}
@@ -1387,7 +1466,7 @@ function ArenaShelf({
         <div className="roster-actions">
           <button
             type="button"
-            className="btn small"
+            className={`btn small${arenas.length === 0 ? " primary" : ""}`}
             onClick={() => {
               const created = arenaLib.create(`New ${words.arena}`, blankArena());
               refresh();
@@ -1614,6 +1693,7 @@ function RobotLibrary({
   theme,
   sessionRobotId,
   onSaved,
+  forceOpen = false,
 }: {
   lib: LibraryApi;
   selectedId: string | null;
@@ -1622,6 +1702,7 @@ function RobotLibrary({
   sessionRobotId: string | null;
   /** Told when a version is saved, so the tour can notice. */
   onSaved?: () => void;
+  forceOpen?: boolean;
 }) {
   const { library, robots, refresh, storage, chat } = lib;
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -1630,8 +1711,10 @@ function RobotLibrary({
 
   return (
     <SidebarAccordion
+      id="robots"
       title={`Your ${words.robotPlural}`}
       meta={`${Math.round((storage.used / 1024) * 10) / 10} kB used`}
+      forceOpen={forceOpen}
     >
       <div className="panel-body flush">
         {robots.map((robot) => (
@@ -1881,6 +1964,7 @@ function TrialPane({
   onOpponents,
   onTrialStarted,
   onTrialFinished,
+  onHistory,
 }: {
   robot: StoredRobot | null;
   theme: Theme;
@@ -1909,6 +1993,8 @@ function TrialPane({
   onTrialStarted?: (ids: readonly string[]) => void;
   /** How a fight went, once it is over. Also only the tour. */
   onTrialFinished?: (ids: readonly string[], won: boolean) => void;
+  /** Open the durable record after reading the immediate debrief. */
+  onHistory: () => void;
 }) {
   // Remembered between sessions: tuning a robot means running the same fight
   // over and over, and having the panel put its own two back each time is a
@@ -1935,6 +2021,7 @@ function TrialPane({
   const [fuelLevel, setFuelLevel] = useState<FuelLevel>("normal");
   const [terrainLevel, setTerrainLevel] = useState<TerrainLevel>("flat");
   const [expanded, setExpanded] = useState(false);
+  const [lastOutcome, setLastOutcome] = useState<MatchOutcome | null>(null);
 
   // Escape leaves the expanded view. A view that fills the screen and can only
   // be dismissed by finding one small button again is a trap.
@@ -1992,6 +2079,7 @@ function TrialPane({
     // simply drops out rather than failing to compile.
     const chosen = contenders.filter((c) => opponents.includes(c.id));
     foughtRef.current = chosen.map((c) => c.id);
+    setLastOutcome(null);
     onTrialStarted?.(foughtRef.current);
     // At size 1 this is the free-for-all it has always been: no teams stated,
     // so the manifest is byte-identical to the ones this panel used to build.
@@ -2028,6 +2116,7 @@ function TrialPane({
   const onFinished = useCallback(
     (outcome: MatchOutcome) => {
       if (!robot || !manifest || !canRun) return;
+      setLastOutcome(outcome);
       lib.battles.record({
         mode: "trial",
         manifest,
@@ -2132,7 +2221,17 @@ function TrialPane({
         </div>
       </section>
 
-      {canRun ? (
+      <div className="trial-side">
+        {lastOutcome ? (
+          <BattleDebrief
+            mine={lastOutcome.telemetry.find((entry) => entry.robotId === 0) ?? null}
+            field={lastOutcome.telemetry}
+            winnerId={lastOutcome.result.winnerId}
+            onHistory={onHistory}
+          />
+        ) : null}
+
+        {canRun ? (
         <section className="panel" data-tour="opponent-chips">
           <div className="panel-head">
             <span className="silkscreen">Who to fight</span>
@@ -2229,7 +2328,8 @@ function TrialPane({
             <Standings status={status} theme={theme} />
           </div>
         </section>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -2237,6 +2337,40 @@ function TrialPane({
 // ---------------------------------------------------------------------------
 // Test bench
 // ---------------------------------------------------------------------------
+
+function BattleDebrief({
+  mine,
+  field,
+  winnerId,
+  onHistory,
+  compact = false,
+}: {
+  mine: RobotTelemetry | null;
+  field: readonly RobotTelemetry[];
+  winnerId?: number | null;
+  onHistory?: () => void;
+  compact?: boolean;
+}) {
+  if (!mine) return null;
+  const explanation = explainBattle(mine, field, winnerId);
+  return (
+    <section className={`battle-debrief ${explanation.tone}${compact ? " compact" : ""}`}>
+      <div className="debrief-head">
+        <span className="silkscreen">{compact ? "What happened" : "After the fight"}</span>
+        <strong>{explanation.headline}</strong>
+        <span className="spacer" />
+        {onHistory ? (
+          <button type="button" className="btn small" onClick={onHistory}>
+            Open history
+          </button>
+        ) : null}
+      </div>
+      <ul>
+        {explanation.points.map((point) => <li key={point}>{point}</li>)}
+      </ul>
+    </section>
+  );
+}
 
 function BenchPane({
   robot,
@@ -2530,6 +2664,7 @@ function HistoryPane({
   sharedEntries,
   onShare,
   inSession,
+  onGoToTrial,
 }: {
   robot: StoredRobot | null;
   lib: LibraryApi;
@@ -2538,6 +2673,7 @@ function HistoryPane({
   sharedEntries: BattleRecord[] | null;
   onShare: (entries: BattleRecord[]) => void;
   inSession: boolean;
+  onGoToTrial: () => void;
 }) {
   const [replay, setReplay] = useState<BattleRecord | null>(null);
   const own = robot ? lib.battles.forRobot(robot.id) : [];
@@ -2598,10 +2734,17 @@ function HistoryPane({
         ) : null}
 
         {records.length === 0 ? (
-          <div className="empty small">
-            {canReplay
-              ? "No battles yet. Run a trial and every one is kept here, replayable."
-              : "The owner has not run anything yet."}
+          <div className="empty onboarding-empty small">
+            <p>
+              {canReplay
+                ? "No battles yet. Run a trial and every one is kept here, replayable."
+                : "The owner has not run anything yet."}
+            </p>
+            {canReplay ? (
+              <button type="button" className="btn primary small" onClick={onGoToTrial}>
+                Go to Trial
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -2629,6 +2772,17 @@ function HistoryPane({
                 </div>
               ) : null}
               {warning ? <div className="history-warning">{warning}</div> : null}
+              {mine ? (
+                <details className="history-explanation">
+                  <summary>What happened?</summary>
+                  <BattleDebrief
+                    mine={mine}
+                    field={record.telemetry}
+                    winnerId={record.result.winnerId}
+                    compact
+                  />
+                </details>
+              ) : null}
             </div>
           );
         })}
