@@ -21,6 +21,7 @@ import { EVENT_DOCS, eventFields } from "./events.js";
 import {
   BUILTIN_NAMES,
   arityOf,
+  DebugMark,
   Op,
   type Chunk,
   type PropRef,
@@ -205,6 +206,7 @@ class Compiler {
   private ops: number[] = [];
   private args: number[] = [];
   private lines: number[] = [];
+  private debug: number[] = [];
   private consts: Value[] = [];
   private props: PropRef[] = [];
   private actions: string[] = [];
@@ -237,11 +239,12 @@ class Compiler {
 
   // ---- emit helpers -----------------------------------------------------
 
-  private emit(op: Op, arg: number, pos: SourcePos): number {
+  private emit(op: Op, arg: number, pos: SourcePos, debug = DebugMark.NONE): number {
     const at = this.ops.length;
     this.ops.push(op);
     this.args.push(arg);
     this.lines.push(pos.line);
+    this.debug.push(debug);
     return at;
   }
 
@@ -412,8 +415,10 @@ class Compiler {
     this.emit(Op.HALT, 0, { line: 1, col: 1 });
 
     const handlers: Record<string, number> = {};
+    const handlerLines: Record<string, number> = {};
     for (const b of blocks) {
       handlers[b.event] = this.here();
+      handlerLines[b.event] = b.pos.line;
       this.currentEvent = b.event;
       const skips = this.emitCountGate(`on:${b.event}`, b.counts, b.pos);
       for (const s of b.body) this.stmt(s);
@@ -433,12 +438,14 @@ class Compiler {
       ops: this.ops,
       args: this.args,
       lines: this.lines,
+      debug: this.debug,
       consts: this.consts,
       props: this.props,
       actions: this.actions,
       actionArity: this.actionArity,
       globals: this.globals,
       handlers,
+      handlerLines,
       initEntry,
     };
   }
@@ -677,7 +684,7 @@ class Compiler {
       case "if": {
         this.requireTest(s.cond, "if");
         this.expr(s.cond);
-        const jumpElse = this.emit(Op.JUMP_IF_FALSE, 0, s.pos);
+        const jumpElse = this.emit(Op.JUMP_IF_FALSE, 0, s.pos, DebugMark.CONDITION);
         for (const st of s.then) this.stmt(st);
         if (s.otherwise.length > 0) {
           const jumpEnd = this.emit(Op.JUMP, 0, s.pos);
@@ -769,7 +776,7 @@ class Compiler {
           // `break if x` — jump over the break when the condition is false.
           this.requireTest(s.cond, s.type);
           this.expr(s.cond);
-          const skip = this.emit(Op.JUMP_IF_FALSE, 0, s.pos);
+          const skip = this.emit(Op.JUMP_IF_FALSE, 0, s.pos, DebugMark.CONDITION);
           const j = this.emit(Op.JUMP, 0, s.pos);
           (s.type === "break" ? ctx.breaks : ctx.continues).push(j);
           this.patch(skip, this.here());

@@ -202,7 +202,7 @@ function enqueueTicks(world: World): void {
 function runScripts(world: World): void {
   for (const r of world.robots) {
     if (!r.alive) continue;
-    r.vm.run(OPS_PER_TICK);
+    r.vm.run(OPS_PER_TICK, world.tick);
     if (r.vm.lastError) r.scriptError = r.vm.lastError;
   }
 }
@@ -651,7 +651,7 @@ function segmentCircleHit(
  * peer, which is the only property that matters here.
  */
 function collectFuel(world: World): void {
-  if (world.fuel.length === 0) return;
+  if (!world.fuelConfig.enabled || world.fuel.length === 0) return;
   const reach = ROBOT_RADIUS + world.fuelConfig.radius;
   let taken = false;
 
@@ -660,9 +660,12 @@ function collectFuel(world: World): void {
     for (const f of world.fuel) {
       if (f.amount <= 0) continue; // already claimed this tick
       if (hypot(f.x - r.x, f.y - r.y) > reach) continue;
-      r.fuel = Math.min(MAX_FUEL, r.fuel + f.amount);
+      const before = r.fuel;
+      const restored = Math.min(f.amount, Math.max(0, MAX_FUEL - before));
+      r.fuel = before + restored;
       f.amount = 0;
       taken = true;
+      r.vm.enqueue("fuel collected", { amount: restored, fuel: r.fuel });
       world.effects.push({
         type: "pickup",
         x: f.x,
@@ -670,6 +673,7 @@ function collectFuel(world: World): void {
         heading: 0,
         tick: world.tick,
         actorId: r.id,
+        amount: restored,
       });
     }
   }

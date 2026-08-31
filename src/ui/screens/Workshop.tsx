@@ -75,6 +75,17 @@ import { applySnippet, findLines } from "../tour/steps.js";
 import { TrialPrefs } from "../../store/trial.js";
 import { WorkshopPrefs } from "../../store/workshop.js";
 import { useAssistantUsable } from "../../assistant/useAssistant.js";
+import {
+  chronologicalDecisions,
+  decisionReplayTick,
+  describeDecision,
+  inspectManifest,
+  mergeCoverage,
+  sourceHash,
+  type DecisionEntry,
+  type InspectionTrace,
+  type ScriptCoverage,
+} from "../../sim/inspection.js";
 
 interface Props {
   theme: Theme;
@@ -2022,6 +2033,7 @@ function TrialPane({
   const [terrainLevel, setTerrainLevel] = useState<TerrainLevel>("flat");
   const [expanded, setExpanded] = useState(false);
   const [lastOutcome, setLastOutcome] = useState<MatchOutcome | null>(null);
+  const [inspecting, setInspecting] = useState(false);
 
   // Escape leaves the expanded view. A view that fills the screen and can only
   // be dismissed by finding one small button again is a trap.
@@ -2080,6 +2092,7 @@ function TrialPane({
     const chosen = contenders.filter((c) => opponents.includes(c.id));
     foughtRef.current = chosen.map((c) => c.id);
     setLastOutcome(null);
+    setInspecting(false);
     onTrialStarted?.(foughtRef.current);
     // At size 1 this is the free-for-all it has always been: no teams stated,
     // so the manifest is byte-identical to the ones this panel used to build.
@@ -2124,6 +2137,7 @@ function TrialPane({
         telemetry: outcome.telemetry,
         myRobotId: robot.id,
         myEntryIndex: 0,
+        ...(outcome.inspection ? { inspection: outcome.inspection.coverage } : {}),
       });
       // The player is always entry zero in a trial, so first place is a win.
       // Reported with the opponents that were actually fought rather than
@@ -2171,6 +2185,7 @@ function TrialPane({
           stepSignal={stepSignal}
           onStatus={setStatus}
           onFinished={onFinished}
+          {...(canRun ? { traceRobotId: 0 } : {})}
         />
 
         <div className="readout">
@@ -2228,6 +2243,7 @@ function TrialPane({
             field={lastOutcome.telemetry}
             winnerId={lastOutcome.result.winnerId}
             onHistory={onHistory}
+            {...(lastOutcome.inspection ? { onInspect: () => setInspecting(true) } : {})}
           />
         ) : null}
 
@@ -2330,6 +2346,17 @@ function TrialPane({
         </section>
         )}
       </div>
+
+      {inspecting && lastOutcome?.inspection && manifest ? (
+        <BehaviourInspector
+          title="Trial behaviour"
+          source={manifest.entries[0]?.source ?? ""}
+          manifest={manifest}
+          theme={theme}
+          trace={lastOutcome.inspection}
+          onClose={() => setInspecting(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2343,12 +2370,14 @@ function BattleDebrief({
   field,
   winnerId,
   onHistory,
+  onInspect,
   compact = false,
 }: {
   mine: RobotTelemetry | null;
   field: readonly RobotTelemetry[];
   winnerId?: number | null;
   onHistory?: () => void;
+  onInspect?: () => void;
   compact?: boolean;
 }) {
   if (!mine) return null;
@@ -2364,11 +2393,282 @@ function BattleDebrief({
             Open history
           </button>
         ) : null}
+        {onInspect ? (
+          <button type="button" className="btn small primary" onClick={onInspect}>
+            Inspect decisions
+          </button>
+        ) : null}
       </div>
       <ul>
         {explanation.points.map((point) => <li key={point}>{point}</li>)}
       </ul>
     </section>
+  );
+}
+
+type CoverageMode = "activity" | "decisions" | "problems";
+
+function CoverageHeatmap({
+  source,
+  coverage,
+  activeLine,
+  onLine,
+}: {
+  source: string;
+  coverage: ScriptCoverage;
+  activeLine?: number;
+  onLine?: (line: number) => void;
+}) {
+  const [mode, setMode] = useState<CoverageMode>("activity");
+  const lines = source.split("\n");
+  const score = (line: number) => {
+    const item = coverage.lines[line];
+    if (!item) return 0;
+    if (mode === "decisions") return item.conditions;
+    if (mode === "problems") return item.errors + item.suspensions;
+    return item.executions;
+  };
+  const maximum = Math.max(1, ...lines.map((_line, index) => score(index + 1)));
+
+  return (
+    <div className="coverage-view">
+      <div className="coverage-toolbar">
+        <span className="silkscreen">Code heatmap</span>
+        <span className="spacer" />
+        {(["activity", "decisions", "problems"] as CoverageMode[]).map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`btn small${mode === option ? " primary" : ""}`}
+            onClick={() => setMode(option)}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+      <div className="coverage-code" role="list" aria-label={`${mode} by source line`}>
+        {lines.map((text, index) => {
+          const line = index + 1;
+          const item = coverage.lines[line];
+          const value = score(line);
+          const intensity = value === 0 ? 0 : Math.max(0.12, Math.sqrt(value / maximum));
+          const branch = item?.conditions
+            ? `${item.trueBranches} true / ${item.falseBranches} false`
+            : "";
+          const problems = item ? item.errors + item.suspensions : 0;
+          const detail = mode === "decisions" ? branch : mode === "problems"
+            ? `${problems} problem${problems === 1 ? "" : "s"}`
+            : `${item?.executions ?? 0} execution${item?.executions === 1 ? "" : "s"}`;
+          return (
+            <button
+              type="button"
+              role="listitem"
+              key={line}
+              className={`coverage-line${activeLine === line ? " active" : ""}`}
+              onClick={() => onLine?.(line)}
+              title={detail}
+            >
+              <span className="coverage-heat" style={{ opacity: intensity }} />
+              <span className="coverage-count">{value || "·"}</span>
+              <span className="coverage-number">{line}</span>
+              <code>{text || " "}</code>
+              {branch ? <span className="coverage-branch">{branch}</span> : null}
+              {problems > 0 ? <span className="coverage-problem">!{problems}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+type TimelineFilter = "all" | "events" | "actions" | "problems";
+
+function BehaviourInspector({
+  title,
+  source,
+  manifest,
+  theme,
+  trace,
+  onClose,
+}: {
+  title: string;
+  source: string;
+  manifest: MatchManifest;
+  theme: Theme;
+  trace: InspectionTrace;
+  onClose: () => void;
+}) {
+  const [filter, setFilter] = useState<TimelineFilter>("all");
+  const chronological = chronologicalDecisions(trace.timeline);
+  const filtered = chronological.filter((entry) => {
+    if (filter === "events") return entry.kind === "handler" || entry.kind === "fuel";
+    if (filter === "actions") return entry.kind === "action";
+    if (filter === "problems") return entry.kind === "error" || entry.kind === "suspend";
+    return true;
+  });
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  useEffect(() => setSelectedIndex(0), [filter, trace]);
+  const selected = filtered[Math.min(selectedIndex, Math.max(0, filtered.length - 1))] ?? null;
+  const visibleStart = Math.max(0, Math.min(selectedIndex - 100, Math.max(0, filtered.length - 250)));
+  const visible = filtered.slice(visibleStart, visibleStart + 250);
+  const chooseLine = (line: number) => {
+    const found = filtered.findIndex((entry) => entry.line === line);
+    if (found >= 0) setSelectedIndex(found);
+  };
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "ArrowDown") setSelectedIndex((value) => Math.min(filtered.length - 1, value + 1));
+      if (event.key === "ArrowUp") setSelectedIndex((value) => Math.max(0, value - 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filtered.length, onClose]);
+
+  return (
+    <div className="behaviour-inspector" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="inspector-head">
+        <div>
+          <span className="silkscreen">Behaviour Inspector</span>
+          <strong>{title}</strong>
+        </div>
+        <span className="roster-meta">Tick-rate activity is summarised in one-second windows</span>
+        <button
+          type="button"
+          className="inspector-close"
+          aria-label="Close Behaviour Inspector"
+          title="Close"
+          autoFocus
+          onClick={onClose}
+        >
+          ×
+        </button>
+      </div>
+
+      <div className="inspector-grid">
+        <div className="inspector-replay">
+          <MatchCanvas
+            manifest={manifest}
+            theme={theme}
+            showCones
+            running={false}
+            seekTick={selected ? decisionReplayTick(selected) : 1}
+          />
+          <DecisionDetail entry={selected} theme={theme} />
+          <EventCoverageList coverage={trace.coverage} />
+        </div>
+
+        <CoverageHeatmap
+          source={source}
+          coverage={trace.coverage}
+          {...(selected ? { activeLine: selected.line } : {})}
+          onLine={chooseLine}
+        />
+
+        <div className="decision-timeline">
+          <div className="timeline-toolbar">
+            {(["all", "events", "actions", "problems"] as TimelineFilter[]).map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={`btn small${filter === option ? " primary" : ""}`}
+                onClick={() => setFilter(option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+          <div className="timeline-nav">
+            <button type="button" className="btn small" disabled={selectedIndex === 0} onClick={() => setSelectedIndex((i) => i - 1)}>Previous</button>
+            <span className="roster-meta">
+              {filtered.length ? selectedIndex + 1 : 0} / {filtered.length} moment{filtered.length === 1 ? "" : "s"}
+            </span>
+            <button type="button" className="btn small" disabled={selectedIndex >= filtered.length - 1} onClick={() => setSelectedIndex((i) => i + 1)}>Next</button>
+          </div>
+          <div className="timeline-list">
+            {visible.map((entry, visibleIndex) => {
+              const index = visibleStart + visibleIndex;
+              return (
+              <button
+                type="button"
+                key={`${entry.tick}:${entry.line}:${entry.kind}:${index}`}
+                className={`timeline-entry kind-${entry.kind}${index === selectedIndex ? " active" : ""}`}
+                onClick={() => setSelectedIndex(index)}
+              >
+                <span>
+                  {describeDecision(entry, THEMES[theme].fuel)}
+                  {entry.endFuel !== undefined ? (
+                    <span className="timeline-energy">
+                      {fuelHeading(theme)} {Math.round(entry.endFuel)}%
+                    </span>
+                  ) : null}
+                </span>
+                <span className="roster-meta">{entry.line > 0 ? `line ${entry.line}` : "arena"}</span>
+              </button>
+              );
+            })}
+            {filtered.length === 0 ? <p className="empty small">No decisions match this filter.</p> : null}
+          </div>
+          {trace.truncated ? <p className="notice">The timeline was capped; coverage still includes the whole fight.</p> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DecisionDetail({ entry, theme }: { entry: DecisionEntry | null; theme: Theme }) {
+  if (!entry) return <div className="decision-detail empty">Choose a decision to explain it.</div>;
+  const contextual = entry.kind === "handler" || entry.kind === "condition" || entry.kind === "action";
+  const eventValues = contextual ? Object.entries(entry.eventValues) : [];
+  const variables = contextual ? Object.entries(entry.variables) : [];
+  return (
+    <div className="decision-detail">
+      <strong>{describeDecision(entry, THEMES[theme].fuel)}</strong>
+      <p>
+        {entry.kind === "handler" ? `The ${entry.event} event started this handler.` : null}
+        {entry.kind === "condition" ? `The condition on line ${entry.line} selected the ${entry.result ? "first" : "other"} branch.` : null}
+        {entry.kind === "action" ? `The ${entry.event} handler reached this action with the values shown below.` : null}
+        {entry.kind === "suspend" ? "The handler used its full instruction allowance and resumed on the next simulation tick." : null}
+        {entry.kind === "wait" ? `The script deliberately paused this handler for ${entry.ticks} ticks.` : null}
+        {entry.kind === "error" ? entry.message : null}
+        {entry.kind === "fuel"
+          ? `The robot collected ${entry.amount.toFixed(1)} ${THEMES[theme].fuel} and finished the tick at ${Math.round(entry.endFuel ?? 0)}%.`
+          : null}
+      </p>
+      {eventValues.length > 0 ? <ValueList title="Event" values={eventValues} /> : null}
+      {variables.length > 0 ? <ValueList title="Variables" values={variables} /> : null}
+    </div>
+  );
+}
+
+function ValueList({ title, values }: { title: string; values: Array<[string, unknown]> }) {
+  return (
+    <div className="inspector-values">
+      <span className="silkscreen">{title}</span>
+      {values.map(([name, value]) => (
+        <span key={name}><code>{name}</code><strong>{String(value)}</strong></span>
+      ))}
+    </div>
+  );
+}
+
+function EventCoverageList({ coverage }: { coverage: ScriptCoverage }) {
+  const events = Object.entries(coverage.events).sort((a, b) => b[1].queued - a[1].queued);
+  return (
+    <details className="event-coverage">
+      <summary>Event coverage ({events.length})</summary>
+      <p className="event-coverage-note">Raw occurrences are shown here; continuous runs are grouped in the timeline.</p>
+      {events.map(([name, counts]) => (
+        <div key={name} className="event-coverage-row">
+          <code>{name}</code>
+          {counts.queued === 0 ? <span className="bad">never happened</span> : <span>{counts.queued} arrived</span>}
+          <span>{counts.handled} handled</span>
+          {counts.dropped ? <span className="bad">{counts.dropped} dropped</span> : null}
+        </div>
+      ))}
+    </details>
   );
 }
 
@@ -2676,9 +2976,59 @@ function HistoryPane({
   onGoToTrial: () => void;
 }) {
   const [replay, setReplay] = useState<BattleRecord | null>(null);
+  const [inspection, setInspection] = useState<{ record: BattleRecord; trace: InspectionTrace } | null>(null);
+  const [coverageScope, setCoverageScope] = useState<"all" | "wins" | "losses">("all");
+  const [coverageProgress, setCoverageProgress] = useState<{ done: number; total: number } | null>(null);
   const own = robot ? lib.battles.forRobot(robot.id) : [];
   const records = canReplay ? own : (sharedEntries ?? []);
   const h2h = robot && canReplay ? lib.battles.headToHead(robot.id) : [];
+  const [coverageVersion, setCoverageVersion] = useState(() => sourceHash(robot?.source ?? ""));
+  useEffect(() => setCoverageVersion(sourceHash(robot?.source ?? "")), [robot?.id, robot?.source]);
+  const coverageVersions = new Map<string, {
+    source: string;
+    label: string;
+    count: number;
+    measured: number;
+  }>();
+  if (robot && canReplay) {
+    for (const record of own) {
+      if (record.myEntryIndex === null) continue;
+      const source = record.manifest.entries[record.myEntryIndex]?.source;
+      if (!source) continue;
+      const hash = sourceHash(source);
+      const existing = coverageVersions.get(hash);
+      if (existing) {
+        existing.count++;
+        if (record.inspection) existing.measured++;
+      }
+      else {
+        const snapshot = robot.snapshots.find((item) => item.source === source);
+        coverageVersions.set(hash, {
+          source,
+          label: source === robot.source ? "Current working copy" : snapshot?.label ?? `Historical ${hash}`,
+          count: 1,
+          measured: record.inspection ? 1 : 0,
+        });
+      }
+    }
+  }
+  const selectedCoverageVersion = coverageVersions.get(coverageVersion) ?? [...coverageVersions.values()][0];
+  const compatible = robot && canReplay
+    ? own.filter((record) =>
+        record.inspection && record.myEntryIndex !== null &&
+        record.manifest.entries[record.myEntryIndex]?.source === selectedCoverageVersion?.source &&
+        (coverageScope === "all" ||
+          (coverageScope === "wins" && record.result.winnerId === record.myEntryIndex) ||
+          (coverageScope === "losses" && record.result.winnerId !== null && record.result.winnerId !== record.myEntryIndex)))
+    : [];
+  const aggregateCoverage = mergeCoverage(
+    compatible.flatMap((record) => record.inspection ? [record.inspection] : []),
+  );
+  const missingCoverage = robot && canReplay
+    ? own.filter((record) =>
+        !record.inspection && record.myEntryIndex !== null &&
+        record.manifest.entries[record.myEntryIndex]?.source === selectedCoverageVersion?.source)
+    : [];
 
   // The owner shares the record so advice is not given blind. Summaries only:
   // a replay needs manifests that live on the owner's machine.
@@ -2692,6 +3042,19 @@ function HistoryPane({
     onShare(summary);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inSession, canReplay, own.length]);
+
+  if (inspection && inspection.record.myEntryIndex !== null) {
+    return (
+      <BehaviourInspector
+        title={`${inspection.record.result.winnerName ?? "Draw"} · ${new Date(inspection.record.at).toLocaleString()}`}
+        source={inspection.record.manifest.entries[inspection.record.myEntryIndex]?.source ?? ""}
+        manifest={inspection.record.manifest}
+        theme={theme}
+        trace={inspection.trace}
+        onClose={() => setInspection(null)}
+      />
+    );
+  }
 
   if (replay) {
     return (
@@ -2716,6 +3079,72 @@ function HistoryPane({
         <span className="roster-meta">{records.length} battles</span>
       </div>
       <div className="panel-body">
+        {selectedCoverageVersion ? (
+          <details className="history-coverage">
+            <summary>
+              Code coverage across {compatible.length} compatible battle{compatible.length === 1 ? "" : "s"}
+            </summary>
+            <div className="coverage-scope" role="group" aria-label="Coverage battles">
+              <select
+                className="btn small"
+                aria-label="Script version"
+                value={sourceHash(selectedCoverageVersion.source)}
+                onChange={(event) => setCoverageVersion(event.target.value)}
+              >
+                {[...coverageVersions].map(([hash, version]) => (
+                  <option key={hash} value={hash}>
+                    {version.label} · {version.measured}/{version.count} analysed
+                  </option>
+                ))}
+              </select>
+              {(["all", "wins", "losses"] as const).map((scope) => (
+                <button
+                  key={scope}
+                  type="button"
+                  className={`btn small${coverageScope === scope ? " primary" : ""}`}
+                  onClick={() => setCoverageScope(scope)}
+                >
+                  {scope}
+                </button>
+              ))}
+              {missingCoverage.length > 0 ? (
+                <button
+                  type="button"
+                  className="btn small"
+                  disabled={coverageProgress !== null}
+                  onClick={async () => {
+                    const pending = [...missingCoverage];
+                    setCoverageProgress({ done: 0, total: pending.length });
+                    for (let index = 0; index < pending.length; index++) {
+                      const record = pending[index]!;
+                      const entryIndex = record.myEntryIndex;
+                      if (entryIndex !== null) {
+                        const analysed = inspectManifest(record.manifest, entryIndex);
+                        lib.battles.attachInspection(record.id, analysed.trace.coverage);
+                      }
+                      setCoverageProgress({ done: index + 1, total: pending.length });
+                      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+                    }
+                    setCoverageProgress(null);
+                  }}
+                >
+                  {coverageProgress
+                    ? `Analysing ${coverageProgress.done}/${coverageProgress.total}`
+                    : `Analyse ${missingCoverage.length} older`}
+                </button>
+              ) : null}
+            </div>
+            {aggregateCoverage ? (
+              <>
+                <EventCoverageList coverage={aggregateCoverage} />
+                <CoverageHeatmap source={selectedCoverageVersion.source} coverage={aggregateCoverage} />
+              </>
+            ) : (
+              <p className="empty small">No {coverageScope} battles are available for this version.</p>
+            )}
+          </details>
+        ) : null}
+
         {h2h.length > 0 ? (
           <>
             <div className="silkscreen">Record</div>
@@ -2758,9 +3187,23 @@ function HistoryPane({
                 <span className="who">{record.result.winnerName ?? "No winner"} won</span>
                 <span className="roster-meta">{new Date(record.at).toLocaleString()}</span>
                 {canReplay ? (
-                  <button type="button" className="btn small" onClick={() => setReplay(record)}>
-                    Watch
-                  </button>
+                  <>
+                    <button type="button" className="btn small" onClick={() => setReplay(record)}>
+                      Watch
+                    </button>
+                    <button
+                      type="button"
+                      className="btn small primary"
+                      onClick={() => {
+                        if (record.myEntryIndex === null) return;
+                        const inspected = inspectManifest(record.manifest, record.myEntryIndex);
+                        lib.battles.attachInspection(record.id, inspected.trace.coverage);
+                        setInspection({ record, trace: inspected.trace });
+                      }}
+                    >
+                      Inspect
+                    </button>
+                  </>
                 ) : null}
               </div>
               {mine ? (

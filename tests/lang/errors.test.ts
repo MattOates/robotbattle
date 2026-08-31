@@ -136,7 +136,7 @@ const PARSER: Case[] = [
     what: "invents an event",
     source: `${H}on wobble\n  stop\nend\n`,
     message: "`wobble` isn't an event I can tell you about",
-    hint: "events are: start, tick, sense robot, sense bullet, sense wall, sense fuel, ping robot, ping fuel, ping wall, ping slope, ping ridge, hit wall, hit robot, hit by bullet, bullet hit, bullet missed, robot destroyed, radio",
+    hint: "events are: start, tick, sense robot, sense bullet, sense wall, sense fuel, fuel collected, ping robot, ping fuel, ping wall, ping slope, ping ridge, hit wall, hit robot, hit by bullet, bullet hit, bullet missed, robot destroyed, radio",
   },
   {
     what: "forgets the `end`",

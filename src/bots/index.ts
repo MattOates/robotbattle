@@ -518,6 +518,12 @@ on sense fuel
   drive forward 100
 end
 
+on fuel collected
+  -- Confirm the meal and show how full the tank is now. Finding food and
+  -- actually collecting it are separate events.
+  set name = "yum! " + round(event.fuel) + "% full"
+end
+
 on ping fuel
   -- The beam found food a long way off. Keep the beam on it so the next ping
   -- checks it is still there, then set off.

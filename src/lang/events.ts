@@ -67,6 +67,10 @@ const AMOUNT: FieldDoc = {
   name: "amount",
   detail: "How much {fuel} you get for driving over it.",
 };
+const FUEL: FieldDoc = {
+  name: "fuel",
+  detail: "How much {fuel} you have after collecting it, out of 100.",
+};
 const RISE: FieldDoc = {
   name: "rise",
   detail:
@@ -136,6 +140,10 @@ export const EVENT_DOCS: Readonly<Record<EventName, EventDoc>> = {
     summary:
       "There is {fuel} in your sense cone. Driving over it fills your tank; moving, turning, {fire} and {ping} are what empty it.",
     fields: [BEARING, DISTANCE, AMOUNT, X, Y],
+  },
+  "fuel collected": {
+    summary: "You drove over {fuel} and collected it. This is the moment to choose what to do with the energy you gained.",
+    fields: [AMOUNT, FUEL],
   },
   "ping robot": {
     summary:

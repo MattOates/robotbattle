@@ -44,6 +44,8 @@ on sense bullet
 end
 on sense wall
 end
+on fuel collected
+end
 on hit wall
 end
 on hit robot
@@ -58,7 +60,7 @@ on robot destroyed
 end
 `);
     expect(p.handlers.map((h) => h.event)).toEqual([
-      "start", "tick", "sense robot", "sense bullet", "sense wall",
+      "start", "tick", "sense robot", "sense bullet", "sense wall", "fuel collected",
       "hit wall", "hit robot", "hit by bullet", "bullet hit",
       "bullet missed", "robot destroyed",
     ]);

@@ -61,6 +61,12 @@ export const enum Op {
 
 export type Value = number | string | boolean | null;
 
+/** Semantic markers used only by the optional Behaviour Inspector. */
+export const enum DebugMark {
+  NONE,
+  CONDITION,
+}
+
 /** A property readable from a script, e.g. `me.heading`. */
 export interface PropRef {
   obj: "me" | "arena" | "event";
@@ -78,6 +84,8 @@ export interface Chunk {
   args: number[];
   /** Source line per instruction, for runtime error reporting. Not part of program identity. */
   lines: number[];
+  /** Semantic role per instruction. Observational and excluded from program identity. */
+  debug: number[];
   consts: Value[];
   props: PropRef[];
   /** Action kind strings, indexed by ACTION's arg. */
@@ -88,6 +96,8 @@ export interface Chunk {
   globals: string[];
   /** Entry address per event name. */
   handlers: Record<string, number>;
+  /** Header source line per event, for debugger navigation only. */
+  handlerLines: Record<string, number>;
   /** Entry address for the global-initialiser prelude. */
   initEntry: number;
 }

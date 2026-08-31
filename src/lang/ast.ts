@@ -15,6 +15,9 @@ export const EVENT_NAMES = [
   "sense bullet",
   "sense wall",
   "sense fuel",
+  // Raised after driving over a cell/morsel, with both the amount restored and
+  // the new tank/food level. Unlike sensing, this is something that happened.
+  "fuel collected",
   // Returns from the narrow beam. Kept as their own events rather than as a
   // field on `sense`, because which instrument found something is the whole
   // point: the cone sees anything nearby, the beam sees only where it is

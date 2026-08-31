@@ -13,7 +13,7 @@
  * to run a stranger's script.
  */
 
-import { Op, type Chunk, type PropRef, type Value } from "./bytecode.js";
+import { DebugMark, Op, type Chunk, type PropRef, type Value } from "./bytecode.js";
 import { BUILTIN_NAMES } from "./bytecode.js";
 import { PACK_SEPARATOR } from "./builtins.js";
 import { atan2Deg, cosDeg, hypot, sinDeg } from "../sim/math.js";
@@ -56,6 +56,43 @@ export interface RuntimeError {
   event: string;
 }
 
+export type VmTraceEntry =
+  | { kind: "queued"; tick: number; event: string }
+  | { kind: "dropped"; tick: number; event: string }
+  | { kind: "line"; tick: number; line: number; event: string }
+  | {
+      kind: "handler";
+      tick: number;
+      line: number;
+      event: string;
+      eventValues: EventPayload;
+      variables: Readonly<Record<string, Value>>;
+    }
+  | {
+      kind: "condition";
+      tick: number;
+      line: number;
+      event: string;
+      result: boolean;
+      eventValues: EventPayload;
+      variables: Readonly<Record<string, Value>>;
+    }
+  | {
+      kind: "action";
+      tick: number;
+      line: number;
+      event: string;
+      action: string;
+      args: Value[];
+      eventValues: EventPayload;
+      variables: Readonly<Record<string, Value>>;
+    }
+  | { kind: "wait"; tick: number; line: number; event: string; ticks: number }
+  | { kind: "suspend"; tick: number; line: number; event: string }
+  | { kind: "error"; tick: number; line: number; event: string; message: string };
+
+export type VmTraceSink = (entry: VmTraceEntry) => void;
+
 /** How many queued events a robot may accumulate before the oldest is dropped. */
 const MAX_QUEUE = 8;
 
@@ -67,6 +104,9 @@ export class Vm {
   private queue: PendingEvent[] = [];
   /** True once the global initialiser has run. */
   private initialised = false;
+  private traceSink: VmTraceSink | null = null;
+  private traceTick = 0;
+  private lastTraceLine = 0;
 
   /** Set when a handler aborts; surfaced in the UI, never fatal to the match. */
   lastError: RuntimeError | null = null;
@@ -93,6 +133,26 @@ export class Vm {
     this.chunk = chunk;
     this.host = host;
     this.globals = new Array<Value>(chunk.globals.length).fill(null);
+  }
+
+  /** Attach or remove an observer. It can see execution but cannot affect it. */
+  setTraceSink(sink: VmTraceSink | null): void {
+    this.traceSink = sink;
+  }
+
+  private variables(): Readonly<Record<string, Value>> {
+    const out: Record<string, Value> = {};
+    this.chunk.globals.forEach((name, index) => {
+      if (!name.startsWith("__")) out[name] = this.globals[index] ?? null;
+    });
+    return out;
+  }
+
+  private context(fiber: Fiber) {
+    return {
+      eventValues: fiber.payload ?? {},
+      variables: this.variables(),
+    };
   }
 
   /** Does the script care about this event at all? Lets the sim skip work. */
@@ -130,17 +190,20 @@ export class Vm {
     if (this.queue.length >= MAX_QUEUE) {
       if (lowPriority) return false;
       // Drop the oldest: under overload, recent information is the useful kind.
-      this.queue.shift();
+      const dropped = this.queue.shift();
       this.eventsDropped++;
+      if (dropped) this.traceSink?.({ kind: "dropped", tick: this.traceTick, event: dropped.name });
     }
     this.queue.push({ name, payload });
+    this.traceSink?.({ kind: "queued", tick: this.traceTick, event: name });
     return true;
   }
 
   /**
    * Run for up to `ops` instructions. Called once per simulation tick.
    */
-  run(ops: number): void {
+  run(ops: number, tick = 0): void {
+    this.traceTick = tick;
     let budget = ops;
 
     if (!this.initialised) {
@@ -167,6 +230,15 @@ export class Vm {
           waiting: 0,
           event: next.name,
         };
+        const line = this.chunk.handlerLines[next.name] ?? this.chunk.lines[entry] ?? 0;
+        this.lastTraceLine = 0;
+        this.traceSink?.({
+          kind: "handler",
+          tick,
+          line,
+          event: next.name,
+          ...this.context(this.fiber),
+        });
       }
 
       if (this.fiber.waiting > 0) {
@@ -183,7 +255,15 @@ export class Vm {
     // mid-flight it has been suspended and will resume next tick — which is
     // exactly the thing a player wants to know about when their robot feels
     // sluggish.
-    if (this.fiber !== null && this.fiber.waiting === 0) this.suspensions++;
+    if (this.fiber !== null && this.fiber.waiting === 0) {
+      this.suspensions++;
+      this.traceSink?.({
+        kind: "suspend",
+        tick,
+        line: this.chunk.lines[this.fiber.pc] ?? 0,
+        event: this.fiber.event,
+      });
+    }
   }
 
   /** Execute instructions until the fiber ends, waits, or exhausts the quantum. */
@@ -202,7 +282,13 @@ export class Vm {
       }
       const op = ops[pc]!;
       const arg = args[pc]!;
+      const line = lines[pc] ?? 0;
       fiber.pc = pc + 1;
+
+      if (this.traceSink && line > 0 && line !== this.lastTraceLine) {
+        this.lastTraceLine = line;
+        this.traceSink({ kind: "line", tick: this.traceTick, line, event: fiber.event });
+      }
 
       try {
         switch (op) {
@@ -234,7 +320,17 @@ export class Vm {
           case Op.ACTION: {
             const arity = this.chunk.actionArity[arg]!;
             const actionArgs = arity === 0 ? [] : stack.splice(stack.length - arity, arity);
-            this.host.doAction(this.chunk.actions[arg]!, actionArgs);
+            const action = this.chunk.actions[arg]!;
+            this.traceSink?.({
+              kind: "action",
+              tick: this.traceTick,
+              line,
+              event: fiber.event,
+              action,
+              args: [...actionArgs],
+              ...this.context(fiber),
+            });
+            this.host.doAction(action, actionArgs);
             break;
           }
           case Op.CALL:
@@ -327,7 +423,20 @@ export class Vm {
             fiber.pc = arg;
             break;
           case Op.JUMP_IF_FALSE:
-            if (!truthy(stack.pop() ?? null)) fiber.pc = arg;
+            {
+              const result = truthy(stack.pop() ?? null);
+              if (this.chunk.debug[pc] === DebugMark.CONDITION) {
+                this.traceSink?.({
+                  kind: "condition",
+                  tick: this.traceTick,
+                  line,
+                  event: fiber.event,
+                  result,
+                  ...this.context(fiber),
+                });
+              }
+              if (!result) fiber.pc = arg;
+            }
             break;
           case Op.JUMP_IF_TRUE:
             if (truthy(stack.pop() ?? null)) fiber.pc = arg;
@@ -335,6 +444,13 @@ export class Vm {
 
           case Op.WAIT: {
             const n = Math.floor(toNum(stack.pop() ?? null));
+            this.traceSink?.({
+              kind: "wait",
+              tick: this.traceTick,
+              line,
+              event: fiber.event,
+              ticks: Math.max(0, n),
+            });
             if (n > 0) {
               fiber.waiting = n;
               return budget;
@@ -358,6 +474,13 @@ export class Vm {
           line: lines[pc] ?? 0,
           event: fiber.event,
         };
+        this.traceSink?.({
+          kind: "error",
+          tick: this.traceTick,
+          line: lines[pc] ?? 0,
+          event: fiber.event,
+          message: this.lastError.message,
+        });
         this.fiber = null;
         return budget;
       }

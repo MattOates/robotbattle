@@ -19,6 +19,7 @@ import { collectTelemetry } from "../sim/telemetry.js";
 import { summarise, type MatchResult } from "../sim/match.js";
 import type { RobotTelemetry } from "../store/types.js";
 import type { Theme } from "../lang/vocab.js";
+import { observeRobotFuel, TraceRecorder, type InspectionTrace } from "../sim/inspection.js";
 
 export interface MatchStatus {
   tick: number;
@@ -47,6 +48,7 @@ export interface MatchStatus {
 export interface MatchOutcome {
   result: MatchResult;
   telemetry: RobotTelemetry[];
+  inspection?: InspectionTrace;
 }
 
 interface Props {
@@ -56,6 +58,8 @@ interface Props {
   running: boolean;
   /** Increment to advance exactly one tick while paused. */
   stepSignal?: number;
+  /** Rebuild a paused replay at this tick. Used by the Behaviour Inspector. */
+  seekTick?: number;
   /**
    * Playback rate. 1 is real time, which is what a live match must always be;
    * a replay of something already decided can reasonably be skimmed faster.
@@ -64,6 +68,8 @@ interface Props {
   onStatus?: (status: MatchStatus) => void;
   /** Fired once when a match ends, with everything worth keeping. */
   onFinished?: (outcome: MatchOutcome) => void;
+  /** Record semantic script decisions for this entry. Off unless explicitly requested. */
+  traceRobotId?: number;
   /**
    * Called once per simulated tick, with the world as it now stands.
    *
@@ -97,9 +103,11 @@ export function MatchCanvas({
   showCones,
   running,
   stepSignal = 0,
+  seekTick,
   speed = 1,
   onStatus,
   onFinished,
+  traceRobotId,
   autoRestart,
   onTick,
   fit = "contain",
@@ -110,6 +118,8 @@ export function MatchCanvas({
   const rendererRef = useRef<ArenaRenderer | null>(null);
   const worldRef = useRef<World | null>(null);
   const manifestRef = useRef<MatchManifest | null>(manifest);
+  const traceRef = useRef<TraceRecorder | null>(null);
+  const traceRobotRef = useRef<number | undefined>(traceRobotId);
 
   // Read inside the animation frame without re-creating it.
   const runningRef = useRef(running);
@@ -131,6 +141,7 @@ export function MatchCanvas({
   tickRef.current = onTick;
   finishedRef.current = onFinished;
   restartRef.current = autoRestart;
+  traceRobotRef.current = traceRobotId;
 
   const readStatus = (world: World): MatchStatus => ({
     tick: world.tick,
@@ -199,16 +210,42 @@ export function MatchCanvas({
     redrawRef.current = true;
     if (!manifest) {
       worldRef.current = null;
+      traceRef.current = null;
       rendererRef.current?.reset();
       return;
     }
     const world = createWorld(manifest);
+    const tracedSource = traceRobotId === undefined ? null : manifest.entries[traceRobotId]?.source;
+    const recorder = tracedSource === null || tracedSource === undefined
+      ? null
+      : new TraceRecorder(tracedSource);
+    if (recorder && traceRobotId !== undefined) {
+      const robot = world.robots[traceRobotId];
+      if (robot) recorder.seedHandlers(robot.chunk.handlers);
+      robot?.vm.setTraceSink(recorder.sink);
+      if (robot) recorder.observeFuel(world.tick, robot.fuel);
+    }
+    traceRef.current = recorder;
     worldRef.current = world;
     rendererRef.current?.reset();
     rendererRef.current?.onStep(world);
     statusRef.current?.(readStatus(world));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manifest]);
+  }, [manifest, traceRobotId]);
+
+  useEffect(() => {
+    if (seekTick === undefined || !manifest) return;
+    const world = createWorld(manifest);
+    const target = Math.max(0, Math.min(world.maxTicks, Math.floor(seekTick)));
+    while (!world.over && world.tick < target) step(world);
+    worldRef.current = world;
+    reportedRef.current = world.over || world.tick >= world.maxTicks;
+    rendererRef.current?.reset();
+    rendererRef.current?.onStep(world);
+    redrawRef.current = true;
+    statusRef.current?.(readStatus(world));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seekTick, manifest]);
 
   // --- the loop -----------------------------------------------------------
   useEffect(() => {
@@ -240,6 +277,9 @@ export function MatchCanvas({
         accumulator = Math.min(accumulator + elapsed * rate, TICK_MS * MAX_CATCHUP * rate);
         while (accumulator >= TICK_MS && !ended()) {
           step(world);
+          const recorder = traceRef.current;
+          const robotId = traceRobotRef.current;
+          if (recorder && robotId !== undefined) observeRobotFuel(recorder, world, robotId);
           renderer.onStep(world);
           tickRef.current?.(world);
           accumulator -= TICK_MS;
@@ -266,9 +306,11 @@ export function MatchCanvas({
       if (ended() && !reportedRef.current) {
         reportedRef.current = true;
         statusRef.current?.(readStatus(world));
+        const inspection = traceRef.current?.trace;
         finishedRef.current?.({
           result: summarise(world),
           telemetry: collectTelemetry(world),
+          ...(inspection ? { inspection } : {}),
         });
 
         const restart = restartRef.current;
@@ -276,6 +318,7 @@ export function MatchCanvas({
         if (restart && currentManifest) {
           // Menu background: roll straight into another fight.
           const next = createWorld({ ...currentManifest, seed: restart() });
+          traceRef.current = null;
           worldRef.current = next;
           reportedRef.current = false;
           renderer.reset();
@@ -299,6 +342,9 @@ export function MatchCanvas({
     const world = worldRef.current;
     if (!world || world.over) return;
     step(world);
+    const recorder = traceRef.current;
+    const robotId = traceRobotRef.current;
+    if (recorder && robotId !== undefined) observeRobotFuel(recorder, world, robotId);
     rendererRef.current?.onStep(world);
     tickRef.current?.(world);
     redrawRef.current = true;
