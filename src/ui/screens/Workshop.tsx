@@ -75,6 +75,7 @@ import { applySnippet, findLines } from "../tour/steps.js";
 import { TrialPrefs } from "../../store/trial.js";
 import { WorkshopPrefs } from "../../store/workshop.js";
 import { useAssistantUsable } from "../../assistant/useAssistant.js";
+import { readVariables } from "../../lang/vm.js";
 import {
   chronologicalDecisions,
   decisionReplayTick,
@@ -2446,7 +2447,7 @@ function CoverageHeatmap({
           </button>
         ))}
       </div>
-      <div className="coverage-code" role="list" aria-label={`${mode} by source line`}>
+      <div className="coverage-code" aria-label={`${mode} by source line`}>
         {lines.map((text, index) => {
           const line = index + 1;
           const item = coverage.lines[line];
@@ -2462,8 +2463,8 @@ function CoverageHeatmap({
           return (
             <button
               type="button"
-              role="listitem"
               key={line}
+              aria-label={`Line ${line}, ${detail}`}
               className={`coverage-line${activeLine === line ? " active" : ""}`}
               onClick={() => onLine?.(line)}
               title={detail}
@@ -2500,32 +2501,48 @@ function BehaviourInspector({
   onClose: () => void;
 }) {
   const [filter, setFilter] = useState<TimelineFilter>("all");
-  const chronological = chronologicalDecisions(trace.timeline);
-  const filtered = chronological.filter((entry) => {
+  // A full match can leave twelve thousand moments here. Sorting and filtering
+  // them on every render made selecting one feel slower than the fight itself.
+  const chronological = useMemo(() => chronologicalDecisions(trace.timeline), [trace]);
+  const filtered = useMemo(() => chronological.filter((entry) => {
     if (filter === "events") return entry.kind === "handler" || entry.kind === "fuel";
     if (filter === "actions") return entry.kind === "action";
     if (filter === "problems") return entry.kind === "error" || entry.kind === "suspend";
     return true;
-  });
+  }), [chronological, filter]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   useEffect(() => setSelectedIndex(0), [filter, trace]);
   const selected = filtered[Math.min(selectedIndex, Math.max(0, filtered.length - 1))] ?? null;
   const visibleStart = Math.max(0, Math.min(selectedIndex - 100, Math.max(0, filtered.length - 250)));
   const visible = filtered.slice(visibleStart, visibleStart + 250);
+  // Clicking a line means "show me this line", and the moment you want is the
+  // next time it ran, not the first time it ever ran. Wraps back to the start.
   const chooseLine = (line: number) => {
-    const found = filtered.findIndex((entry) => entry.line === line);
-    if (found >= 0) setSelectedIndex(found);
+    const at = (index: number) => filtered[index]?.line === line;
+    for (let step = 1; step <= filtered.length; step++) {
+      const index = (selectedIndex + step) % filtered.length;
+      if (at(index)) return setSelectedIndex(index);
+    }
   };
 
+  const listRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
-      if (event.key === "ArrowDown") setSelectedIndex((value) => Math.min(filtered.length - 1, value + 1));
-      if (event.key === "ArrowUp") setSelectedIndex((value) => Math.max(0, value - 1));
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      // Without this the page behind the inspector scrolls as you walk the list.
+      event.preventDefault();
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      setSelectedIndex((value) => Math.max(0, Math.min(filtered.length - 1, value + delta)));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [filtered.length, onClose]);
+
+  // Keyboard selection has to stay on screen to be worth having.
+  useEffect(() => {
+    listRef.current?.querySelector(".timeline-entry.active")?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex, filter]);
 
   return (
     <div className="behaviour-inspector" role="dialog" aria-modal="true" aria-label={title}>
@@ -2556,7 +2573,7 @@ function BehaviourInspector({
             running={false}
             seekTick={selected ? decisionReplayTick(selected) : 1}
           />
-          <DecisionDetail entry={selected} theme={theme} />
+          <DecisionDetail entry={selected} names={trace.variableNames} theme={theme} />
           <EventCoverageList coverage={trace.coverage} />
         </div>
 
@@ -2587,7 +2604,7 @@ function BehaviourInspector({
             </span>
             <button type="button" className="btn small" disabled={selectedIndex >= filtered.length - 1} onClick={() => setSelectedIndex((i) => i + 1)}>Next</button>
           </div>
-          <div className="timeline-list">
+          <div className="timeline-list" ref={listRef}>
             {visible.map((entry, visibleIndex) => {
               const index = visibleStart + visibleIndex;
               return (
@@ -2618,11 +2635,15 @@ function BehaviourInspector({
   );
 }
 
-function DecisionDetail({ entry, theme }: { entry: DecisionEntry | null; theme: Theme }) {
+function DecisionDetail({ entry, names, theme }: {
+  entry: DecisionEntry | null;
+  names: readonly string[];
+  theme: Theme;
+}) {
   if (!entry) return <div className="decision-detail empty">Choose a decision to explain it.</div>;
   const contextual = entry.kind === "handler" || entry.kind === "condition" || entry.kind === "action";
   const eventValues = contextual ? Object.entries(entry.eventValues) : [];
-  const variables = contextual ? Object.entries(entry.variables) : [];
+  const variables = contextual ? readVariables(names, entry.variables) : [];
   return (
     <div className="decision-detail">
       <strong>{describeDecision(entry, THEMES[theme].fuel)}</strong>
@@ -2979,31 +3000,39 @@ function HistoryPane({
   const [inspection, setInspection] = useState<{ record: BattleRecord; trace: InspectionTrace } | null>(null);
   const [coverageScope, setCoverageScope] = useState<"all" | "wins" | "losses">("all");
   const [coverageProgress, setCoverageProgress] = useState<{ done: number; total: number } | null>(null);
+  // Analysing a battle attaches coverage to a record that already exists, so
+  // the log's length is unchanged and the memos below have nothing else to
+  // notice. Bump this whenever coverage is written.
+  const [coverageRevision, setCoverageRevision] = useState(0);
   const own = robot ? lib.battles.forRobot(robot.id) : [];
   const records = canReplay ? own : (sharedEntries ?? []);
   const h2h = robot && canReplay ? lib.battles.headToHead(robot.id) : [];
   const [coverageVersion, setCoverageVersion] = useState(() => sourceHash(robot?.source ?? ""));
   useEffect(() => setCoverageVersion(sourceHash(robot?.source ?? "")), [robot?.id, robot?.source]);
-  const coverageVersions = new Map<string, {
-    source: string;
-    label: string;
-    count: number;
-    measured: number;
-  }>();
-  if (robot && canReplay) {
+  // Every one of these walks the whole battle log, so they are worth keeping
+  // off the render path: the list only changes when a battle is recorded or a
+  // filter moves.
+  const coverageVersions = useMemo(() => {
+    const versions = new Map<string, {
+      source: string;
+      label: string;
+      count: number;
+      measured: number;
+    }>();
+    if (!robot || !canReplay) return versions;
     for (const record of own) {
       if (record.myEntryIndex === null) continue;
       const source = record.manifest.entries[record.myEntryIndex]?.source;
       if (!source) continue;
       const hash = sourceHash(source);
-      const existing = coverageVersions.get(hash);
+      const existing = versions.get(hash);
       if (existing) {
         existing.count++;
         if (record.inspection) existing.measured++;
       }
       else {
         const snapshot = robot.snapshots.find((item) => item.source === source);
-        coverageVersions.set(hash, {
+        versions.set(hash, {
           source,
           label: source === robot.source ? "Current working copy" : snapshot?.label ?? `Historical ${hash}`,
           count: 1,
@@ -3011,24 +3040,50 @@ function HistoryPane({
         });
       }
     }
-  }
-  const selectedCoverageVersion = coverageVersions.get(coverageVersion) ?? [...coverageVersions.values()][0];
-  const compatible = robot && canReplay
-    ? own.filter((record) =>
-        record.inspection && record.myEntryIndex !== null &&
-        record.manifest.entries[record.myEntryIndex]?.source === selectedCoverageVersion?.source &&
-        (coverageScope === "all" ||
-          (coverageScope === "wins" && record.result.winnerId === record.myEntryIndex) ||
-          (coverageScope === "losses" && record.result.winnerId !== null && record.result.winnerId !== record.myEntryIndex)))
-    : [];
-  const aggregateCoverage = mergeCoverage(
-    compatible.flatMap((record) => record.inspection ? [record.inspection] : []),
+    return versions;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [robot?.id, robot?.source, canReplay, own.length, coverageRevision]);
+
+  // Falling back to the first version without correcting the state left the
+  // dropdown showing a version the rest of the panel was not using.
+  const resolvedVersion = coverageVersions.has(coverageVersion)
+    ? coverageVersion
+    : [...coverageVersions.keys()][0];
+  useEffect(() => {
+    if (resolvedVersion !== undefined && resolvedVersion !== coverageVersion) {
+      setCoverageVersion(resolvedVersion);
+    }
+  }, [resolvedVersion, coverageVersion]);
+  const selectedCoverageVersion = resolvedVersion === undefined
+    ? undefined
+    : coverageVersions.get(resolvedVersion);
+
+  // Source equality, not hash equality: coverage is line-indexed, and merging
+  // two different scripts would quietly add up unrelated lines.
+  const { compatible, missingCoverage } = useMemo(() => {
+    const source = selectedCoverageVersion?.source;
+    if (!robot || !canReplay || source === undefined) {
+      return { compatible: [] as typeof own, missingCoverage: [] as typeof own };
+    }
+    const mine = own.filter((record) =>
+      record.myEntryIndex !== null &&
+      record.manifest.entries[record.myEntryIndex]?.source === source);
+    const inScope = (record: BattleRecord) =>
+      coverageScope === "all" ||
+      (coverageScope === "wins" && record.result.winnerId === record.myEntryIndex) ||
+      (coverageScope === "losses" &&
+        record.result.winnerId !== null && record.result.winnerId !== record.myEntryIndex);
+    return {
+      compatible: mine.filter((record) => record.inspection && inScope(record)),
+      missingCoverage: mine.filter((record) => !record.inspection),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [own.length, selectedCoverageVersion?.source, coverageScope, canReplay, robot?.id, coverageRevision]);
+
+  const aggregateCoverage = useMemo(
+    () => mergeCoverage(compatible.flatMap((record) => record.inspection ? [record.inspection] : [])),
+    [compatible],
   );
-  const missingCoverage = robot && canReplay
-    ? own.filter((record) =>
-        !record.inspection && record.myEntryIndex !== null &&
-        record.manifest.entries[record.myEntryIndex]?.source === selectedCoverageVersion?.source)
-    : [];
 
   // The owner shares the record so advice is not given blind. Summaries only:
   // a replay needs manifests that live on the owner's machine.
@@ -3088,7 +3143,7 @@ function HistoryPane({
               <select
                 className="btn small"
                 aria-label="Script version"
-                value={sourceHash(selectedCoverageVersion.source)}
+                value={resolvedVersion}
                 onChange={(event) => setCoverageVersion(event.target.value)}
               >
                 {[...coverageVersions].map(([hash, version]) => (
@@ -3121,6 +3176,7 @@ function HistoryPane({
                       if (entryIndex !== null) {
                         const analysed = inspectManifest(record.manifest, entryIndex);
                         lib.battles.attachInspection(record.id, analysed.trace.coverage);
+                        setCoverageRevision((value) => value + 1);
                       }
                       setCoverageProgress({ done: index + 1, total: pending.length });
                       await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
@@ -3198,6 +3254,7 @@ function HistoryPane({
                         if (record.myEntryIndex === null) return;
                         const inspected = inspectManifest(record.manifest, record.myEntryIndex);
                         lib.battles.attachInspection(record.id, inspected.trace.coverage);
+                        setCoverageRevision((value) => value + 1);
                         setInspection({ record, trace: inspected.trace });
                       }}
                     >

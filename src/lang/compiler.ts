@@ -21,7 +21,6 @@ import { EVENT_DOCS, eventFields } from "./events.js";
 import {
   BUILTIN_NAMES,
   arityOf,
-  DebugMark,
   Op,
   type Chunk,
   type PropRef,
@@ -206,7 +205,7 @@ class Compiler {
   private ops: number[] = [];
   private args: number[] = [];
   private lines: number[] = [];
-  private debug: number[] = [];
+  private conditions = new Set<number>();
   private consts: Value[] = [];
   private props: PropRef[] = [];
   private actions: string[] = [];
@@ -239,12 +238,18 @@ class Compiler {
 
   // ---- emit helpers -----------------------------------------------------
 
-  private emit(op: Op, arg: number, pos: SourcePos, debug = DebugMark.NONE): number {
+  private emit(op: Op, arg: number, pos: SourcePos): number {
     const at = this.ops.length;
     this.ops.push(op);
     this.args.push(arg);
     this.lines.push(pos.line);
-    this.debug.push(debug);
+    return at;
+  }
+
+  /** As `emit`, but marks the jump as a condition the player actually wrote. */
+  private emitCondition(pos: SourcePos): number {
+    const at = this.emit(Op.JUMP_IF_FALSE, 0, pos);
+    this.conditions.add(at);
     return at;
   }
 
@@ -438,7 +443,7 @@ class Compiler {
       ops: this.ops,
       args: this.args,
       lines: this.lines,
-      debug: this.debug,
+      conditions: this.conditions,
       consts: this.consts,
       props: this.props,
       actions: this.actions,
@@ -684,7 +689,7 @@ class Compiler {
       case "if": {
         this.requireTest(s.cond, "if");
         this.expr(s.cond);
-        const jumpElse = this.emit(Op.JUMP_IF_FALSE, 0, s.pos, DebugMark.CONDITION);
+        const jumpElse = this.emitCondition(s.pos);
         for (const st of s.then) this.stmt(st);
         if (s.otherwise.length > 0) {
           const jumpEnd = this.emit(Op.JUMP, 0, s.pos);
@@ -776,7 +781,7 @@ class Compiler {
           // `break if x` — jump over the break when the condition is false.
           this.requireTest(s.cond, s.type);
           this.expr(s.cond);
-          const skip = this.emit(Op.JUMP_IF_FALSE, 0, s.pos, DebugMark.CONDITION);
+          const skip = this.emitCondition(s.pos);
           const j = this.emit(Op.JUMP, 0, s.pos);
           (s.type === "break" ? ctx.breaks : ctx.continues).push(j);
           this.patch(skip, this.here());

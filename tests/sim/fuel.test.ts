@@ -124,10 +124,15 @@ describe("fuel", () => {
   });
 
   it("raises a fuel-collected event with the gain and new level", () => {
+    // Read the numbers back through globals rather than the rendered name, so
+    // this asserts the payload and not how a float happens to print.
     const collector = `name "Collector"
 chassis tank
+var gained = -1
+var level = -1
 on fuel collected
-  set name = "got " + event.amount + "/" + event.fuel
+  set gained = event.amount
+  set level = event.fuel
 end
 `;
     const w = world([collector], NO_SPAWN);
@@ -136,9 +141,11 @@ end
     w.fuel.push({ id: 1, x: r.x, y: r.y, amount: 25 });
 
     step(w); // collect and queue the event after scripts have run
+    const collected = r.fuel;
     step(w); // handle it on the next script phase
 
-    expect(r.name).toMatch(/^got 25\/34\./);
+    expect(r.vm.readGlobal("gained")).toBeCloseTo(25, 5);
+    expect(r.vm.readGlobal("level")).toBeCloseTo(collected, 5);
   });
 
   it("never fills past the top of the tank", () => {

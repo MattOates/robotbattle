@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { runMatch } from "../../src/sim/match.js";
+import { readVariables } from "../../src/lang/vm.js";
 import {
+  attachRecorder,
   chronologicalDecisions,
+  describeDecision,
   decisionEndTick,
   decisionReplayTick,
   TraceRecorder,
@@ -122,6 +125,78 @@ describe("Behaviour Inspector", () => {
     const inspected = inspectManifest(manifest, 0);
     expect(inspected.result.finalHash).toBe(ordinary.finalHash);
     expect(inspected.result.standings).toEqual(ordinary.standings);
+  });
+
+  it("leaves an untraced match byte-identical", () => {
+    const manifest = makeManifest([{ source: SCRIPT }, { source: SPINNER }], { seed: 31 });
+    const plain = runMatch(manifest);
+    const again = runMatch(manifest);
+    expect(again.finalHash).toBe(plain.finalHash);
+    // Nothing observes, so nothing is recorded and no snapshots are built.
+    const world = createWorld(manifest);
+    const recorder = new TraceRecorder(SCRIPT);
+    for (let i = 0; i < 20; i++) step(world);
+    expect(recorder.trace.timeline).toHaveLength(0);
+    expect(recorder.trace.coverage.lines).toEqual({});
+  });
+
+  it("names variable snapshots and hides compiler temporaries", () => {
+    const manifest = makeManifest([{ source: SCRIPT }, { source: SPINNER }], { seed: 37 });
+    const world = createWorld(manifest);
+    const recorder = attachRecorder(world, 0, SCRIPT);
+    for (let i = 0; i < 6; i++) step(world);
+
+    const entry = recorder.trace.timeline.find((item) => item.kind === "condition");
+    expect(entry).toBeDefined();
+    const named = readVariables(recorder.trace.variableNames, entry!.variables);
+    expect(named.map(([name]) => name)).toContain("seen");
+    expect(named.some(([name]) => name.startsWith("__"))).toBe(false);
+    expect(Number(named.find(([name]) => name === "seen")?.[1])).toBeGreaterThan(0);
+  });
+
+  it("counts events that overflow the queue as dropped", () => {
+    const listener = `name "Listener"
+chassis tank
+on sense robot
+  wait 30
+end
+`;
+    const manifest = makeManifest([{ source: listener }, { source: SPINNER }], { seed: 41 });
+    const world = createWorld(manifest);
+    const recorder = attachRecorder(world, 0, listener);
+    // The queue holds eight. The ninth pushes the oldest out, and the tracer
+    // has to see that as information the script never got to act on.
+    for (let i = 0; i < 12; i++) world.robots[0]!.vm.enqueue("sense robot", { bearing: i });
+
+    expect(recorder.trace.coverage.events["sense robot"]?.queued).toBe(12);
+    expect(recorder.trace.coverage.events["sense robot"]?.dropped).toBe(4);
+  });
+
+  it("caps the timeline but keeps counting coverage", () => {
+    const manifest = makeManifest([{ source: SCRIPT }, { source: SPINNER }], { seed: 43 });
+    const world = createWorld(manifest);
+    const recorder = attachRecorder(world, 0, SCRIPT);
+    // Fill the timeline by hand rather than simulating twelve thousand moments.
+    for (let i = 0; i < 12_000; i++) {
+      recorder.trace.timeline.push({
+        kind: "wait", tick: i, line: 1, event: "tick", ticks: 1,
+      });
+    }
+    for (let i = 0; i < 20; i++) step(world);
+
+    expect(recorder.trace.truncated).toBe(true);
+    expect(recorder.trace.timeline).toHaveLength(12_000);
+    expect(recorder.trace.coverage.events.tick?.handled).toBeGreaterThan(0);
+  });
+
+  it("only shows a time range when a run actually spans one", () => {
+    const moment = describeDecision({ kind: "wait", tick: 30, line: 4, event: "tick", ticks: 2 });
+    expect(moment).toBe("1.0s  waited 2 ticks");
+
+    const run = describeDecision({
+      kind: "wait", tick: 30, line: 4, event: "tick", ticks: 2, endTick: 75, occurrences: 4,
+    });
+    expect(run).toBe("1.0\u20132.5s  waited 2 ticks");
   });
 
   it("only merges coverage from the same source", () => {

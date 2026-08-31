@@ -61,12 +61,6 @@ export const enum Op {
 
 export type Value = number | string | boolean | null;
 
-/** Semantic markers used only by the optional Behaviour Inspector. */
-export const enum DebugMark {
-  NONE,
-  CONDITION,
-}
-
 /** A property readable from a script, e.g. `me.heading`. */
 export interface PropRef {
   obj: "me" | "arena" | "event";
@@ -84,8 +78,13 @@ export interface Chunk {
   args: number[];
   /** Source line per instruction, for runtime error reporting. Not part of program identity. */
   lines: number[];
-  /** Semantic role per instruction. Observational and excluded from program identity. */
-  debug: number[];
+  /**
+   * Addresses of the jumps that are a player-written condition, as opposed to
+   * the ones the compiler emits for its own control flow. Only the Behaviour
+   * Inspector reads it, so it is a sparse set rather than a second array the
+   * size of the program, and it is excluded from program identity.
+   */
+  conditions: ReadonlySet<number>;
   consts: Value[];
   props: PropRef[];
   /** Action kind strings, indexed by ACTION's arg. */

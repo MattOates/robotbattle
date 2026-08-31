@@ -26,6 +26,8 @@
   --signal-dim: #8a6224;
   --readout: #5fd0c5;
   --alert: #e2603f;
+  /* Alert lifted towards the ink, for text that has to stay readable at size. */
+  --alert-soft: #e78378;
   --ok: #8fbf6a;
 
   --radius: 3px;
@@ -1759,7 +1761,7 @@ button {
 
 .event-coverage-row .bad,
 .coverage-problem {
-  color: #e78378;
+  color: var(--alert-soft);
 }
 
 .coverage-view {
@@ -1884,7 +1886,7 @@ button {
 
 .timeline-entry.kind-error,
 .timeline-entry.kind-suspend {
-  color: #e9a19a;
+  color: color-mix(in srgb, var(--alert-soft) 80%, var(--ink));
 }
 
 .timeline-entry.kind-fuel {

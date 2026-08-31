@@ -7,7 +7,7 @@ import { summarise, type MatchResult } from "./match.js";
 import { step } from "./step.js";
 import { collectTelemetry } from "./telemetry.js";
 import { createWorld, type MatchManifest } from "./world.js";
-import { TICK_RATE } from "./types.js";
+import { TICK_RATE, type World } from "./types.js";
 
 export interface LineCoverage {
   executions: number;
@@ -56,6 +56,11 @@ interface FuelPickupEntry extends TimelineMetadata {
 export type DecisionEntry = (RawDecisionEntry & TimelineMetadata) | FuelPickupEntry;
 
 export interface InspectionTrace {
+  /**
+   * Variable slot names, so the inspector can name a snapshot without holding
+   * a chunk or recompiling. Empty until a recorder is attached to a robot.
+   */
+  variableNames: string[];
   timeline: DecisionEntry[];
   coverage: ScriptCoverage;
   truncated: boolean;
@@ -117,6 +122,7 @@ export class TraceRecorder {
 
   constructor(source: string) {
     this.trace = {
+      variableNames: [],
       timeline: [],
       coverage: { sourceHash: sourceHash(source), lines: {}, events: {} },
       truncated: false,
@@ -127,6 +133,11 @@ export class TraceRecorder {
   /** Include handlers whose events never occur, which is often the key finding. */
   seedHandlers(handlers: Readonly<Record<string, number>>): void {
     for (const name of Object.keys(handlers)) this.event(name);
+  }
+
+  /** Slot names for the snapshots the VM records. See `readVariables`. */
+  seedVariables(globals: readonly string[]): void {
+    this.trace.variableNames = [...globals];
   }
 
   /** Attach end-of-tick energy to every run active during that tick. */
@@ -212,6 +223,12 @@ export class TraceRecorder {
       previous.lastTick = entry.tick;
       previous.entry.endTick = entry.tick;
       previous.entry.occurrences = (previous.entry.occurrences ?? 1) + 1;
+      // The run is labelled with the tick and the energy it ended on, so the
+      // values shown beside it have to be the ones from that same moment.
+      if ("variables" in entry && "variables" in previous.entry) {
+        previous.entry.eventValues = entry.eventValues;
+        previous.entry.variables = entry.variables;
+      }
       this.pendingFuelEntries.add(previous.entry);
       return;
     }
@@ -261,16 +278,27 @@ export interface InspectedMatch {
   trace: InspectionTrace;
 }
 
+/**
+ * Attach a fresh recorder to one robot in a world that has not been stepped yet.
+ * The single place that knows the order this setup has to happen in.
+ */
+export function attachRecorder(world: World, robotId: number, source: string): TraceRecorder {
+  const recorder = new TraceRecorder(source);
+  const robot = world.robots[robotId];
+  if (robot) {
+    recorder.seedHandlers(robot.chunk.handlers);
+    recorder.seedVariables(robot.chunk.globals);
+    robot.vm.setTraceSink(recorder.sink);
+    recorder.observeFuel(world.tick, robot.fuel);
+  }
+  return recorder;
+}
+
 /** Re-run a stored manifest and observe one robot without changing the match. */
 export function inspectManifest(manifest: MatchManifest, robotId: number): InspectedMatch {
   const world = createWorld(manifest);
-  const source = manifest.entries[robotId]?.source ?? "";
-  const recorder = new TraceRecorder(source);
-  const robot = world.robots[robotId];
-  if (robot) recorder.seedHandlers(robot.chunk.handlers);
-  robot?.vm.setTraceSink(recorder.sink);
-  if (robot) recorder.observeFuel(world.tick, robot.fuel);
-  while (!world.over && world.tick < world.maxTicks) {
+  const recorder = attachRecorder(world, robotId, manifest.entries[robotId]?.source ?? "");
+  while (!world.over && world.tick < manifest.maxTicks) {
     step(world);
     observeRobotFuel(recorder, world, robotId);
   }
@@ -284,7 +312,7 @@ export function inspectManifest(manifest: MatchManifest, robotId: number): Inspe
 /** Record the inspected robot's end-of-tick fuel and any real pickup effect. */
 export function observeRobotFuel(
   recorder: TraceRecorder,
-  world: import("./types.js").World,
+  world: World,
   robotId: number,
 ): void {
   const robot = world.robots[robotId];
@@ -298,6 +326,11 @@ export function observeRobotFuel(
   recorder.observeFuel(world.tick, robot.fuel, amount);
 }
 
+/**
+ * Coverage is line-indexed, so merging two scripts adds up unrelated lines. The
+ * hash guards it here; callers that hold the sources (see `HistoryPane`) filter
+ * on source equality first, because eight hex digits can collide.
+ */
 export function mergeCoverage(items: readonly ScriptCoverage[]): ScriptCoverage | null {
   const first = items[0];
   if (!first || items.some((item) => item.sourceHash !== first.sourceHash)) return null;
@@ -320,8 +353,8 @@ export function mergeCoverage(items: readonly ScriptCoverage[]): ScriptCoverage 
 
 export function describeDecision(entry: DecisionEntry, fuelWord = "fuel"): string {
   const start = (entry.tick / TICK_RATE).toFixed(1);
-  const end = entry.endTick === undefined ? null : (entry.endTick / TICK_RATE).toFixed(1);
-  const time = end && end !== start ? `${start}–${end}s` : `${start}s`;
+  const end = (decisionEndTick(entry) / TICK_RATE).toFixed(1);
+  const time = end === start ? `${start}s` : `${start}–${end}s`;
   switch (entry.kind) {
     case "handler": return `${time}  ${entry.event}`;
     case "condition": return `${time}  condition was ${entry.result ? "true" : "false"}`;

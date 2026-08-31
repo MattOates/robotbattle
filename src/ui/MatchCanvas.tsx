@@ -19,7 +19,7 @@ import { collectTelemetry } from "../sim/telemetry.js";
 import { summarise, type MatchResult } from "../sim/match.js";
 import type { RobotTelemetry } from "../store/types.js";
 import type { Theme } from "../lang/vocab.js";
-import { observeRobotFuel, TraceRecorder, type InspectionTrace } from "../sim/inspection.js";
+import { attachRecorder, observeRobotFuel, TraceRecorder, type InspectionTrace } from "../sim/inspection.js";
 
 export interface MatchStatus {
   tick: number;
@@ -215,17 +215,10 @@ export function MatchCanvas({
       return;
     }
     const world = createWorld(manifest);
-    const tracedSource = traceRobotId === undefined ? null : manifest.entries[traceRobotId]?.source;
-    const recorder = tracedSource === null || tracedSource === undefined
+    const tracedSource = traceRobotId === undefined ? undefined : manifest.entries[traceRobotId]?.source;
+    traceRef.current = tracedSource === undefined || traceRobotId === undefined
       ? null
-      : new TraceRecorder(tracedSource);
-    if (recorder && traceRobotId !== undefined) {
-      const robot = world.robots[traceRobotId];
-      if (robot) recorder.seedHandlers(robot.chunk.handlers);
-      robot?.vm.setTraceSink(recorder.sink);
-      if (robot) recorder.observeFuel(world.tick, robot.fuel);
-    }
-    traceRef.current = recorder;
+      : attachRecorder(world, traceRobotId, tracedSource);
     worldRef.current = world;
     rendererRef.current?.reset();
     rendererRef.current?.onStep(world);
@@ -235,9 +228,20 @@ export function MatchCanvas({
 
   useEffect(() => {
     if (seekTick === undefined || !manifest) return;
-    const world = createWorld(manifest);
-    const target = Math.max(0, Math.min(world.maxTicks, Math.floor(seekTick)));
-    while (!world.over && world.tick < target) step(world);
+    // A recorder is bound to one world's VM, so rebuilding underneath it would
+    // leave it accumulating against a world nobody is watching. Seeking and
+    // tracing are separate jobs and no caller asks for both.
+    if (traceRobotId !== undefined) return;
+    const current = worldRef.current;
+    const target = Math.max(0, Math.floor(seekTick));
+    // Replaying from tick zero on every click is O(match) per keypress. The
+    // timeline is walked forwards far more often than backwards, so reuse the
+    // world we already have whenever the target is still ahead of it.
+    const world = current && current.tick <= target && !current.over
+      ? current
+      : createWorld(manifest);
+    const limit = Math.min(world.maxTicks, target);
+    while (!world.over && world.tick < limit) step(world);
     worldRef.current = world;
     reportedRef.current = world.over || world.tick >= world.maxTicks;
     rendererRef.current?.reset();
@@ -245,7 +249,7 @@ export function MatchCanvas({
     redrawRef.current = true;
     statusRef.current?.(readStatus(world));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seekTick, manifest]);
+  }, [seekTick, manifest, traceRobotId]);
 
   // --- the loop -----------------------------------------------------------
   useEffect(() => {

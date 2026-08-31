@@ -13,7 +13,7 @@
  * to run a stranger's script.
  */
 
-import { DebugMark, Op, type Chunk, type PropRef, type Value } from "./bytecode.js";
+import { Op, type Chunk, type PropRef, type Value } from "./bytecode.js";
 import { BUILTIN_NAMES } from "./bytecode.js";
 import { PACK_SEPARATOR } from "./builtins.js";
 import { atan2Deg, cosDeg, hypot, sinDeg } from "../sim/math.js";
@@ -66,7 +66,7 @@ export type VmTraceEntry =
       line: number;
       event: string;
       eventValues: EventPayload;
-      variables: Readonly<Record<string, Value>>;
+      variables: readonly Value[];
     }
   | {
       kind: "condition";
@@ -75,7 +75,7 @@ export type VmTraceEntry =
       event: string;
       result: boolean;
       eventValues: EventPayload;
-      variables: Readonly<Record<string, Value>>;
+      variables: readonly Value[];
     }
   | {
       kind: "action";
@@ -85,13 +85,28 @@ export type VmTraceEntry =
       action: string;
       args: Value[];
       eventValues: EventPayload;
-      variables: Readonly<Record<string, Value>>;
+      variables: readonly Value[];
     }
   | { kind: "wait"; tick: number; line: number; event: string; ticks: number }
   | { kind: "suspend"; tick: number; line: number; event: string }
   | { kind: "error"; tick: number; line: number; event: string; message: string };
 
 export type VmTraceSink = (entry: VmTraceEntry) => void;
+
+/**
+ * Name a slot snapshot taken by the tracer. Compiler temporaries are prefixed
+ * `__` and are not the player's variables, so they stay hidden.
+ */
+export function readVariables(
+  names: readonly string[],
+  snapshot: readonly Value[],
+): Array<[string, Value]> {
+  const out: Array<[string, Value]> = [];
+  names.forEach((name, index) => {
+    if (!name.startsWith("__")) out.push([name, snapshot[index] ?? null]);
+  });
+  return out;
+}
 
 /** How many queued events a robot may accumulate before the oldest is dropped. */
 const MAX_QUEUE = 8;
@@ -135,23 +150,28 @@ export class Vm {
     this.globals = new Array<Value>(chunk.globals.length).fill(null);
   }
 
+  /** Read one global by name. For tests and inspection; never used by the sim. */
+  readGlobal(name: string): Value {
+    const slot = this.chunk.globals.indexOf(name);
+    return slot < 0 ? null : this.globals[slot] ?? null;
+  }
+
   /** Attach or remove an observer. It can see execution but cannot affect it. */
   setTraceSink(sink: VmTraceSink | null): void {
     this.traceSink = sink;
   }
 
-  private variables(): Readonly<Record<string, Value>> {
-    const out: Record<string, Value> = {};
-    this.chunk.globals.forEach((name, index) => {
-      if (!name.startsWith("__")) out[name] = this.globals[index] ?? null;
-    });
-    return out;
-  }
-
+  /**
+   * A trace entry is produced for every condition and action of every handler,
+   * thousands of times a second. Building a named object each time dominated
+   * the cost of tracing and pinned one per timeline entry, so a snapshot is a
+   * copy of the slot array and `readVariables` puts the names back on the one
+   * entry the inspector is actually showing.
+   */
   private context(fiber: Fiber) {
     return {
-      eventValues: fiber.payload ?? {},
-      variables: this.variables(),
+      eventValues: { ...(fiber.payload ?? {}) },
+      variables: this.globals.slice(),
     };
   }
 
@@ -425,7 +445,7 @@ export class Vm {
           case Op.JUMP_IF_FALSE:
             {
               const result = truthy(stack.pop() ?? null);
-              if (this.chunk.debug[pc] === DebugMark.CONDITION) {
+              if (this.chunk.conditions.has(pc)) {
                 this.traceSink?.({
                   kind: "condition",
                   tick: this.traceTick,
