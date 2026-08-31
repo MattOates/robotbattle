@@ -3,6 +3,11 @@ import {
   COMMENT_BLOCK,
   COMPARE_BLOCK,
   EXPR_BLOCK,
+  NUM_BLOCK,
+  PROP_BLOCK,
+  VAR_BLOCK,
+  blockToCondition,
+  valueBlock,
   RAW_BLOCK,
   WHEN_BLOCK,
   blockTypeFor,
@@ -312,5 +317,69 @@ describe("block identity", () => {
       sketchToWorkspace(fromSource(source)).blocks!.blocks.forEach(walk);
       expect(new Set(ids).size, `${ids.length} ids`).toBe(ids.length);
     }
+  });
+});
+
+/**
+ * A number, a property and a variable are the same kind of thing — something
+ * you can drop into a socket — and are drawn as the same round shape. They are
+ * not, however, the same *block*, and they were being confused: anything that
+ * was not a number became a property block, so `seen`, an ordinary variable
+ * somebody declared, was offered as though the world reported it like
+ * `me.health`.
+ */
+describe("values", () => {
+  it("tells a number, a property and a variable apart", () => {
+    expect(valueBlock("30").type).toBe(NUM_BLOCK);
+    expect(valueBlock("-4").type).toBe(NUM_BLOCK);
+    expect(valueBlock("me.health").type).toBe(PROP_BLOCK);
+    expect(valueBlock("event.distance").type).toBe(PROP_BLOCK);
+    expect(valueBlock("arena.time").type).toBe(PROP_BLOCK);
+    expect(valueBlock("seen").type).toBe(VAR_BLOCK);
+    expect(valueBlock("myOwnCount").type).toBe(VAR_BLOCK);
+  });
+
+  it("keeps anything with an operator in it whole", () => {
+    expect(valueBlock("seen + 1").type).toBe(EXPR_BLOCK);
+    expect(valueBlock('"please don\'t"').type).toBe(EXPR_BLOCK);
+  });
+
+  it("round-trips each of them", () => {
+    for (const text of ["30", "me.health", "seen", "seen + 1"]) {
+      expect(blockToCondition(valueBlock(text))).toBe(text);
+    }
+  });
+});
+
+describe("remembering", () => {
+  const src =
+    'name "M"\nchassis tank\nvar seen = 0\n\non sense robot\n  set seen = 1\nend';
+
+  it("is a named variable and a value socket, not a line of text", () => {
+    const ws = sketchToWorkspace(fromSource(src));
+    const set = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    expect(set.type).toBe(blockTypeFor("set"));
+    // The name is a field on the statement; the value is a block in a socket.
+    expect(set.fields!["V0"]).toBe("seen");
+    expect(set.inputs!["V1"]!.block.type).toBe(NUM_BLOCK);
+    expect(through(src)).toBe(src);
+  });
+
+  it("accepts a property or another variable in the socket", () => {
+    const ws = sketchToWorkspace(fromSource(src));
+    const set = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    set.inputs!["V1"] = { block: valueBlock("me.health") };
+    expect(toSource(workspaceToSketch(ws))).toContain("set seen = me.health");
+    set.inputs!["V1"] = { block: valueBlock("other") };
+    expect(toSource(workspaceToSketch(ws))).toContain("set seen = other");
+  });
+
+  it("reads a declaration the same way", () => {
+    const decl = 'name "M"\nchassis tank\n\non start\n  var mine = 3\nend';
+    const ws = sketchToWorkspace(fromSource(decl));
+    const v = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    expect(v.type).toBe(blockTypeFor("var"));
+    expect(v.fields!["V0"]).toBe("mine");
+    expect(through(decl)).toBe(decl);
   });
 });

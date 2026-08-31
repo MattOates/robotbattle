@@ -32,6 +32,7 @@ import {
   EXPR_BLOCK,
   NUM_BLOCK,
   PROP_BLOCK,
+  VAR_BLOCK,
   RAW_BLOCK,
   WHEN_BLOCK,
   blockTypeFor,
@@ -112,23 +113,55 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
   if (defined) return;
   defined = true;
 
-  const say = (spec: CardSpec) =>
-    (register === "simple" ? spec.say.simple : spec.say.full).replace(/\{0\}/g, "%1");
-
   for (const spec of CARDS) {
-    const hole = spec.holes[0];
     Blockly.Blocks[blockTypeFor(spec.id)] = {
       init(this: Blockly.Block) {
-        const message = hole ? say(spec) : say(spec).replace(/%1/g, "");
-        this.appendDummyInput().appendField(`${spec.icon} `);
-        if (hole) {
-          const parts = message.split("%1");
-          this.inputList[0]!.appendField(parts[0] ?? "");
-          this.inputList[0]!.appendField(fieldFor(hole.kind, hole.default), "V0");
-          if (parts[1]) this.inputList[0]!.appendField(parts[1]);
-        } else {
-          this.inputList[0]!.appendField(message);
+        /*
+         * The phrase, with each `{n}` replaced by the control for that hole.
+         *
+         * A `value` hole becomes a *socket* — somewhere a round block goes —
+         * because what it holds may be a number, a property, another variable
+         * or a whole expression, and those are all the same kind of thing.
+         * Everything else is a field on the block itself: a speed is a speed.
+         */
+        const phrase = register === "simple" ? spec.say.simple : spec.say.full;
+        const parts = phrase.split(/(\{\d\})/);
+        let input: Blockly.Input = this.appendDummyInput().appendField(`${spec.icon} `);
+
+        for (const part of parts) {
+          const slot = /^\{(\d)\}$/.exec(part);
+          if (!slot) {
+            if (part !== "") input.appendField(part);
+            continue;
+          }
+          const at = Number(slot[1]);
+          const hole = spec.holes[at];
+          if (!hole) continue;
+          if (hole.kind === "value") {
+            input = this.appendValueInput(`V${at}`);
+          } else {
+            input.appendField(fieldFor(hole.kind, hole.default), `V${at}`);
+          }
         }
+
+        /*
+         * Any hole the phrase forgot to place goes on the end.
+         *
+         * Belt and braces, and it was earned: the simple register's phrases
+         * were written before the holes were placed by `{n}` — "Point at
+         * them" rather than "Point at {0}" — so a placeholder-driven build
+         * silently dropped the control *and* the field, which loses the value
+         * on the way back. A block must always be able to show everything it
+         * carries.
+         */
+        for (let at = 0; at < spec.holes.length; at++) {
+          if (this.getField(`V${at}`) || this.getInput(`V${at}`)) continue;
+          const hole = spec.holes[at]!;
+          if (hole.kind === "value") this.appendValueInput(`V${at}`);
+          else input.appendField(fieldFor(hole.kind, hole.default), `V${at}`);
+        }
+
+        this.setInputsInline(true);
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(GROUP_HUE[spec.group]);
@@ -276,6 +309,24 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
     },
   };
 
+  /*
+   * A variable, as the same round shape as a number or a property.
+   *
+   * They are the same kind of thing — something you can drop into a socket —
+   * and drawing them differently would be saying they are not. It also fixes
+   * a real confusion: anything that was not a number used to become a
+   * *property* block, so `seen`, an ordinary variable somebody declared, was
+   * offered as though the world reported it like `me.health`.
+   */
+  Blockly.Blocks[VAR_BLOCK] = {
+    init(this: Blockly.Block) {
+      this.appendDummyInput().appendField(new Blockly.FieldTextInput("seen"), "NAME");
+      this.setOutput(true, null);
+      this.setColour(GROUP_HUE.remember);
+      this.setTooltip("Something your {robot} is remembering.");
+    },
+  };
+
   Blockly.Blocks[NUM_BLOCK] = {
     init(this: Blockly.Block) {
       this.appendDummyInput().appendField(new Blockly.FieldNumber(0), "NUM");
@@ -395,6 +446,7 @@ export function toolboxFor(register: "simple" | "full"): Blockly.utils.toolbox.T
           { kind: "block", type: blockTypeFor("if") },
           { kind: "block", type: COMPARE_BLOCK },
           { kind: "block", type: PROP_BLOCK },
+          { kind: "block", type: VAR_BLOCK },
           { kind: "block", type: NUM_BLOCK },
         ],
       },

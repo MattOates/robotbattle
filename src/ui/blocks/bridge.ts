@@ -57,6 +57,7 @@ export const RAW_BLOCK = `${BLOCK_PREFIX}raw`;
 /** Value blocks: the things that plug into a condition socket. */
 export const COMPARE_BLOCK = `${BLOCK_PREFIX}compare`;
 export const PROP_BLOCK = `${BLOCK_PREFIX}prop`;
+export const VAR_BLOCK = `${BLOCK_PREFIX}var_get`;
 export const NUM_BLOCK = `${BLOCK_PREFIX}num`;
 export const EXPR_BLOCK = `${BLOCK_PREFIX}expr`;
 
@@ -87,7 +88,7 @@ export function conditionToBlock(expr: string): BlockJson {
       type: COMPARE_BLOCK,
       fields: { OP: op },
       extraState: { was: text },
-      inputs: { A: { block: operandBlock(left) }, B: { block: operandBlock(right) } },
+      inputs: { A: { block: valueBlock(left) }, B: { block: valueBlock(right) } },
     };
   }
   return { type: EXPR_BLOCK, fields: { TEXT: text } };
@@ -98,9 +99,23 @@ function isSimple(text: string): boolean {
   return /^-?\d+(\.\d+)?$/.test(text) || /^[A-Za-z_][\w.]*$/.test(text);
 }
 
-function operandBlock(text: string): BlockJson {
-  if (/^-?\d+(\.\d+)?$/.test(text)) return { type: NUM_BLOCK, fields: { NUM: text } };
-  return { type: PROP_BLOCK, fields: { PROP: text } };
+/**
+ * One value, as the block that means it.
+ *
+ * The three are different things and were not being told apart: anything that
+ * was not a number became a *property* block, so `seen` — an ordinary variable
+ * somebody declared — was drawn and offered as though it were something the
+ * world reports, like `me.health`. A property is `me.`, `arena.` or `event.`
+ * followed by a name; a bare name is a variable; digits are a number. All
+ * three are the same round shape, because all three are the same kind of
+ * thing: something you can drop into a socket.
+ */
+export function valueBlock(text: string): BlockJson {
+  const t = text.trim();
+  if (/^-?\d+(\.\d+)?$/.test(t)) return { type: NUM_BLOCK, fields: { NUM: t } };
+  if (/^(me|arena|event)\.\w+$/.test(t)) return { type: PROP_BLOCK, fields: { PROP: t } };
+  if (/^[A-Za-z_]\w*$/.test(t)) return { type: VAR_BLOCK, fields: { NAME: t } };
+  return { type: EXPR_BLOCK, fields: { TEXT: t } };
 }
 
 /** And back, to the text a condition is written as. */
@@ -118,6 +133,7 @@ export function blockToCondition(block: BlockJson | undefined): string {
   }
   if (block.type === NUM_BLOCK) return String(block.fields?.["NUM"] ?? "0");
   if (block.type === PROP_BLOCK) return String(block.fields?.["PROP"] ?? "");
+  if (block.type === VAR_BLOCK) return String(block.fields?.["NAME"] ?? "");
   return "";
 }
 
@@ -245,9 +261,19 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
     out.push({ type: RAW_BLOCK, id: path, fields: { CODE: card.text } });
     return out;
   }
+  /*
+   * A `value` hole is a socket, not a field.
+   *
+   * `set seen = 0` is a name and a thing, and the thing can be a number, a
+   * property, another variable or an expression — so it is somewhere a block
+   * goes rather than somewhere text is typed. Everything else stays a field:
+   * a speed is a speed.
+   */
   const fields: Record<string, string | number> = {};
+  const valueInputs: Record<string, { block: BlockJson }> = {};
   card.holes.forEach((hole, i) => {
-    fields[`V${i}`] = hole.value;
+    if (hole.kind === "value") valueInputs[`V${i}`] = { block: valueBlock(hole.value) };
+    else fields[`V${i}`] = hole.value;
   });
   /*
    * The line as it was written travels with the block.
@@ -263,6 +289,7 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
     type: blockTypeFor(spec.id),
     id: path,
     fields,
+    ...(Object.keys(valueInputs).length > 0 ? { inputs: valueInputs } : {}),
     extraState: { text: card.text, was: card.holes.map((h) => h.value) },
   });
   return out;
@@ -400,7 +427,10 @@ function readStatements(statements: BlockJson[]): Card[] {
     if (!spec) continue;
     const holes = spec.holes.map((h, i) => ({
       kind: h.kind,
-      value: String(st.fields?.[`V${i}`] ?? h.default),
+      value:
+        h.kind === "value"
+          ? blockToCondition(st.inputs?.[`V${i}`]?.block) || h.default
+          : String(st.fields?.[`V${i}`] ?? h.default),
     }));
     const kept = (st.extraState ?? {}) as { text?: string; was?: string[] };
     // Untouched means untouched: same values as it went in with, so the line

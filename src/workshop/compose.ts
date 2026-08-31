@@ -68,7 +68,13 @@ export type HoleKind =
   /** A variable name. */
   | "name"
   /** A quoted string, for the one action that carries a message. */
-  | "text";
+  | "text"
+  /**
+   * Anything that produces a value — a number, a property, a variable, or an
+   * expression. Drawn as a socket, so what goes in it is a block rather than
+   * something to be typed.
+   */
+  | "value";
 
 export interface Hole {
   kind: HoleKind;
@@ -84,6 +90,14 @@ export interface CardSpec {
   /** Canonical RoboScript, with `{0}` where the hole goes. */
   template: string;
   holes: readonly { kind: HoleKind; default: string }[];
+  /**
+   * A matcher for statements the generic one cannot read.
+   *
+   * The generic matcher handles one hole surrounded by fixed words, which is
+   * every action. `set` and `var` have two — a name and a value — so they say
+   * how to read themselves, with one capture group per hole.
+   */
+  match?: RegExp;
   /** Which events this makes sense in. Empty means anywhere. */
   needs?: readonly EventName[];
   /**
@@ -111,7 +125,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "drive-forward",
     icon: "▶",
-    say: { full: "Drive forward at {0}", simple: "Go forwards" },
+    say: { full: "Drive forward at {0}", simple: "Go forwards at {0}" },
     template: "drive forward {0}",
     holes: [{ kind: "speed", default: "70" }],
     group: "move",
@@ -119,7 +133,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "drive-back",
     icon: "◀",
-    say: { full: "Drive backwards at {0}", simple: "Go backwards" },
+    say: { full: "Drive backwards at {0}", simple: "Go backwards at {0}" },
     template: "drive back {0}",
     holes: [{ kind: "speed", default: "60" }],
     group: "move",
@@ -135,7 +149,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "turn-body-by",
     icon: "↻",
-    say: { full: "Turn by {0}", simple: "Turn" },
+    say: { full: "Turn by {0}", simple: "Turn {0}" },
     template: "turn body by {0}",
     holes: [{ kind: "angle", default: "90" }],
     group: "move",
@@ -143,7 +157,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "turret-aim",
     icon: "🎯",
-    say: { full: "Point the {turret} at {0}", simple: "Point at them" },
+    say: { full: "Point the {turret} at {0}", simple: "Point {0}" },
     template: "turret.aim at {0}",
     holes: [{ kind: "angle", default: "event.bearing" }],
     group: "look",
@@ -151,7 +165,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "turret-sweep",
     icon: "🌀",
-    say: { full: "Sweep the {turret} {0}", simple: "Look around" },
+    say: { full: "Sweep the {turret} {0}", simple: "Look around {0}" },
     template: "turret.sweep {0}",
     holes: [{ kind: "angle", default: "45" }],
     group: "look",
@@ -159,7 +173,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "radar-sweep",
     icon: "📡",
-    say: { full: "Sweep the {radar} {0}", simple: "Search around" },
+    say: { full: "Sweep the {radar} {0}", simple: "Search around {0}" },
     template: "radar.sweep {0}",
     holes: [{ kind: "angle", default: "90" }],
     group: "look",
@@ -167,7 +181,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "ping",
     icon: "🔎",
-    say: { full: "{Ping} at power {0}", simple: "Look a long way" },
+    say: { full: "{Ping} at power {0}", simple: "Look a long way, power {0}" },
     template: "ping {0}",
     holes: [{ kind: "power", default: "1" }],
     group: "look",
@@ -175,7 +189,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "fire",
     icon: "💥",
-    say: { full: "{Fire} at power {0}", simple: "Shoot" },
+    say: { full: "{Fire} at power {0}", simple: "Shoot {0}" },
     template: "fire {0}",
     holes: [{ kind: "power", default: "2" }],
     group: "shoot",
@@ -183,7 +197,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "turn-body-to",
     icon: "🧭",
-    say: { full: "Turn to face {0}", simple: "Face this way" },
+    say: { full: "Turn to face {0}", simple: "Face {0}" },
     template: "turn body to {0}",
     holes: [{ kind: "angle", default: "90" }],
     group: "move",
@@ -191,7 +205,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "turret-turn-by",
     icon: "↺",
-    say: { full: "Swing the {turret} by {0}", simple: "Swing the {turret}" },
+    say: { full: "Swing the {turret} by {0}", simple: "Swing the {turret} {0}" },
     template: "turret.turn by {0}",
     holes: [{ kind: "angle", default: "45" }],
     group: "look",
@@ -199,7 +213,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "radar-aim",
     icon: "📶",
-    say: { full: "Point the {radar} at {0}", simple: "Point the {radar}" },
+    say: { full: "Point the {radar} at {0}", simple: "Point the {radar} {0}" },
     template: "radar.aim at {0}",
     holes: [{ kind: "angle", default: "event.bearing" }],
     group: "look",
@@ -207,17 +221,33 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "broadcast",
     icon: "📣",
-    say: { full: "{Broadcast} {0}", simple: "Shout to everyone" },
+    say: { full: "{Broadcast} {0}", simple: "Shout {0} to everyone" },
     template: "broadcast {0}",
     holes: [{ kind: "text", default: '"hello"' }],
     group: "look",
   },
   {
+    id: "var",
+    icon: "🆕",
+    say: { full: "New {0}, starting at {1}", simple: "Make a new {0}, starting at {1}" },
+    template: "var {0} = {1}",
+    holes: [
+      { kind: "name", default: "seen" },
+      { kind: "value", default: "0" },
+    ],
+    match: /^var\s+([A-Za-z_]\w*)\s*=\s*(.+)$/,
+    group: "remember",
+  },
+  {
     id: "set",
     icon: "📥",
-    say: { full: "Set {0}", simple: "Remember {0}" },
-    template: "set {0}",
-    holes: [{ kind: "expr", default: "seen = seen + 1" }],
+    say: { full: "Set {0} to {1}", simple: "Remember {0} is {1}" },
+    template: "set {0} = {1}",
+    holes: [
+      { kind: "name", default: "seen" },
+      { kind: "value", default: "0" },
+    ],
+    match: /^set\s+([A-Za-z_]\w*)\s*=\s*(.+)$/,
     group: "remember",
   },
   {
@@ -241,7 +271,7 @@ export const CARDS: readonly CardSpec[] = [
   {
     id: "wait",
     icon: "⏱",
-    say: { full: "Wait {0} ticks", simple: "Wait a moment" },
+    say: { full: "Wait {0} ticks", simple: "Wait {0}" },
     template: "wait {0} ticks",
     holes: [{ kind: "ticks", default: "10" }],
     group: "wait",
@@ -389,7 +419,19 @@ function matchCard(line: string): { spec: CardSpec; holes: Hole[] } | null {
   const words = canonicalWords(line);
   if (words.length === 0) return null;
 
+  const trimmed = line.trim();
   for (const spec of CARDS) {
+    // A spec that says how to read itself is tried first and exactly: the
+    // generic shape match below assumes one hole and would misread two.
+    if (spec.match) {
+      const m = spec.match.exec(trimmed);
+      if (!m) continue;
+      return {
+        spec,
+        holes: spec.holes.map((h, i) => ({ kind: h.kind, value: (m[i + 1] ?? h.default).trim() })),
+      };
+    }
+
     const shape = templateShape(spec);
     if (spec.holes.length === 0) {
       if (words.length === shape.length && shape.every((w, i) => words[i] === w)) {

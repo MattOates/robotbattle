@@ -328,6 +328,27 @@ describe("the catalogue", () => {
     }
   });
 
+  /**
+   * Every phrase has to place every hole it carries, in both registers.
+   *
+   * The block editor builds a block by walking the phrase and putting a
+   * control wherever `{n}` appears. The simple phrases were written before
+   * that existed — "Point at them" rather than "Point {0}" — so the control
+   * and its field both vanished, and a block with no field for a value loses
+   * that value the moment it is read back. The builder has a belt-and-braces
+   * fallback for this; this test is the braces.
+   */
+  it("places every hole in both registers", () => {
+    for (const spec of CARDS) {
+      for (const register of ["full", "simple"] as const) {
+        const phrase = spec.say[register];
+        for (let at = 0; at < spec.holes.length; at++) {
+          expect(phrase, `${spec.id} (${register})`).toContain(`{${at}}`);
+        }
+      }
+    }
+  });
+
   it("gives every template exactly as many holes as it declares", () => {
     for (const spec of CARDS) {
       const placeholders = (spec.template.match(/\{\d\}/g) ?? []).length;
