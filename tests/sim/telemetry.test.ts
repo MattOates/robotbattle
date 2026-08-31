@@ -10,10 +10,16 @@ import { describe, expect, it } from "vitest";
 import { runMatch, runMatchWithHashes } from "../../src/sim/match.js";
 import { createWorld, makeManifest } from "../../src/sim/world.js";
 import { step } from "../../src/sim/step.js";
-import { collectTelemetry, accuracy, executionWarning } from "../../src/sim/telemetry.js";
+import {
+  collectTelemetry,
+  accuracy,
+  executionWarning,
+  explainBattle,
+} from "../../src/sim/telemetry.js";
 import { hashWorld } from "../../src/sim/hash.js";
 import { DODGER, HUNTER, RACER, SPINNER } from "../../src/bots/index.js";
 import { ROBOT_RADIUS } from "../../src/sim/types.js";
+import type { RobotTelemetry } from "../../src/store/types.js";
 import { hypot } from "../../src/sim/math.js";
 
 const FIELD = [{ source: HUNTER }, { source: RACER }];
@@ -148,5 +154,42 @@ end
       expect(t.errors).toBe(0);
       expect(executionWarning(t)).toBeNull();
     }
+  });
+});
+
+describe("battle explanation", () => {
+  const robot = (overrides: Partial<RobotTelemetry> = {}): RobotTelemetry => ({
+    robotId: 0, name: "Mine", place: 2, survived: false, survivedTicks: 300,
+    health: 0, kills: 0, damageDealt: 20, damageTaken: 100,
+    shotsFired: 10, shotsHit: 3, instructions: 1000, suspensions: 0,
+    eventsDropped: 0, errors: 0, lastError: null, ...overrides,
+  });
+
+  it("turns poor accuracy into a concrete next step", () => {
+    const mine = robot({ shotsFired: 10, shotsHit: 1 });
+    const explanation = explainBattle(mine, [mine, robot({ robotId: 1, place: 1 })]);
+    expect(explanation.headline).toBe("Finished #2 out of 2.");
+    expect(explanation.points.join(" ")).toContain("latest bearing");
+  });
+
+  it("puts runtime trouble ahead of ordinary combat advice", () => {
+    const mine = robot({ errors: 2, lastError: "line 9: bad value" });
+    const explanation = explainBattle(mine, [mine]);
+    expect(explanation.tone).toBe("poor");
+    expect(explanation.points[0]).toContain("runtime errors");
+  });
+
+  it("recognises accurate winning play", () => {
+    const mine = robot({ place: 1, survived: true, shotsFired: 5, shotsHit: 4, damageDealt: 90 });
+    const explanation = explainBattle(mine, [mine, robot({ robotId: 1, damageDealt: 30 })]);
+    expect(explanation.tone).toBe("good");
+    expect(explanation.points.join(" ")).toContain("targeting was a strength");
+  });
+
+  it("does not call first place a win when the match timed out", () => {
+    const mine = robot({ place: 1, survived: true });
+    const explanation = explainBattle(mine, [mine], null);
+    expect(explanation.tone).toBe("mixed");
+    expect(explanation.headline).toContain("nobody won");
   });
 });
