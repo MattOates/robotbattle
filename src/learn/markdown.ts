@@ -139,7 +139,12 @@ export function fillVocab(body: string, theme: Theme): string {
     Broadcast: w.broadcastVerb[0]!.toUpperCase() + w.broadcastVerb.slice(1),
     health: w.health,
     fire: w.fireVerb,
+    // The two verbs were the only capitalisable entries in this table with no
+    // capital form, so a sentence could not start with either — which is what
+    // sent "{Fire} at what you found" out with the braces still in it.
+    Fire: w.fireVerb[0]!.toUpperCase() + w.fireVerb.slice(1),
     drive: w.driveVerb,
+    Drive: w.driveVerb[0]!.toUpperCase() + w.driveVerb.slice(1),
     skid: w.skidName,
     steered: w.steeredName,
     fuel: w.fuel,

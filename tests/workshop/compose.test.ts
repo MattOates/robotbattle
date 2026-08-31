@@ -1,0 +1,304 @@
+import { describe, expect, it } from "vitest";
+import {
+  ANGLE_CHOICES,
+  CARDS,
+  addBlock,
+  addCard,
+  availableEvents,
+  cardSpec,
+  editCard,
+  fromSource,
+  moveCard,
+  newCard,
+  removeCard,
+  setHole,
+  toSource,
+} from "../../src/workshop/compose.js";
+import { SAMPLE_BOTS, TOUR_ROBOT, TOUR_SEED } from "../../src/bots/index.js";
+import { checkScript } from "../../src/sim/world.js";
+import { compile } from "../../src/lang/compiler.js";
+import { parse } from "../../src/lang/parser.js";
+import { translate } from "../../src/learn/translate.js";
+import { EVENT_NAMES } from "../../src/lang/ast.js";
+import { fillVocab } from "../../src/learn/markdown.js";
+import { WHEN_PROMPT } from "../../src/ui/compose/CardComposer.js";
+
+const ALL = [
+  ...SAMPLE_BOTS.map((b) => ({ id: b.id, source: b.source })),
+  { id: "tour-seed", source: TOUR_SEED },
+  { id: "tour-robot", source: TOUR_ROBOT },
+];
+
+/**
+ * The property everything else rests on.
+ *
+ * A card view that could not put a script back exactly as it found it would be
+ * a trap: the first thing it would quietly damage is somebody else's traded
+ * robot, opened out of curiosity and closed again. Character-for-character, or
+ * the feature is not safe to ship.
+ */
+describe("reading a script and writing it back", () => {
+  it("is exact for every robot in the game", () => {
+    for (const { id, source } of ALL) {
+      expect(toSource(fromSource(source)), id).toBe(source);
+    }
+  });
+
+  it("is exact in both vocabularies", () => {
+    // Matching is canonical, but nothing is *rewritten* to canonical: a
+    // biological script must come back biological, word for word.
+    for (const { id, source } of ALL) {
+      for (const theme of ["mechanical", "biological"] as const) {
+        const themed = translate(source, theme);
+        expect(toSource(fromSource(themed)), `${id} in ${theme}`).toBe(themed);
+      }
+    }
+  });
+
+  it("keeps comments, blank lines and odd indentation", () => {
+    const odd = [
+      '-- leading comment',
+      'name "Odd"',
+      "chassis tank",
+      "",
+      "",
+      "-- about the handler",
+      "on start",
+      "      drive forward 60   -- trailing comment",
+      "",
+      "  -- a note in the middle",
+      "  stop",
+      "end",
+      "",
+    ].join("\n");
+    expect(toSource(fromSource(odd))).toBe(odd);
+  });
+
+  it("survives a script it understands nothing in", () => {
+    const alien = [
+      'name "Alien"',
+      "chassis car",
+      "var mode = 0",
+      "",
+      "can dodge given hit by bullet",
+      "  turn body by event.bearing + 90",
+      "end",
+      "",
+      "on tick every 30",
+      "  for i = 1 to 3",
+      "    turret.turn by 10",
+      "  end",
+      "  set mode = mode + 1",
+      "end",
+    ].join("\n");
+    expect(toSource(fromSource(alien))).toBe(alien);
+  });
+
+  it("keeps an unterminated block rather than swallowing it", () => {
+    // Half-typed scripts are the normal state of an editor, and the card view
+    // may be opened on one.
+    const half = 'name "Half"\nchassis tank\n\non start\n  drive forward 60';
+    expect(toSource(fromSource(half))).toBe(half);
+  });
+});
+
+describe("what it recognises", () => {
+  it("turns the seed robot's statements into real cards, not raw ones", () => {
+    const sketch = fromSource(TOUR_SEED);
+    const specs = sketch.blocks.flatMap((b) => b.cards.map((c) => c.spec));
+    expect(specs).toContain("turret-sweep");
+    expect(specs).toContain("drive-forward");
+  });
+
+  it("recognises a statement written in the other vocabulary", () => {
+    const bio = fromSource('name "B"\nbody ciliate\n\non start\n  swim forward 60\nend');
+    expect(bio.blocks[0]!.cards[0]!.spec).toBe("drive-forward");
+    expect(bio.blocks[0]!.cards[0]!.holes[0]!.value).toBe("60");
+  });
+
+  it("reads an expression argument back as written", () => {
+    const s = fromSource(
+      'name "E"\nchassis tank\n\non hit by bullet\n  turn body by event.bearing + 90\nend',
+    );
+    expect(s.blocks[0]!.cards[0]!.spec).toBe("turn-body-by");
+    expect(s.blocks[0]!.cards[0]!.holes[0]!.value).toBe("event.bearing + 90");
+  });
+
+  it("makes a nested construct one raw card, whole", () => {
+    const s = fromSource(
+      'name "N"\nchassis tank\n\non sense robot\n  if event.distance < 100 then\n    fire 3\n  else\n    fire 1\n  end\n  stop\nend',
+    );
+    const cards = s.blocks[0]!.cards;
+    expect(cards[0]!.spec).toBe("raw");
+    expect(cards[0]!.text.split("\n")).toHaveLength(5);
+    // And the statement after it is still recognised.
+    expect(cards[1]!.spec).toBe("stop");
+  });
+
+  it("names the event of a block it understands", () => {
+    const s = fromSource(TOUR_ROBOT);
+    expect(s.blocks.map((b) => b.event)).toContain("sense robot");
+    expect(s.blocks.every((b) => b.event === null || EVENT_NAMES.includes(b.event))).toBe(true);
+  });
+
+  it("gives a `can` block no event, so it is never edited as a handler", () => {
+    const s = fromSource('name "C"\nchassis tank\n\ncan dodge given hit by bullet\n  stop\nend');
+    expect(s.blocks[0]!.event).toBeNull();
+  });
+});
+
+describe("editing", () => {
+  const base = 'name "E"\nchassis tank\n\non start\n  drive forward 60\nend';
+
+  it("rewrites only the card that changed", () => {
+    const s = fromSource(base);
+    const block = s.blocks[0]!;
+    const next = editCard(s, block.id, block.cards[0]!.id, 0, "100");
+    expect(toSource(next)).toBe('name "E"\nchassis tank\n\non start\n  drive forward 100\nend');
+  });
+
+  it("keeps the card's own indentation when it rewrites it", () => {
+    const s = fromSource('name "E"\nchassis tank\n\non start\n      drive forward 60\nend');
+    const block = s.blocks[0]!;
+    const next = editCard(s, block.id, block.cards[0]!.id, 0, "10");
+    expect(toSource(next)).toContain("      drive forward 10");
+  });
+
+  it("adds, moves and removes cards", () => {
+    const s = fromSource(base);
+    const block = s.blocks[0]!;
+    const added = addCard(s, block.id, cardSpec("fire")!);
+    expect(toSource(added)).toContain("  fire 2");
+
+    const moved = moveCard(added, block.id, added.blocks[0]!.cards[1]!.id, -1);
+    const lines = toSource(moved).split("\n");
+    expect(lines.indexOf("  fire 2")).toBeLessThan(lines.indexOf("  drive forward 60"));
+
+    const removed = removeCard(added, block.id, added.blocks[0]!.cards[0]!.id);
+    expect(toSource(removed)).not.toContain("drive forward");
+  });
+
+  it("refuses to move a card off either end", () => {
+    const s = fromSource(base);
+    const block = s.blocks[0]!;
+    expect(toSource(moveCard(s, block.id, block.cards[0]!.id, -1))).toBe(base);
+    expect(toSource(moveCard(s, block.id, block.cards[0]!.id, 1))).toBe(base);
+  });
+
+  it("adds a block for an event, and will not offer it twice", () => {
+    const s = addBlock(fromSource(base), "sense robot");
+    expect(toSource(s)).toContain("on sense robot");
+    expect(availableEvents(s)).not.toContain("sense robot");
+    expect(availableEvents(s)).not.toContain("start");
+  });
+
+  it("leaves a raw card alone when asked to edit it", () => {
+    const s = fromSource('name "R"\nchassis tank\n\non start\n  broadcast "hello"\nend');
+    const block = s.blocks[0]!;
+    expect(block.cards[0]!.spec).toBe("raw");
+    expect(toSource(editCard(s, block.id, block.cards[0]!.id, 0, "99"))).toContain(
+      'broadcast "hello"',
+    );
+  });
+});
+
+/**
+ * The output has to be a program, not merely text. A composer that could
+ * assemble something the compiler rejects would hand a child a red squiggle
+ * they did not write and cannot read.
+ */
+describe("what the cards produce", () => {
+  it("compiles every card on its own, in both worlds", () => {
+    for (const spec of CARDS) {
+      const needsEvent = spec.holes.some((h) => h.default.startsWith("event."));
+      const header = needsEvent ? "on sense robot" : "on start";
+      const body = newCard(spec).text;
+      const script = `name "T"\nchassis tank\n\n${header}\n${body}\nend\n`;
+      for (const theme of ["mechanical", "biological"] as const) {
+        const result = checkScript(translate(script, theme));
+        expect(result.ok ? null : `${spec.id} in ${theme}: ${result.error?.message}`).toBe(null);
+      }
+    }
+  });
+
+  it("compiles every angle choice", () => {
+    const spec = cardSpec("turn-body-by")!;
+    for (const choice of ANGLE_CHOICES) {
+      const card = setHole(newCard(spec), 0, choice.value);
+      const header = choice.needsEvent ? "on sense robot" : "on start";
+      const script = `name "T"\nchassis tank\n\n${header}\n${card.text}\nend\n`;
+      const result = checkScript(script);
+      expect(result.ok ? null : `${choice.value}: ${result.error?.message}`).toBe(null);
+    }
+  });
+
+  it("compiles a robot built entirely out of cards", () => {
+    // The thing a child actually does: an empty robot, two blocks, a handful
+    // of taps.
+    let s = fromSource('name "Tapped"\nchassis tank\ncolor #ff8800\n');
+    s = addBlock(s, "start");
+    s = addCard(s, s.blocks[0]!.id, cardSpec("turret-sweep")!);
+    s = addCard(s, s.blocks[0]!.id, cardSpec("drive-forward")!);
+    s = addBlock(s, "sense robot");
+    s = addCard(s, s.blocks[1]!.id, cardSpec("turret-aim")!);
+    s = addCard(s, s.blocks[1]!.id, cardSpec("fire")!);
+
+    const result = checkScript(toSource(s));
+    expect(result.ok ? null : result.error?.message).toBe(null);
+  });
+
+  it("produces identical bytecode to the script it read", () => {
+    // Stronger than "it compiles": reading a robot in and writing it out again
+    // must not change what it does.
+    for (const { id, source } of ALL) {
+      const before = compile(parse(source));
+      const after = compile(parse(toSource(fromSource(source))));
+      expect(JSON.stringify(after), id).toBe(JSON.stringify(before));
+    }
+  });
+});
+
+describe("the catalogue", () => {
+  it("has unique ids and resolvable placeholders", () => {
+    const ids = CARDS.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const spec of CARDS) {
+      for (const theme of ["mechanical", "biological"] as const) {
+        // `{0}` is the hole, filled by the UI; everything else must be a
+        // vocabulary placeholder that resolves.
+        const strip = (t: string) => fillVocab(t, theme).replace(/\{\d\}/g, "");
+        expect(strip(spec.say.full), spec.id).not.toMatch(/[{}]/);
+        expect(strip(spec.say.simple), spec.id).not.toMatch(/[{}]/);
+      }
+    }
+  });
+
+  it("resolves the composer's own prompts too", () => {
+    for (const theme of ["mechanical", "biological"] as const) {
+      expect(fillVocab(WHEN_PROMPT.full, theme)).not.toMatch(/[{}]/);
+      expect(fillVocab(WHEN_PROMPT.simple, theme)).not.toMatch(/[{}]/);
+    }
+  });
+
+  it("gives every template exactly as many holes as it declares", () => {
+    for (const spec of CARDS) {
+      const placeholders = (spec.template.match(/\{\d\}/g) ?? []).length;
+      expect(placeholders, spec.id).toBe(spec.holes.length);
+    }
+  });
+
+  /**
+   * Every card must be readable back as itself. Without this a child could add
+   * a card, reopen the robot, and find their own tap had become a raw card
+   * they were no longer allowed to edit.
+   */
+  it("recognises its own output", () => {
+    for (const spec of CARDS) {
+      const card = newCard(spec);
+      const script = `name "T"\nchassis tank\n\non sense robot\n${card.text}\nend`;
+      const read = fromSource(script).blocks[0]!.cards[0]!;
+      expect(read.spec, spec.id).toBe(spec.id);
+      expect(read.holes.map((h) => h.value), spec.id).toEqual(card.holes.map((h) => h.value));
+    }
+  });
+});

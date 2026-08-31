@@ -5303,3 +5303,328 @@ button {
   align-items: center;
   flex-wrap: wrap;
 }
+
+/* ---------- the card composer ---------- */
+
+/* Which way the robot is being written: cards, sentences or code. */
+.way-tabs {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.way-tab {
+  padding: var(--sp-1) var(--sp-4);
+  background: transparent;
+  border: var(--stroke) solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: var(--t-6);
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.way-tab[aria-selected="true"] {
+  color: var(--ink-strong);
+  border-color: var(--signal);
+  background: var(--panel-raised);
+}
+
+.composer {
+  flex: 1;
+  /* The same floor as the editor, and for the same reason: this is the pane
+     that gives way when anything above it grows. */
+  min-height: 16em;
+  overflow: auto;
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  background: var(--well);
+}
+
+/*
+ * One `on` handler.
+ *
+ * Drawn as a container with its statements nested inside rather than as a flat
+ * list with a heading, because the containment is the idea: these things
+ * happen *when* that happens, and nothing else does.
+ */
+.block-card {
+  border: var(--stroke) solid var(--bezel-light);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  padding: var(--sp-4);
+}
+
+/*
+ * `when` / the event / the remove button on one row, and the explanation
+ * underneath it across the full width. A grid rather than a wrapping flex,
+ * because wrapping put the remove button on a line of its own the moment the
+ * blurb was long enough to break.
+ */
+.block-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.block-when {
+  font-family: var(--font-display);
+  font-size: var(--t-8);
+  color: var(--ink-muted);
+}
+
+.block-event {
+  font-family: var(--font-display);
+  font-size: var(--t-12);
+  font-weight: 700;
+  color: var(--signal);
+}
+
+.block-blurb {
+  grid-column: 1 / -1;
+  font-size: var(--t-6);
+  color: var(--ink-muted);
+}
+
+.block-cards {
+  list-style: none;
+  margin: 0 0 var(--sp-3);
+  padding: 0 0 0 var(--sp-4);
+  border-left: 2px solid var(--bezel);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.statement-card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--panel-raised);
+  border: var(--stroke) solid var(--bezel);
+  border-radius: var(--radius);
+}
+
+.statement-icon {
+  font-size: var(--t-11);
+  line-height: 1;
+}
+
+.statement-say {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  font-size: var(--t-9);
+  color: var(--ink-strong);
+}
+
+.statement-tools {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.statement-tools button {
+  background: transparent;
+  border: var(--stroke) solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--ink-muted);
+  padding: 2px var(--sp-2);
+}
+
+.statement-tools button:hover:not(:disabled) {
+  border-color: var(--bezel-light);
+  color: var(--ink);
+}
+
+.statement-tools button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Code the catalogue does not model. Shown, never rewritten, never editable. */
+.statement-card.raw {
+  display: block;
+  background: var(--well-deep);
+}
+
+.raw-badge {
+  display: inline-block;
+  margin-bottom: var(--sp-2);
+  font-size: var(--t-2);
+  color: var(--ink-muted);
+}
+
+.raw-code {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-7);
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.raw-code code {
+  display: block;
+  white-space: pre;
+}
+
+/* ---------- holes ---------- */
+
+.hole {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.hole.static {
+  font-family: var(--font-mono);
+  color: var(--readout);
+}
+
+select.hole {
+  background: var(--well);
+  color: var(--ink-strong);
+  border: var(--stroke) solid var(--signal-dim);
+  border-radius: var(--radius);
+  padding: 2px var(--sp-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.hole.power {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.hole.power button {
+  background: var(--well);
+  border: var(--stroke) solid var(--bezel-light);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--ink-muted);
+  padding: 2px var(--sp-2);
+  letter-spacing: -1px;
+}
+
+.hole.power button[aria-pressed="true"] {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.hole.slider input {
+  width: 110px;
+  accent-color: var(--signal);
+}
+
+.hole.slider b {
+  font-family: var(--font-mono);
+  color: var(--readout);
+  min-width: 3ch;
+}
+
+/* ---------- palettes ---------- */
+
+.palette,
+.composer-events {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--well-deep);
+  border-radius: var(--radius);
+}
+
+.palette-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.palette-title {
+  font-family: var(--font-display);
+  font-size: var(--t-6);
+  color: var(--ink-muted);
+}
+
+.palette-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.palette-card,
+.event-card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--panel-raised);
+  border: var(--stroke) solid var(--bezel-light);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--t-8);
+  color: var(--ink-strong);
+}
+
+.palette-card:hover,
+.event-card:hover {
+  border-color: var(--signal);
+}
+
+.palette-icon {
+  font-size: var(--t-11);
+  line-height: 1;
+}
+
+.event-card {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+}
+
+.event-name {
+  font-family: var(--font-display);
+  font-size: var(--t-10);
+  font-weight: 600;
+  color: var(--signal);
+}
+
+.event-blurb {
+  font-size: var(--t-6);
+  color: var(--ink-muted);
+}
+
+.composer-events {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.composer-add-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-items: flex-start;
+}
+
+.composer-prompt {
+  margin: 0;
+  font-size: var(--t-9);
+  color: var(--ink);
+}
+
+.btn.big {
+  font-size: var(--t-10);
+  padding: var(--sp-3) var(--sp-5);
+}
+
+.btn.add-card {
+  align-self: flex-start;
+}

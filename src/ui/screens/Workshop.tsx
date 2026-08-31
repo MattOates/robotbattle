@@ -74,6 +74,8 @@ import { useTour } from "../tour/useTour.js";
 import { applySnippet, findLines, type TourSignal } from "../tour/steps.js";
 import { PANE_LABELS, PANE_LABELS_SIMPLE, type Pane, type PanelName } from "../panes.js";
 import { HelperPanel } from "../quest/HelperPanel.js";
+import { CardComposer } from "../compose/CardComposer.js";
+import { AUTHORING_LABELS, type Authoring } from "../panes.js";
 import type { Quest, Step } from "../../workshop/quests.js";
 import { levelSpec, panesFor, showsPanel, type Level } from "../level.js";
 import { TrialPrefs } from "../../store/trial.js";
@@ -278,6 +280,13 @@ export function Workshop({
   // "Test bench" is a machine-shop word. At the simple register the tabs are
   // named for what you would go there to do instead — see `ui/panes.ts`.
   const paneLabels = levelSpec(level).register === "simple" ? PANE_LABELS_SIMPLE : PANE_LABELS;
+  /*
+   * The authoring views on offer, most approachable first — the level decides.
+   * The default is the first, which for an Explorer is cards and for an
+   * Engineer is text, so nobody is moved off what they came for.
+   */
+  const ways = levelSpec(level).authoring;
+  const [way, setWay] = useState<Authoring>(() => ways[0] ?? "text");
 
   useEffect(() => workshopPrefs.setSelectedRobotId(selectedId), [selectedId, workshopPrefs]);
   useEffect(() => workshopPrefs.setSelectedArenaId(selectedArenaId), [selectedArenaId, workshopPrefs]);
@@ -905,9 +914,37 @@ export function Workshop({
               ) : null}
 
               <div className="panel-head">
-                <span className="silkscreen">RoboScript</span>
+                {/*
+                  * Which way the {robot} is being written.
+                  *
+                  * Only shown when the level offers more than one, so an
+                  * Engineer sees the panel it has always had. The views are
+                  * over the same text — see `workshop/compose.ts` — so this
+                  * switches how it is displayed and nothing else. Flipping
+                  * back and forth cannot change the {robot}.
+                  */}
+                {ways.length > 1 ? (
+                  <div className="way-tabs" role="tablist" aria-label="How to write it">
+                    {ways.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        role="tab"
+                        aria-selected={way === option}
+                        className="way-tab"
+                        onClick={() => setWay(option)}
+                      >
+                        {AUTHORING_LABELS[option]}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="silkscreen">
+                    {way === "text" ? "RoboScript" : AUTHORING_LABELS[way]}
+                  </span>
+                )}
                 <span className="spacer" />
-                {!inSession ? (
+                {!inSession && levelSpec(level).register === "full" ? (
                   <select
                     className="btn small"
                     value=""
@@ -928,7 +965,17 @@ export function Workshop({
                 ) : null}
               </div>
 
-              {selected || (inSession && !isHost) ? (
+              {way === "cards" && selected ? (
+                <CardComposer
+                  source={editorSource}
+                  onSource={inSession ? () => undefined : updateSource}
+                  theme={theme}
+                  editable={editable && !inSession}
+                  say={say}
+                  fill={fill}
+                  onCardAdded={() => tour.signal({ kind: "cardAdded" })}
+                />
+              ) : selected || (inSession && !isHost) ? (
                 <CodeEditor
                   key={`${viewingId ?? "none"}-${editable ? "live" : "read"}`}
                   source={editorSource}

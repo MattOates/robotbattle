@@ -219,7 +219,7 @@ const EXPLORER: Quest[] = [
       },
       {
         id: "shoot",
-        say: { full: "Now {fire} at what you found", simple: "Shoot at what you see" },
+        say: { full: "{Fire} at what you found", simple: "Shoot at what you see" },
         help: {
           full: "Point the {turret} first, then {fire}. A shot leaves on the first tick the gun has come round to what it was aimed at, so aiming and firing on the same line works.",
           simple: "`fire 2` shoots. Point the {turret} at them first, or the shot goes the wrong way.",
