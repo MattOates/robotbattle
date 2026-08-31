@@ -100,6 +100,43 @@ const PROP_CHOICES: readonly (readonly [string, string])[] = [
   ["how many are left", "arena.robots"],
 ];
 
+/**
+ * The variables the open script declares.
+ *
+ * Module level because Blockly's dropdown generators and toolbox callbacks are
+ * plain functions with no context to thread this through, and there is exactly
+ * one block editor on screen at a time. `setKnownVariables` is called whenever
+ * the script changes.
+ */
+let knownVariables: readonly string[] = [];
+
+export function setKnownVariables(names: readonly string[]): void {
+  knownVariables = names;
+}
+
+/** The palette category name for the variables a script has made. */
+export const VARIABLE_CATEGORY = "RB_VARIABLES";
+
+/**
+ * The contents of the Remember category, worked out when it is opened.
+ *
+ * A variable you have made should be something you can pick up and drop into a
+ * socket — which is what "the variables you defined do not appear as a
+ * draggable value" means. Blockly recomputes a `custom` category every time
+ * the flyout opens, so declaring one and immediately reaching for it works.
+ */
+export function variableFlyout(): Blockly.utils.toolbox.FlyoutItemInfoArray {
+  return [
+    { kind: "block", type: blockTypeFor("var") },
+    { kind: "block", type: blockTypeFor("set") },
+    ...knownVariables.map((name) => ({
+      kind: "block",
+      type: VAR_BLOCK,
+      fields: { NAME: name },
+    })),
+  ] as Blockly.utils.toolbox.FlyoutItemInfoArray;
+}
+
 let defined = false;
 
 /**
@@ -320,7 +357,26 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
    */
   Blockly.Blocks[VAR_BLOCK] = {
     init(this: Blockly.Block) {
-      this.appendDummyInput().appendField(new Blockly.FieldTextInput("seen"), "NAME");
+      this.appendDummyInput().appendField(
+        /*
+         * The variables the script has actually declared, not a text box.
+         *
+         * A name typed here that nothing declares is a compile error the child
+         * did not write and cannot read. Whatever the block already holds is
+         * always offered too, so a variable read out of somebody else's
+         * {robot} still shows its own name rather than snapping to one of
+         * ours.
+         */
+        new Blockly.FieldDropdown(function (this: Blockly.FieldDropdown) {
+          const current = String(this.getValue() ?? "");
+          const known = knownVariables.map((n) => [n, n] as [string, string]);
+          if (current !== "" && !knownVariables.includes(current)) {
+            known.unshift([current, current]);
+          }
+          return known.length > 0 ? known : [["seen", "seen"]];
+        }),
+        "NAME",
+      );
       this.setOutput(true, null);
       this.setColour(GROUP_HUE.remember);
       this.setTooltip("Something your {robot} is remembering.");
@@ -405,7 +461,7 @@ export function toolboxFor(register: "simple" | "full"): Blockly.utils.toolbox.T
     { id: "look", label: "Look" },
     { id: "shoot", label: "Shoot" },
     { id: "wait", label: "Wait" },
-    { id: "remember", label: register === "simple" ? "Remember" : "Variables" },
+
     { id: "repeat", label: register === "simple" ? "Again" : "Loops" },
   ];
   return {
@@ -438,6 +494,13 @@ export function toolboxFor(register: "simple" | "full"): Blockly.utils.toolbox.T
           })),
         ],
       })),
+      {
+        kind: "category",
+        name: register === "simple" ? "Remember" : "Variables",
+        colour: String(GROUP_HUE.remember),
+        // Worked out when opened, so a variable made a moment ago is there.
+        custom: VARIABLE_CATEGORY,
+      },
       {
         kind: "category",
         name: register === "simple" ? "Choose" : "Logic",

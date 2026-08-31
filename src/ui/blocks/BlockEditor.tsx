@@ -13,9 +13,15 @@
 
 import { useEffect, useRef } from "react";
 import * as Blockly from "blockly/core";
-import { fromSource, toSource } from "../../workshop/compose.js";
+import { declaredVariables, fromSource, toSource } from "../../workshop/compose.js";
 import { sketchToWorkspace, workspaceToSketch, type WorkspaceJson } from "./bridge.js";
-import { defineBlocks, toolboxFor } from "./defs.js";
+import {
+  VARIABLE_CATEGORY,
+  defineBlocks,
+  setKnownVariables,
+  toolboxFor,
+  variableFlyout,
+} from "./defs.js";
 import type { Theme } from "../../lang/vocab.js";
 
 interface Props {
@@ -41,6 +47,7 @@ export function BlockEditor({ source, onSource, theme, register, editable }: Pro
 
   useEffect(() => {
     if (!host.current) return;
+    setKnownVariables(declaredVariables(fromSource(sourceRef.current)));
     defineBlocks(theme, register);
 
     const ws = Blockly.inject(host.current, {
@@ -58,6 +65,10 @@ export function BlockEditor({ source, onSource, theme, register, editable }: Pro
     });
     workspace.current = ws;
 
+    // Recomputed by Blockly every time the category is opened, so a variable
+    // declared a moment ago is already there to pick up.
+    ws.registerToolboxCategoryCallback(VARIABLE_CATEGORY, () => variableFlyout());
+
     const onChange = (event: Blockly.Events.Abstract) => {
       if (ws.isDragging()) return;
       if (!Blockly.Events.BUMP_EVENTS.includes(event.type) && !isMeaningful(event)) return;
@@ -68,6 +79,9 @@ export function BlockEditor({ source, onSource, theme, register, editable }: Pro
       json.rb = { head: current.head, tail: current.tail };
       const next = toSource(workspaceToSketch(json));
       if (next === sourceRef.current) return;
+      // Declaring a variable has to make it offerable straight away, without
+      // waiting for the script to come back round through React.
+      setKnownVariables(declaredVariables(fromSource(next)));
       ours.current = next;
       onSource(next);
     };
@@ -94,6 +108,7 @@ export function BlockEditor({ source, onSource, theme, register, editable }: Pro
     // best and would interrupt a drag at worst.
     if (ours.current === source) return;
     ours.current = null;
+    setKnownVariables(declaredVariables(fromSource(source)));
     Blockly.Events.disable();
     try {
       Blockly.serialization.workspaces.load(

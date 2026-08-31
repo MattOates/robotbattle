@@ -819,3 +819,35 @@ function indentOf(block: Block): string {
 function mapBlock(sketch: Sketch, blockId: string, f: (block: Block) => Block): Sketch {
   return { ...sketch, blocks: sketch.blocks.map((b) => (b.id === blockId ? f(b) : b)) };
 }
+
+/**
+ * Every variable the script declares, in the order they first appear.
+ *
+ * Both kinds count: the globals at the top of the file, which is where a
+ * variable that has to survive between events must live, and any `var` inside
+ * a handler. Used to fill the palette — a variable you have made should be
+ * something you can pick up, and one you have not made should not be
+ * offerable, because referring to it is a compile error the child did not
+ * write and cannot read.
+ */
+export function declaredVariables(sketch: Sketch): string[] {
+  const names: string[] = [];
+  const add = (name: string) => {
+    if (name !== "" && !names.includes(name)) names.push(name);
+  };
+
+  for (const line of sketch.head) {
+    const m = /^\s*var\s+([A-Za-z_]\w*)\s*=/.exec(line);
+    if (m) add(m[1]!);
+  }
+
+  const walk = (cards: readonly Card[]): void => {
+    for (const card of cards) {
+      if (card.spec === "var") add(card.holes[0]?.value ?? "");
+      for (const held of Object.values(card.slots ?? {})) walk(held);
+    }
+  };
+  for (const block of sketch.blocks) walk(block.cards);
+
+  return names;
+}

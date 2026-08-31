@@ -6,6 +6,7 @@ import {
   addCard,
   availableEvents,
   cardSpec,
+  declaredVariables,
   editCard,
   fromSource,
   moveCard,
@@ -369,5 +370,47 @@ describe("the catalogue", () => {
       expect(read.spec, spec.id).toBe(spec.id);
       expect(read.holes.map((h) => h.value), spec.id).toEqual(card.holes.map((h) => h.value));
     }
+  });
+});
+
+/**
+ * A variable you have made should be something you can pick up. The palette
+ * offers one draggable value block per declared name, and the name field on a
+ * variable block only offers names that exist — referring to one that does not
+ * is a compile error the child did not write and cannot read.
+ */
+describe("which variables a script has", () => {
+  it("finds the globals at the top", () => {
+    const s = fromSource('name "V"\nchassis tank\nvar seen = 0\nvar mood = 1\n\non start\n  stop\nend');
+    expect(declaredVariables(s)).toEqual(["seen", "mood"]);
+  });
+
+  it("finds one declared inside a handler", () => {
+    const s = fromSource('name "V"\nchassis tank\n\non start\n  var local = 2\n  stop\nend');
+    expect(declaredVariables(s)).toEqual(["local"]);
+  });
+
+  it("finds one declared inside a branch", () => {
+    const s = fromSource(
+      'name "V"\nchassis tank\n\non tick\n  if 1 is 1 then\n    var deep = 3\n  end\nend',
+    );
+    expect(declaredVariables(s)).toEqual(["deep"]);
+  });
+
+  it("lists each name once, in the order they appear", () => {
+    const s = fromSource(
+      'name "V"\nchassis tank\nvar a = 0\n\non start\n  var b = 1\n  set a = 2\nend',
+    );
+    expect(declaredVariables(s)).toEqual(["a", "b"]);
+  });
+
+  it("does not mistake setting one for making one", () => {
+    // `set` changes a variable; only `var` brings one into being.
+    const s = fromSource('name "V"\nchassis tank\n\non start\n  set nothere = 1\nend');
+    expect(declaredVariables(s)).toEqual([]);
+  });
+
+  it("finds none in a robot that has none", () => {
+    expect(declaredVariables(fromSource(TOUR_SEED))).toEqual([]);
   });
 });
