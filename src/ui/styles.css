@@ -26,6 +26,27 @@
   --signal-dim: #8a6224;
   --readout: #5fd0c5;
   --alert: #e2603f;
+
+  /*
+   * Syntax colours, shared by the editor's CodeMirror theme and by any plain
+   * rendering of a script (the Behaviour Inspector's heatmap). Amber for the
+   * words that structure a script, cyan for the things it can act on, green
+   * for the world talking back.
+   */
+  --syn-comment: var(--ink-muted);
+  --syn-keyword: var(--signal);
+  --syn-action: var(--readout);
+  --syn-event: #e6b3ff;
+  --syn-object: #8fbf6a;
+  --syn-property: #b6e3a8;
+  --syn-modifier: var(--ink-muted);
+  --syn-number: #ffd9a0;
+  --syn-string: #a8d8ff;
+  --syn-atom: #ffb3d9;
+  --syn-colour: #ffb3d9;
+  --syn-operator: var(--ink-muted);
+  --syn-variable: var(--ink);
+  --syn-invalid: var(--alert);
   /* Alert lifted towards the ink, for text that has to stay readable at size. */
   --alert-soft: #e78378;
   --ok: #8fbf6a;
@@ -1847,6 +1868,23 @@ button {
 .coverage-branch {
   color: var(--ink-muted);
 }
+
+/* Highlighting for script text rendered outside CodeMirror. Class names are
+   exactly what `styleFor` returns, so the two never drift apart. */
+.syn-comment { color: var(--syn-comment); font-style: italic; }
+.syn-keyword { color: var(--syn-keyword); font-weight: 600; }
+.syn-action { color: var(--syn-action); font-weight: 600; }
+.syn-eventWord { color: var(--syn-event); }
+.syn-object { color: var(--syn-object); }
+.syn-propertyName { color: var(--syn-property); }
+.syn-modifier { color: var(--syn-modifier); }
+.syn-number { color: var(--syn-number); }
+.syn-string { color: var(--syn-string); }
+.syn-atom { color: var(--syn-atom); }
+.syn-colour { color: var(--syn-colour); font-weight: 600; }
+.syn-operator { color: var(--syn-operator); }
+.syn-variableName { color: var(--syn-variable); }
+.syn-invalid { color: var(--syn-invalid); text-decoration: underline wavy; }
 
 .decision-timeline {
   display: grid;

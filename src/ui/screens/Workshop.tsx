@@ -76,6 +76,7 @@ import { TrialPrefs } from "../../store/trial.js";
 import { WorkshopPrefs } from "../../store/workshop.js";
 import { useAssistantUsable } from "../../assistant/useAssistant.js";
 import { readVariables } from "../../lang/vm.js";
+import { ScriptLine } from "../ScriptLine.js";
 import {
   chronologicalDecisions,
   decisionReplayTick,
@@ -2472,7 +2473,7 @@ function CoverageHeatmap({
               <span className="coverage-heat" style={{ opacity: intensity }} />
               <span className="coverage-count">{value || "·"}</span>
               <span className="coverage-number">{line}</span>
-              <code>{text || " "}</code>
+              <ScriptLine text={text} />
               {branch ? <span className="coverage-branch">{branch}</span> : null}
               {problems > 0 ? <span className="coverage-problem">!{problems}</span> : null}
             </button>
