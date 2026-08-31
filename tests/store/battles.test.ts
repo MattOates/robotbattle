@@ -7,6 +7,7 @@ import { summarise } from "../../src/sim/match.js";
 import { collectTelemetry } from "../../src/sim/telemetry.js";
 import { HUNTER, RACER, SITTING_DUCK } from "../../src/bots/index.js";
 import type { BattleRecord } from "../../src/store/types.js";
+import type { ScriptCoverage } from "../../src/sim/inspection.js";
 
 let store: MemoryStore;
 let log: BattleLog;
@@ -62,6 +63,20 @@ describe("battle records", () => {
     log.record(playBattle(HUNTER, RACER, 1, "bot_a"));
     log.record(playBattle(HUNTER, RACER, 2, "bot_b"));
     expect(log.forRobot("bot_a")).toHaveLength(1);
+  });
+
+  it("adds regenerable inspection coverage to an existing battle", () => {
+    const battle = log.record(playBattle(HUNTER, RACER, 8));
+    const inspection: ScriptCoverage = {
+      sourceHash: "abc123",
+      lines: { 3: { executions: 4, conditions: 2, trueBranches: 1, falseBranches: 1, actions: 0, suspensions: 0, errors: 0 } },
+      events: { tick: { queued: 42, handled: 42, dropped: 0 } },
+    };
+
+    log.attachInspection(battle.id, inspection);
+
+    expect(new BattleLog(store).get(battle.id)?.inspection).toEqual(inspection);
+    expect(new BattleLog(store).get("missing")?.inspection).toBeUndefined();
   });
 
   it("caps how many battles it keeps", () => {

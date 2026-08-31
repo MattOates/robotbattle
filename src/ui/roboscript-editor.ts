@@ -244,20 +244,20 @@ const roboLanguage = StreamLanguage.define<StreamState>({
  * talking back.
  */
 const roboHighlight = HighlightStyle.define([
-  { tag: t.comment, color: "var(--ink-muted)", fontStyle: "italic" },
-  { tag: t.keyword, color: "var(--signal)", fontWeight: "600" },
-  { tag: tAction, color: "var(--readout)", fontWeight: "600" },
-  { tag: tEventWord, color: "#e6b3ff" },
-  { tag: tObject, color: "#8fbf6a" },
-  { tag: t.propertyName, color: "#b6e3a8" },
-  { tag: t.modifier, color: "var(--ink-muted)" },
-  { tag: t.number, color: "#ffd9a0" },
-  { tag: t.string, color: "#a8d8ff" },
-  { tag: tColorLiteral, color: "#ffb3d9", fontWeight: "600" },
-  { tag: t.atom, color: "#ffb3d9" },
-  { tag: t.operator, color: "var(--ink-muted)" },
-  { tag: t.variableName, color: "var(--ink)" },
-  { tag: t.invalid, color: "var(--alert)", textDecoration: "underline wavy" },
+  { tag: t.comment, color: "var(--syn-comment)", fontStyle: "italic" },
+  { tag: t.keyword, color: "var(--syn-keyword)", fontWeight: "600" },
+  { tag: tAction, color: "var(--syn-action)", fontWeight: "600" },
+  { tag: tEventWord, color: "var(--syn-event)" },
+  { tag: tObject, color: "var(--syn-object)" },
+  { tag: t.propertyName, color: "var(--syn-property)" },
+  { tag: t.modifier, color: "var(--syn-modifier)" },
+  { tag: t.number, color: "var(--syn-number)" },
+  { tag: t.string, color: "var(--syn-string)" },
+  { tag: tColorLiteral, color: "var(--syn-colour)", fontWeight: "600" },
+  { tag: t.atom, color: "var(--syn-atom)" },
+  { tag: t.operator, color: "var(--syn-operator)" },
+  { tag: t.variableName, color: "var(--syn-variable)" },
+  { tag: t.invalid, color: "var(--syn-invalid)", textDecoration: "underline wavy" },
 ]);
 
 // ---------------------------------------------------------------------------

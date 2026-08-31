@@ -721,6 +721,8 @@ export interface Effect {
   targetId?: number;
   /** How much damage an impact did. */
   damage?: number;
+  /** How much fuel a pickup actually restored after the tank cap. */
+  amount?: number;
 }
 
 export interface World {

@@ -123,6 +123,31 @@ describe("fuel", () => {
     expect(r.fuel).toBeCloseTo(35, 1);
   });
 
+  it("raises a fuel-collected event with the gain and new level", () => {
+    // Read the numbers back through globals rather than the rendered name, so
+    // this asserts the payload and not how a float happens to print.
+    const collector = `name "Collector"
+chassis tank
+var gained = -1
+var level = -1
+on fuel collected
+  set gained = event.amount
+  set level = event.fuel
+end
+`;
+    const w = world([collector], NO_SPAWN);
+    const r = w.robots[0]!;
+    r.fuel = 10;
+    w.fuel.push({ id: 1, x: r.x, y: r.y, amount: 25 });
+
+    step(w); // collect and queue the event after scripts have run
+    const collected = r.fuel;
+    step(w); // handle it on the next script phase
+
+    expect(r.vm.readGlobal("gained")).toBeCloseTo(25, 5);
+    expect(r.vm.readGlobal("level")).toBeCloseTo(collected, 5);
+  });
+
   it("never fills past the top of the tank", () => {
     const w = world([IDLE], NO_SPAWN);
     const r = w.robots[0]!;
@@ -196,7 +221,7 @@ describe("switched off", () => {
   });
 
   it("never raises a fuel event", () => {
-    const forager = `name "Forager"\nchassis tank\non sense fuel\n  set name = "saw it"\nend\n`;
+    const forager = `name "Forager"\nchassis tank\non sense fuel\n  set name = "saw it"\nend\non fuel collected\n  set name = "ate it"\nend\n`;
     const w = world([forager], { ...OFF, spawnEveryTicks: 1 });
     // A cell placed by hand, right on top of it: nothing should notice.
     for (let i = 0; i < 60; i++) {

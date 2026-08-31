@@ -44,6 +44,10 @@ describe("themed vocabulary", () => {
         "on sense food\n  swim forward 80\nend\n",
       ],
       ["on ping fuel\n  stop\nend\n", "on ping food\n  stop\nend\n"],
+      [
+        "on fuel collected\n  fire event.fuel\nend\n",
+        "on food collected\n  sting event.food\nend\n",
+      ],
       ["on tick\n  fire me.fuel\nend\n", "on tick\n  sting me.food\nend\n"],
       ["on ping robot\n  fire\nend\n", "on peek organism\n  sting\nend\n"],
       ["on ping wall\n  stop\nend\n", "on peek wall\n  stop\nend\n"],

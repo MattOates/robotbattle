@@ -26,6 +26,29 @@
   --signal-dim: #8a6224;
   --readout: #5fd0c5;
   --alert: #e2603f;
+
+  /*
+   * Syntax colours, shared by the editor's CodeMirror theme and by any plain
+   * rendering of a script (the Behaviour Inspector's heatmap). Amber for the
+   * words that structure a script, cyan for the things it can act on, green
+   * for the world talking back.
+   */
+  --syn-comment: var(--ink-muted);
+  --syn-keyword: var(--signal);
+  --syn-action: var(--readout);
+  --syn-event: #e6b3ff;
+  --syn-object: #8fbf6a;
+  --syn-property: #b6e3a8;
+  --syn-modifier: var(--ink-muted);
+  --syn-number: #ffd9a0;
+  --syn-string: #a8d8ff;
+  --syn-atom: #ffb3d9;
+  --syn-colour: #ffb3d9;
+  --syn-operator: var(--ink-muted);
+  --syn-variable: var(--ink);
+  --syn-invalid: var(--alert);
+  /* Alert lifted towards the ink, for text that has to stay readable at size. */
+  --alert-soft: #e78378;
   --ok: #8fbf6a;
 
   --radius: 3px;
@@ -1586,8 +1609,355 @@ button {
   color: var(--ink-muted);
 }
 
+.history-coverage {
+  margin-bottom: 12px;
+  border: 1px solid var(--bezel);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.history-coverage > summary {
+  padding: 9px 11px;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 12px;
+  background: var(--panel-raised);
+}
+
+.history-coverage .coverage-view {
+  max-height: 520px;
+  border: 0;
+  border-top: 1px solid var(--bezel);
+  border-radius: 0;
+}
+
+.coverage-scope {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
 .onboarding-empty p {
   margin: 0 0 10px;
+}
+
+/* ---------- behaviour inspector ---------- */
+
+.behaviour-inspector {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  padding: var(--gap);
+  isolation: isolate;
+  background: var(--chassis);
+}
+
+.inspector-head,
+.coverage-toolbar,
+.timeline-toolbar,
+.timeline-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inspector-head {
+  position: relative;
+  min-height: 38px;
+  padding: 0 48px var(--gap) 0;
+}
+
+.inspector-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.inspector-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--bezel-light);
+  border-radius: 50%;
+  background: var(--panel-raised);
+  color: var(--ink-muted);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.inspector-close:hover {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+.inspector-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(380px, 1.2fr) minmax(280px, 0.8fr);
+  gap: var(--gap);
+}
+
+.inspector-replay,
+.coverage-view,
+.decision-timeline {
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--bezel);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.inspector-replay {
+  display: grid;
+  grid-template-rows: minmax(220px, 1fr) auto auto;
+}
+
+.inspector-replay .match-canvas {
+  min-height: 220px;
+}
+
+.decision-detail {
+  max-height: 230px;
+  overflow: auto;
+  padding: 11px 12px;
+  border-top: 1px solid var(--bezel);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.decision-detail p {
+  margin: 5px 0;
+}
+
+.inspector-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 10px;
+  margin-top: 7px;
+}
+
+.inspector-values > .silkscreen {
+  grid-column: 1 / -1;
+}
+
+.inspector-values > span:not(.silkscreen) {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ink-muted);
+}
+
+.event-coverage {
+  padding: 8px 12px;
+  border-top: 1px solid var(--bezel);
+  overflow: auto;
+  font-size: 11px;
+}
+
+.event-coverage summary,
+.history-explanation summary {
+  cursor: pointer;
+}
+
+.event-coverage-note {
+  margin: 6px 0;
+  color: var(--ink-muted);
+  line-height: 1.35;
+}
+
+.event-coverage-row {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, auto);
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.event-coverage-row .bad,
+.coverage-problem {
+  color: var(--alert-soft);
+}
+
+.coverage-view {
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.coverage-toolbar,
+.timeline-toolbar,
+.timeline-nav {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--bezel);
+}
+
+.coverage-code,
+.timeline-list {
+  min-height: 0;
+  overflow: auto;
+}
+
+.coverage-line {
+  position: relative;
+  width: 100%;
+  min-height: 21px;
+  display: grid;
+  grid-template-columns: 42px 35px minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 1px 8px 1px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.coverage-line:hover,
+.coverage-line.active {
+  background: var(--panel-raised);
+}
+
+.coverage-line.active {
+  box-shadow: inset 3px 0 0 var(--signal);
+}
+
+.coverage-heat {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--signal-dim);
+}
+
+.coverage-line > *:not(.coverage-heat) {
+  position: relative;
+  z-index: 1;
+}
+
+.coverage-count,
+.coverage-number,
+.coverage-branch,
+.coverage-problem {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.coverage-count {
+  text-align: right;
+  color: var(--ink-strong);
+}
+
+.coverage-number {
+  text-align: right;
+  color: var(--ink-muted);
+}
+
+.coverage-line code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.coverage-branch {
+  color: var(--ink-muted);
+}
+
+/* Highlighting for script text rendered outside CodeMirror. Class names are
+   exactly what `styleFor` returns, so the two never drift apart. */
+.syn-comment { color: var(--syn-comment); font-style: italic; }
+.syn-keyword { color: var(--syn-keyword); font-weight: 600; }
+.syn-action { color: var(--syn-action); font-weight: 600; }
+.syn-eventWord { color: var(--syn-event); }
+.syn-object { color: var(--syn-object); }
+.syn-propertyName { color: var(--syn-property); }
+.syn-modifier { color: var(--syn-modifier); }
+.syn-number { color: var(--syn-number); }
+.syn-string { color: var(--syn-string); }
+.syn-atom { color: var(--syn-atom); }
+.syn-colour { color: var(--syn-colour); font-weight: 600; }
+.syn-operator { color: var(--syn-operator); }
+.syn-variableName { color: var(--syn-variable); }
+.syn-invalid { color: var(--syn-invalid); text-decoration: underline wavy; }
+
+.decision-timeline {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+}
+
+.timeline-toolbar {
+  flex-wrap: wrap;
+}
+
+.timeline-nav {
+  justify-content: space-between;
+}
+
+.timeline-entry {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 0;
+  border-bottom: 1px solid var(--bezel);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.timeline-entry:hover,
+.timeline-entry.active {
+  background: var(--panel-raised);
+}
+
+.timeline-entry.active {
+  box-shadow: inset 3px 0 0 var(--signal);
+}
+
+.timeline-entry.kind-error,
+.timeline-entry.kind-suspend {
+  color: color-mix(in srgb, var(--alert-soft) 80%, var(--ink));
+}
+
+.timeline-entry.kind-fuel {
+  color: var(--ok);
+}
+
+.timeline-energy {
+  margin-left: 7px;
+  color: var(--readout);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1050px) {
+  .inspector-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .inspector-replay {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .inspector-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 0.8fr;
+  }
+
+  .inspector-head > .roster-meta {
+    display: none;
+  }
 }
 
 /* ---------- lobby / join ---------- */

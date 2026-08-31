@@ -10,6 +10,7 @@ import type { MatchManifest } from "../sim/world.js";
 import type { ArenaSpec } from "../sim/types.js";
 import type { MatchResult } from "../sim/match.js";
 import type { Locomotion } from "../lang/ast.js";
+import type { ScriptCoverage } from "../sim/inspection.js";
 
 /**
  * A version that arrived from someone else rather than from your own editor.
@@ -147,6 +148,8 @@ export interface BattleRecord {
   myRobotId: string | null;
   /** Index into the manifest entries for your robot. */
   myEntryIndex: number | null;
+  /** Compact debugger counters. Detailed timelines are regenerated from the manifest. */
+  inspection?: ScriptCoverage;
 }
 
 /**

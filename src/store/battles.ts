@@ -20,6 +20,7 @@ import {
   type KeyValueStore,
 } from "./storage.js";
 import type { BattleRecord, HeadToHead } from "./types.js";
+import type { ScriptCoverage } from "../sim/inspection.js";
 
 const RECORDS_KEY = "battles";
 const H2H_KEY = "headToHead";
@@ -47,6 +48,22 @@ export class BattleLog {
 
   get(id: string): BattleRecord | undefined {
     return this.list().find((b) => b.id === id);
+  }
+
+  /** Add compact debugger coverage to an existing replay without changing it. */
+  attachInspection(id: string, inspection: ScriptCoverage): void {
+    const records = this.list();
+    const record = records.find((item) => item.id === id);
+    if (!record) return;
+    record.inspection = inspection;
+    try {
+      writeJson(this.store, RECORDS_KEY, records);
+      this.pruneToBudget();
+    } catch (err) {
+      // Coverage can always be regenerated from the manifest. If storage is
+      // full, keep the replay and quietly give up on this optional cache.
+      if (!(err instanceof StorageFullError)) throw err;
+    }
   }
 
   /**

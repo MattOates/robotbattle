@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 import { styleFor } from "../../src/ui/roboscript-editor.js";
+import { scriptParts } from "../../src/ui/ScriptLine.js";
 import { RESERVED } from "../../src/lang/parser.js";
 import { scanLine } from "../../src/lang/scan.js";
 import { SYNONYMS } from "../../src/lang/vocab.js";
@@ -132,5 +133,37 @@ describe("both vocabularies", () => {
     expect(styleOf("eyespot.sweep 60")).toBe("action");
     expect(styleOf("peek")).toBe("action");
     expect(styleOf("on peek organism", 1)).toBe("eventWord");
+  });
+});
+
+/**
+ * The inspector paints script text itself rather than through CodeMirror, so
+ * the splitting is ours and can lose characters where the editor never would.
+ */
+describe("rendering a line outside the editor", () => {
+  const LINES = [
+    "on sense robot",
+    "  if event.distance < 200 then",
+    "    fire 3   -- take the shot",
+    '  set name = "got it"',
+    "\tturn turret by -45.5",
+    "  paint #ff00aa",
+    '  say "unterminated',
+    "",
+    "   ",
+    "  var x = a+b*(c-1)",
+  ];
+
+  it("reproduces the line exactly", () => {
+    for (const line of LINES) {
+      expect(scriptParts(line).map((part) => part.text).join(""), line).toBe(line);
+    }
+  });
+
+  it("styles the words and leaves the spacing alone", () => {
+    const parts = scriptParts("  fire 3");
+    expect(parts[0]).toEqual({ text: "  ", style: null });
+    expect(parts[1]).toMatchObject({ text: "fire", style: "action" });
+    expect(parts[3]).toMatchObject({ text: "3", style: "number" });
   });
 });
