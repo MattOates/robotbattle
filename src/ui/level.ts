@@ -76,17 +76,15 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
     skin: "playground",
     register: "simple",
     /*
-     * Cards first, blocks beside them.
+     * Cards, and only cards.
      *
-     * The two are the same catalogue drawn twice — cards are a vertical list
-     * with a slider and a dropdown per line, blocks are a Blockly canvas with
-     * the same controls on interlocking shapes. Cards ask less: nothing to
-     * drag, nothing to aim at, and it reads top to bottom like a list. Blocks
-     * ask more and give more, and they are what a child who has met Scratch at
-     * school already knows how to use. Which of those is the better first hour
-     * is not a thing to decide from a chair, so both are here.
+     * Cards and blocks are the same catalogue drawn twice, and cards ask
+     * less of the person using them: nothing to drag, nothing to aim at, one
+     * column that reads top to bottom like a list, and every value a slider or
+     * a dropdown. Blocks ask for a mouse gesture before they ask for an idea.
+     * At six to eight that is the wrong order.
      */
-    authoring: ["cards", "blocks"],
+    authoring: ["cards"],
     voiceDefault: true,
     /*
      * One tab. Not two.
@@ -112,7 +110,13 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
     ageHint: "About 9 to 11",
     skin: "playground",
     register: "simple",
-    authoring: ["cards", "blocks", "guided"],
+    /*
+     * Blocks first, and the whole language in them — deciding, repeating,
+     * remembering, not just a list of actions. This is the level where Scratch
+     * is already familiar from school, and where the ideas that need nesting
+     * are the ideas worth having. Cards stay as the quieter way back.
+     */
+    authoring: ["blocks", "cards", "guided"],
     /*
      * What a Builder is handed, as against what a Builder earns.
      *

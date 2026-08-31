@@ -124,15 +124,56 @@ describe("what it recognises", () => {
     expect(s.blocks[0]!.cards[0]!.holes[0]!.value).toBe("event.bearing + 90");
   });
 
-  it("makes a nested construct one raw card, whole", () => {
+  it("reads a nested construct as a tree, not a slab of text", () => {
     const s = fromSource(
       'name "N"\nchassis tank\n\non sense robot\n  if event.distance < 100 then\n    fire 3\n  else\n    fire 1\n  end\n  stop\nend',
     );
     const cards = s.blocks[0]!.cards;
-    expect(cards[0]!.spec).toBe("raw");
-    expect(cards[0]!.text.split("\n")).toHaveLength(5);
+    expect(cards[0]!.spec).toBe("if");
+    expect(cards[0]!.holes[0]!.value).toBe("event.distance < 100");
+    expect(cards[0]!.slots!["then"]!.map((c) => c.spec)).toEqual(["fire"]);
+    expect(cards[0]!.slots!["else"]!.map((c) => c.spec)).toEqual(["fire"]);
+    // The `else` and `end` are kept as written rather than regenerated.
+    expect(cards[0]!.seps!["else"]).toBe("  else");
+    expect(cards[0]!.seps!["end"]).toBe("  end");
     // And the statement after it is still recognised.
     expect(cards[1]!.spec).toBe("stop");
+  });
+
+  it("nests to any depth", () => {
+    const src = [
+      'name "D"',
+      "chassis tank",
+      "",
+      "on tick",
+      "  loop",
+      "    if me.health < 30 then",
+      "      repeat 2 times",
+      "        drive back 40",
+      "      end",
+      "    end",
+      "  end",
+      "end",
+    ].join("\n");
+    const s = fromSource(src);
+    const outer = s.blocks[0]!.cards[0]!;
+    expect(outer.spec).toBe("loop");
+    const inner = outer.slots!["body"]![0]!;
+    expect(inner.spec).toBe("if");
+    expect(inner.slots!["then"]![0]!.spec).toBe("repeat");
+    expect(inner.slots!["then"]![0]!.slots!["body"]![0]!.spec).toBe("drive-back");
+    expect(toSource(s)).toBe(src);
+  });
+
+  it("reads the count off a repeat and the parts off a for", () => {
+    const s = fromSource(
+      'name "F"\nchassis tank\n\non start\n  repeat 3 times\n    stop\n  end\n  for i = 1 to 4\n    stop\n  end\nend',
+    );
+    const [rep, forl] = s.blocks[0]!.cards;
+    expect(rep!.spec).toBe("repeat");
+    expect(rep!.holes[0]!.value).toBe("3");
+    expect(forl!.spec).toBe("for");
+    expect(forl!.holes.map((h) => h.value)).toEqual(["i", "1", "4"]);
   });
 
   it("names the event of a block it understands", () => {
@@ -193,12 +234,12 @@ describe("editing", () => {
   });
 
   it("leaves a raw card alone when asked to edit it", () => {
-    const s = fromSource('name "R"\nchassis tank\n\non start\n  broadcast "hello"\nend');
+    // A `do` of a named behaviour: real RoboScript, deliberately outside the
+    // catalogue, and it must be shown rather than rewritten.
+    const s = fromSource('name "R"\nchassis tank\n\non start\n  do dodge\nend');
     const block = s.blocks[0]!;
     expect(block.cards[0]!.spec).toBe("raw");
-    expect(toSource(editCard(s, block.id, block.cards[0]!.id, 0, "99"))).toContain(
-      'broadcast "hello"',
-    );
+    expect(toSource(editCard(s, block.id, block.cards[0]!.id, 0, "99"))).toContain("do dodge");
   });
 });
 
@@ -212,8 +253,15 @@ describe("what the cards produce", () => {
     for (const spec of CARDS) {
       const needsEvent = spec.holes.some((h) => h.default.startsWith("event."));
       const header = needsEvent ? "on sense robot" : "on start";
-      const body = newCard(spec).text;
-      const script = `name "T"\nchassis tank\n\n${header}\n${body}\nend\n`;
+      // `var seen = 0` in the preamble because one card in the catalogue —
+      // `set` — necessarily refers to a variable, and a statement that assigns
+      // to nothing is not a fair test of the statement. `break` and
+      // `continue` are wrapped in a loop for the same reason: the compiler
+      // refuses them anywhere else, which is what `needsLoop` records.
+      const body = spec.needsLoop
+        ? `  loop\n  ${newCard(spec).text}\n  end`
+        : newCard(spec).text;
+      const script = `name "T"\nchassis tank\nvar seen = 0\n\n${header}\n${body}\nend\n`;
       for (const theme of ["mechanical", "biological"] as const) {
         const result = checkScript(translate(script, theme));
         expect(result.ok ? null : `${spec.id} in ${theme}: ${result.error?.message}`).toBe(null);

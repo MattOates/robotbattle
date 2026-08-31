@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   COMMENT_BLOCK,
+  COMPARE_BLOCK,
+  EXPR_BLOCK,
   RAW_BLOCK,
   WHEN_BLOCK,
   blockTypeFor,
@@ -131,16 +133,81 @@ describe("editing a note", () => {
   });
 });
 
-describe("what cannot be a block yet", () => {
+describe("deciding and repeating", () => {
   const nested =
     'name "N"\nchassis tank\n\non sense robot\n  if event.distance < 100 then\n    fire 3\n  end\n  stop\nend';
 
-  it("is carried whole in a raw block, not dropped", () => {
+  it("is a real block with a real statement input", () => {
     const ws = sketchToWorkspace(fromSource(nested));
     const first = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
-    expect(first.type).toBe(RAW_BLOCK);
-    expect(String(first.fields!["CODE"]).split("\n")).toHaveLength(3);
+    expect(first.type).toBe(blockTypeFor("if"));
+    expect(first.fields!["V0"]).toBe("event.distance < 100");
+    expect(first.inputs!["THEN"]!.block.type).toBe(blockTypeFor("fire"));
     expect(through(nested)).toBe(nested);
+  });
+
+  it("keeps an else branch that has been emptied", () => {
+    /*
+     * `if ... else ... end` with nothing between `else` and `end` is legal,
+     * and an `if` that has silently lost its `else` is a different program.
+     * So a slot that existed comes back even with nothing in it.
+     */
+    const src =
+      'name "E"\nchassis tank\n\non start\n  if 1 is 1 then\n    stop\n  else\n    fire 1\n  end\nend';
+    const ws = sketchToWorkspace(fromSource(src));
+    const iff = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    delete iff.inputs!["ELSE"];
+    const out = toSource(workspaceToSketch(ws));
+    expect(out).toContain("else");
+    expect(out).not.toContain("fire 1");
+  });
+
+  it("survives nesting to any depth", () => {
+    const deep = [
+      'name "D"',
+      "chassis tank",
+      "",
+      "on tick",
+      "  loop",
+      "    if me.health < 30 then",
+      "      repeat 2 times",
+      "        drive back 40",
+      "      end",
+      "    end",
+      "  end",
+      "end",
+    ].join("\n");
+    expect(through(deep)).toBe(deep);
+  });
+
+  it("holds the condition as blocks, not as a text box", () => {
+    const ws = sketchToWorkspace(fromSource(nested));
+    const iff = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    const cond = iff.inputs!["COND"]!.block;
+    expect(cond.type).toBe(COMPARE_BLOCK);
+    expect(cond.fields!["OP"]).toBe("<");
+    expect(cond.inputs!["A"]!.block.fields!["PROP"]).toBe("event.distance");
+    expect(cond.inputs!["B"]!.block.fields!["NUM"]).toBe("100");
+  });
+
+  it("rewrites the header only when the condition changes", () => {
+    const ws = sketchToWorkspace(fromSource(nested));
+    const cond = ws.blocks!.blocks[0]!.inputs!["DO"]!.block.inputs!["COND"]!.block;
+    expect(toSource(workspaceToSketch(ws))).toContain("if event.distance < 100 then");
+    cond.inputs!["A"]!.block.fields!["PROP"] = "me.health";
+    cond.inputs!["B"]!.block.fields!["NUM"] = "50";
+    expect(toSource(workspaceToSketch(ws))).toContain("if me.health < 50 then");
+  });
+
+  it("keeps a condition it cannot take apart, verbatim", () => {
+    // Arithmetic, `and`/`or`, anything past a simple comparison: one block
+    // holding the text, shown and never rewritten.
+    const src =
+      'name "X"\nchassis tank\n\non tick\n  if arena.time mod 60 is 0 and me.fuel > 10 then\n    stop\n  end\nend';
+    const ws = sketchToWorkspace(fromSource(src));
+    const cond = ws.blocks!.blocks[0]!.inputs!["DO"]!.block.inputs!["COND"]!.block;
+    expect(cond.type).toBe(EXPR_BLOCK);
+    expect(through(src)).toBe(src);
   });
 
   it("keeps a `can` block, which has no event and is not a handler", () => {
@@ -204,6 +271,46 @@ describe("block types", () => {
     for (const structural of [WHEN_BLOCK, COMMENT_BLOCK, RAW_BLOCK]) {
       expect(types).not.toContain(structural);
       expect(specIdFor(structural)).toBeNull();
+    }
+  });
+});
+
+/**
+ * Block ids are derived from position, not minted.
+ *
+ * Two people editing the same robot have to be able to say "I am on *this*
+ * block" and mean the same block. Blockly mints ids per workspace, so each
+ * peer would name the same block differently and a shared cursor would point
+ * at nothing. Derived from the script, they agree wherever the script does —
+ * which is what the pair-programming layer needs to show who is where.
+ */
+describe("block identity", () => {
+  it("is the same on two peers reading the same script", () => {
+    const a = sketchToWorkspace(fromSource(TOUR_ROBOT));
+    const b = sketchToWorkspace(fromSource(TOUR_ROBOT));
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+
+  it("names a block by where it sits", () => {
+    const ws = sketchToWorkspace(fromSource(TOUR_ROBOT));
+    const hat = ws.blocks!.blocks[0]!;
+    expect(hat.id).toBe("h0");
+    // First statement of the first handler.
+    expect(hat.inputs!["DO"]!.block.id).toMatch(/^h0\.0\./);
+  });
+
+  it("gives every block a distinct id", () => {
+    const ids: string[] = [];
+    const walk = (b: BlockJson | undefined) => {
+      if (!b) return;
+      if (b.id) ids.push(b.id);
+      for (const input of Object.values(b.inputs ?? {})) walk(input.block);
+      walk(b.next?.block);
+    };
+    for (const { source } of ALL) {
+      ids.length = 0;
+      sketchToWorkspace(fromSource(source)).blocks!.blocks.forEach(walk);
+      expect(new Set(ids).size, `${ids.length} ids`).toBe(ids.length);
     }
   });
 });

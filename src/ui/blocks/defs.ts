@@ -25,7 +25,17 @@ import { FieldSlider } from "@blockly/field-slider";
 
 Blockly.setLocale(En as unknown as Record<string, string>);
 import { ANGLE_CHOICES, CARDS, type CardSpec } from "../../workshop/compose.js";
-import { COMMENT_BLOCK, RAW_BLOCK, WHEN_BLOCK, blockTypeFor } from "./bridge.js";
+import {
+  COMMENT_BLOCK,
+  COMPARE_BLOCK,
+  COMPARISONS,
+  EXPR_BLOCK,
+  NUM_BLOCK,
+  PROP_BLOCK,
+  RAW_BLOCK,
+  WHEN_BLOCK,
+  blockTypeFor,
+} from "./bridge.js";
 import { EVENT_DOCS } from "../../lang/events.js";
 import { phraseFor, type Theme } from "../../lang/vocab.js";
 import type { EventName } from "../../lang/ast.js";
@@ -50,7 +60,44 @@ const GROUP_HUE: Record<CardSpec["group"], number> = {
   look: 165,
   shoot: 20,
   wait: 280,
+  remember: 330,
+  repeat: 120,
 };
+
+/**
+ * Comparisons in words.
+ *
+ * `isnt` and `<=` are punctuation to somebody who already knows them and
+ * hieroglyphs to somebody who does not. The block says what it means; the
+ * script it writes still says `<=`.
+ */
+const OP_WORDS: Record<string, string> = {
+  is: "is",
+  isnt: "is not",
+  "<": "is less than",
+  ">": "is more than",
+  "<=": "is at most",
+  ">=": "is at least",
+};
+
+/**
+ * What a condition can ask about.
+ *
+ * The properties a first robot actually reads, in plain words, rather than the
+ * whole table — `me.gunHeat` is real and is not what a nine-year-old is
+ * wondering about. Anything outside this list still arrives from the script as
+ * its own name and is shown as written.
+ */
+const PROP_CHOICES: readonly (readonly [string, string])[] = [
+  ["how far away they are", "event.distance"],
+  ["which way they are", "event.bearing"],
+  ["how strong I am", "me.health"],
+  ["how much fuel I have", "me.fuel"],
+  ["how fast I am going", "me.speed"],
+  ["which way I am facing", "me.heading"],
+  ["how long the fight has run", "arena.time"],
+  ["how many are left", "arena.robots"],
+];
 
 let defined = false;
 
@@ -133,8 +180,124 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
     },
   };
 
+  /*
+   * Deciding and repeating.
+   *
+   * These are the language rather than an extra, which is why they are real
+   * blocks with real statement inputs: a block editor that could not express
+   * `if` would not be the language as blocks, it would be a list of actions.
+   * `if` takes its condition in a socket, so it is assembled rather than
+   * typed; `repeat` and `for` take counts as plain fields, because a number of
+   * times is a number and not a question.
+   */
+  Blockly.Blocks[blockTypeFor("if")] = {
+    init(this: Blockly.Block) {
+      this.appendValueInput("COND").appendField("🔀 if");
+      this.appendStatementInput("THEN").appendField("then");
+      this.appendStatementInput("ELSE").appendField("else");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(60);
+    },
+  };
+
+  Blockly.Blocks[blockTypeFor("loop")] = {
+    init(this: Blockly.Block) {
+      this.appendStatementInput("BODY").appendField("🔁 keep doing");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(GROUP_HUE.repeat);
+    },
+  };
+
+  Blockly.Blocks[blockTypeFor("repeat")] = {
+    init(this: Blockly.Block) {
+      this.appendStatementInput("BODY")
+        .appendField("🔁 repeat")
+        .appendField(new FieldSlider(2, 1, 20, 1), "V0")
+        .appendField("times");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(GROUP_HUE.repeat);
+    },
+  };
+
+  Blockly.Blocks[blockTypeFor("for")] = {
+    init(this: Blockly.Block) {
+      this.appendStatementInput("BODY")
+        .appendField("🔢 count")
+        .appendField(new Blockly.FieldTextInput("i"), "V0")
+        .appendField("from")
+        .appendField(new Blockly.FieldTextInput("1"), "V1")
+        .appendField("to")
+        .appendField(new Blockly.FieldTextInput("3"), "V2");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setColour(GROUP_HUE.repeat);
+    },
+  };
+
+  /*
+   * The condition sockets. A comparison of two things, where each thing is a
+   * property or a number — which is the shape almost every condition in a real
+   * script has. Anything past that is one text block holding the expression as
+   * written, so nothing is lost and nothing is silently rewritten.
+   */
+  Blockly.Blocks[COMPARE_BLOCK] = {
+    init(this: Blockly.Block) {
+      this.appendValueInput("A");
+      this.appendValueInput("B").appendField(
+        new Blockly.FieldDropdown(COMPARISONS.map((op) => [OP_WORDS[op] ?? op, op])),
+        "OP",
+      );
+      this.setInputsInline(true);
+      this.setOutput(true, null);
+      this.setColour(60);
+    },
+  };
+
+  Blockly.Blocks[PROP_BLOCK] = {
+    init(this: Blockly.Block) {
+      this.appendDummyInput().appendField(
+        // A property the script names but this list does not is added as
+        // itself, so a condition read out of somebody else's robot still
+        // shows what it asks about rather than snapping to the nearest thing.
+        new Blockly.FieldDropdown(function (this: Blockly.FieldDropdown) {
+          const current = this.getValue();
+          const known = PROP_CHOICES.map((c) => [...c] as [string, string]);
+          return known.some(([, v]) => v === current) || !current
+            ? known
+            : [[current, current] as [string, string], ...known];
+        }),
+        "PROP",
+      );
+      this.setOutput(true, null);
+      this.setColour(180);
+    },
+  };
+
+  Blockly.Blocks[NUM_BLOCK] = {
+    init(this: Blockly.Block) {
+      this.appendDummyInput().appendField(new Blockly.FieldNumber(0), "NUM");
+      this.setOutput(true, null);
+      this.setColour(180);
+    },
+  };
+
+  Blockly.Blocks[EXPR_BLOCK] = {
+    init(this: Blockly.Block) {
+      this.appendDummyInput()
+        .appendField("⌨ ")
+        .appendField(new Blockly.FieldLabelSerializable(""), "TEXT");
+      this.setOutput(true, null);
+      this.setColour(0);
+      this.setEditable(false);
+      this.setTooltip("Written by hand. Open the Code tab to change this.");
+    },
+  };
+
   /**
-   * Anything the catalogue does not model — loops, `can` blocks, expressions.
+   * Anything the catalogue does not model — `can` blocks, `do`, calls.
    * Shown as its own code and not editable, so it is never lost and never
    * quietly rewritten.
    */
@@ -166,9 +329,20 @@ function fieldFor(kind: string, initial: string): Blockly.Field {
       ["●●●", "3"],
     ]);
   }
-  // Speed and ticks are both a number on a range, and a slider is the control
-  // that cannot be wrong — there is no way to type 900 into a speed that stops
-  // at 100.
+  /*
+   * Anything that is not a number on a range is text.
+   *
+   * `set seen = seen + 1` is an assignment, not a quantity, and running it
+   * through the slider below turned it into `Number(...) || 0` — the block
+   * read "Remember 0" and would have written that back. Only speeds and counts
+   * get a slider, because only they have a floor and a ceiling.
+   */
+  if (kind !== "speed" && kind !== "ticks") {
+    return new Blockly.FieldTextInput(initial);
+  }
+
+  // A slider is the control that cannot be wrong: there is no way to put 900
+  // into a speed that stops at 100.
   const max = kind === "speed" ? 100 : 60;
   return new FieldSlider(Number(initial) || 0, 0, max, kind === "speed" ? 10 : 5);
 }
@@ -180,6 +354,8 @@ export function toolboxFor(register: "simple" | "full"): Blockly.utils.toolbox.T
     { id: "look", label: "Look" },
     { id: "shoot", label: "Shoot" },
     { id: "wait", label: "Wait" },
+    { id: "remember", label: register === "simple" ? "Remember" : "Variables" },
+    { id: "repeat", label: register === "simple" ? "Again" : "Loops" },
   ];
   return {
     kind: "categoryToolbox",
@@ -194,11 +370,34 @@ export function toolboxFor(register: "simple" | "full"): Blockly.utils.toolbox.T
         kind: "category",
         name: group.label,
         colour: String(GROUP_HUE[group.id]),
-        contents: CARDS.filter((c) => c.group === group.id).map((c) => ({
-          kind: "block",
-          type: blockTypeFor(c.id),
-        })),
+        contents: [
+          // The loop constructs live with the statements that only work
+          // inside one, so `break` is never offered far from something to
+          // break out of.
+          ...(group.id === "repeat"
+            ? [
+                { kind: "block", type: blockTypeFor("loop") },
+                { kind: "block", type: blockTypeFor("repeat") },
+                { kind: "block", type: blockTypeFor("for") },
+              ]
+            : []),
+          ...CARDS.filter((c) => c.group === group.id).map((c) => ({
+            kind: "block",
+            type: blockTypeFor(c.id),
+          })),
+        ],
       })),
+      {
+        kind: "category",
+        name: register === "simple" ? "Choose" : "Logic",
+        colour: "60",
+        contents: [
+          { kind: "block", type: blockTypeFor("if") },
+          { kind: "block", type: COMPARE_BLOCK },
+          { kind: "block", type: PROP_BLOCK },
+          { kind: "block", type: NUM_BLOCK },
+        ],
+      },
       {
         kind: "category",
         name: register === "simple" ? "Notes" : "Comments",

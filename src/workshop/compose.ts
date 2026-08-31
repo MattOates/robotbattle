@@ -53,7 +53,22 @@ export type HoleKind =
   /** 1-3, how hard. */
   | "power"
   /** A count of ticks. */
-  | "ticks";
+  | "ticks"
+  /**
+   * A condition, as written — `me.health < 30`, `event.distance > 120`.
+   *
+   * Held as text rather than as a tree. A structured builder covers the shape
+   * almost every condition actually has (a property, a comparison, a number)
+   * and anything hand-written keeps its own words, which is the same bargain
+   * the statements make: recognise what you can, carry the rest verbatim.
+   */
+  | "expr"
+  /** How many times, as written — a number or an expression. */
+  | "count"
+  /** A variable name. */
+  | "name"
+  /** A quoted string, for the one action that carries a message. */
+  | "text";
 
 export interface Hole {
   kind: HoleKind;
@@ -71,8 +86,17 @@ export interface CardSpec {
   holes: readonly { kind: HoleKind; default: string }[];
   /** Which events this makes sense in. Empty means anywhere. */
   needs?: readonly EventName[];
+  /**
+   * Only legal inside a loop.
+   *
+   * `break` and `continue` are refused by the compiler anywhere else, and a
+   * beginner handed a red squiggle they did not write and cannot read is worse
+   * off than one who was never offered the block. The block editor uses this
+   * to restrict where they may be dropped.
+   */
+  needsLoop?: boolean;
   /** How the palette is grouped. */
-  group: "move" | "look" | "shoot" | "wait";
+  group: "move" | "look" | "shoot" | "wait" | "remember" | "repeat";
 }
 
 /**
@@ -157,6 +181,64 @@ export const CARDS: readonly CardSpec[] = [
     group: "shoot",
   },
   {
+    id: "turn-body-to",
+    icon: "🧭",
+    say: { full: "Turn to face {0}", simple: "Face this way" },
+    template: "turn body to {0}",
+    holes: [{ kind: "angle", default: "90" }],
+    group: "move",
+  },
+  {
+    id: "turret-turn-by",
+    icon: "↺",
+    say: { full: "Swing the {turret} by {0}", simple: "Swing the {turret}" },
+    template: "turret.turn by {0}",
+    holes: [{ kind: "angle", default: "45" }],
+    group: "look",
+  },
+  {
+    id: "radar-aim",
+    icon: "📶",
+    say: { full: "Point the {radar} at {0}", simple: "Point the {radar}" },
+    template: "radar.aim at {0}",
+    holes: [{ kind: "angle", default: "event.bearing" }],
+    group: "look",
+  },
+  {
+    id: "broadcast",
+    icon: "📣",
+    say: { full: "{Broadcast} {0}", simple: "Shout to everyone" },
+    template: "broadcast {0}",
+    holes: [{ kind: "text", default: '"hello"' }],
+    group: "look",
+  },
+  {
+    id: "set",
+    icon: "📥",
+    say: { full: "Set {0}", simple: "Remember {0}" },
+    template: "set {0}",
+    holes: [{ kind: "expr", default: "seen = seen + 1" }],
+    group: "remember",
+  },
+  {
+    id: "break",
+    icon: "⏭",
+    say: { full: "Break out of the loop", simple: "Stop repeating" },
+    template: "break",
+    holes: [],
+    needsLoop: true,
+    group: "repeat",
+  },
+  {
+    id: "continue",
+    icon: "⏩",
+    say: { full: "Skip to the next time round", simple: "Skip this one" },
+    template: "continue",
+    holes: [],
+    needsLoop: true,
+    group: "repeat",
+  },
+  {
     id: "wait",
     icon: "⏱",
     say: { full: "Wait {0} ticks", simple: "Wait a moment" },
@@ -211,6 +293,34 @@ export interface Card {
   text: string;
   /** Comment and blank lines that came immediately above it, kept with it. */
   lead: string[];
+  /**
+   * The statements inside, for the constructs that hold statements.
+   *
+   * `if` has `then` and `else`; `loop`, `for` and `repeat` have `body`. Plain
+   * statements have none. Nesting is modelled rather than treated as an opaque
+   * run because deciding and repeating *are* the language — a block editor
+   * that could not express `if` would not be the language as blocks, it would
+   * be a list of actions.
+   */
+  slots?: Record<string, Card[]>;
+  /**
+   * The lines that separate and close the slots, verbatim — the `else` and the
+   * `end`. Kept rather than regenerated so a construct nobody has touched
+   * comes back with its own indentation and spelling.
+   */
+  seps?: Record<string, string>;
+}
+
+/** The constructs that hold other statements, and the slots each one has. */
+export const NESTS: Readonly<Record<string, readonly string[]>> = {
+  if: ["then", "else"],
+  loop: ["body"],
+  repeat: ["body"],
+  for: ["body"],
+};
+
+export function isNest(spec: string): boolean {
+  return Object.prototype.hasOwnProperty.call(NESTS, spec);
 }
 
 export interface Block {
@@ -344,8 +454,130 @@ export function setHole(card: Card, index: number, value: string): Card {
 
 // ---------------------------------------------------------------------------
 
-/** Lines that open a nested region inside a handler, which cards do not model. */
-const OPENERS = /^(if|loop|for|repeat)\b/;
+/** Lines that open a nested region. Each is modelled; none is opaque. */
+const OPENERS: readonly { spec: string; re: RegExp }[] = [
+  { spec: "if", re: /^if\b/ },
+  { spec: "loop", re: /^loop\b/ },
+  { spec: "repeat", re: /^repeat\b/ },
+  { spec: "for", re: /^for\b/ },
+];
+
+function openerFor(trimmed: string): string | null {
+  return OPENERS.find((o) => o.re.test(trimmed))?.spec ?? null;
+}
+
+/** The condition or count a nesting header carries, as written. */
+function nestHole(spec: string, line: string): Hole[] {
+  const t = line.trim();
+  if (spec === "if") {
+    const m = /^if\s+(.*?)\s+then$/.exec(t);
+    return m ? [{ kind: "expr", value: m[1]! }] : [];
+  }
+  if (spec === "repeat") {
+    const m = /^repeat\s+(.*?)\s+times$/.exec(t);
+    return m ? [{ kind: "count", value: m[1]! }] : [];
+  }
+  if (spec === "for") {
+    const m = /^for\s+(\w+)\s*=\s*(.*?)\s+to\s+(.*)$/.exec(t);
+    return m
+      ? [
+          { kind: "name", value: m[1]! },
+          { kind: "count", value: m[2]! },
+          { kind: "count", value: m[3]! },
+        ]
+      : [];
+  }
+  return [];
+}
+
+const isBlank = (l: string) => l.trim() === "";
+const isComment = (l: string) => l.trim().startsWith("--");
+
+/**
+ * Read statements until one of `stops` is reached at this level.
+ *
+ * Recursive, so `if` inside `loop` inside `if` is a tree rather than a run of
+ * text. Returns where it stopped and on which word, because an `if` has to
+ * know whether it ended at `else` or at `end`.
+ */
+function readStatements(
+  lines: string[],
+  from: number,
+  stops: readonly string[],
+): { cards: Card[]; at: number; stoppedOn: string | null } {
+  const cards: Card[] = [];
+  let lead: string[] = [];
+  let i = from;
+
+  for (; i < lines.length; i++) {
+    const line = lines[i]!;
+    const trimmed = line.trim();
+
+    if (stops.includes(trimmed)) {
+      // Comments sitting just before the closer belong to the block, not to
+      // whatever follows it.
+      if (lead.length > 0) {
+        cards.push({ id: nextId("c"), spec: "raw", holes: [], text: "", lead });
+        lead = [];
+      }
+      return { cards, at: i, stoppedOn: trimmed };
+    }
+
+    if (isBlank(line) || isComment(line)) {
+      lead.push(line);
+      continue;
+    }
+
+    const opener = openerFor(trimmed);
+    if (opener) {
+      const slots: Record<string, Card[]> = {};
+      const seps: Record<string, string> = {};
+      if (opener === "if") {
+        const thenPart = readStatements(lines, i + 1, ["else", "end"]);
+        slots["then"] = thenPart.cards;
+        i = thenPart.at;
+        if (thenPart.stoppedOn === "else") {
+          seps["else"] = lines[i]!;
+          const elsePart = readStatements(lines, i + 1, ["end"]);
+          slots["else"] = elsePart.cards;
+          i = elsePart.at;
+        }
+      } else {
+        const body = readStatements(lines, i + 1, ["end"]);
+        slots["body"] = body.cards;
+        i = body.at;
+      }
+      // `i` is the closing line, or past the end of an unterminated script.
+      if (i < lines.length) seps["end"] = lines[i]!;
+      cards.push({
+        id: nextId("c"),
+        spec: opener,
+        holes: nestHole(opener, line),
+        text: line,
+        lead,
+        slots,
+        seps,
+      });
+      lead = [];
+      continue;
+    }
+
+    const matched = matchCard(line);
+    cards.push({
+      id: nextId("c"),
+      spec: matched ? matched.spec.id : "raw",
+      holes: matched ? matched.holes : [],
+      text: line,
+      lead,
+    });
+    lead = [];
+  }
+
+  if (lead.length > 0) {
+    cards.push({ id: nextId("c"), spec: "raw", holes: [], text: "", lead });
+  }
+  return { cards, at: i, stoppedOn: null };
+}
 
 /**
  * Read a script into cards.
@@ -363,9 +595,6 @@ export function fromSource(source: string): Sketch {
 
   let lead: string[] = [];
   let i = 0;
-
-  const isBlank = (l: string) => l.trim() === "";
-  const isComment = (l: string) => l.trim().startsWith("--");
 
   // Everything up to the first block header belongs to the head.
   while (i < lines.length) {
@@ -396,80 +625,16 @@ export function fromSource(source: string): Sketch {
       continue;
     }
 
-    i++;
-    const cards: Card[] = [];
-    let cardLead: string[] = [];
-    let close: string | null = null;
-    let depth = 0;
-    let rawRun: string[] | null = null;
-
-    for (; i < lines.length; i++) {
-      const line = lines[i]!;
-      const trimmed = line.trim();
-
-      if (depth === 0 && trimmed === "end") {
-        close = line;
-        i++;
-        break;
-      }
-
-      if (rawRun) {
-        rawRun.push(line);
-        if (OPENERS.test(trimmed)) depth++;
-        if (trimmed === "end") {
-          depth--;
-          if (depth === 0) {
-            cards.push({
-              id: nextId("c"),
-              spec: "raw",
-              holes: [],
-              text: rawRun.join("\n"),
-              lead: cardLead,
-            });
-            cardLead = [];
-            rawRun = null;
-          }
-        }
-        continue;
-      }
-
-      if (isBlank(line) || isComment(line)) {
-        cardLead.push(line);
-        continue;
-      }
-
-      if (OPENERS.test(trimmed)) {
-        // A nested construct is one raw card holding all of its lines, so the
-        // composer neither models it nor loses it.
-        depth = 1;
-        rawRun = [line];
-        continue;
-      }
-
-      const matched = matchCard(line);
-      cards.push({
-        id: nextId("c"),
-        spec: matched ? matched.spec.id : "raw",
-        holes: matched ? matched.holes : [],
-        text: line,
-        lead: cardLead,
-      });
-      cardLead = [];
-    }
-
-    // An unterminated block, or trailing comments before the `end`: keep them.
-    if (rawRun) {
-      cards.push({ id: nextId("c"), spec: "raw", holes: [], text: rawRun.join("\n"), lead: cardLead });
-      cardLead = [];
-    } else if (cardLead.length > 0) {
-      cards.push({ id: nextId("c"), spec: "raw", holes: [], text: "", lead: cardLead });
-    }
+    const read = readStatements(lines, i + 1, ["end"]);
+    i = read.at;
+    const close = read.stoppedOn === "end" ? lines[i]! : null;
+    if (close !== null) i++;
 
     blocks.push({
       id: nextId("b"),
       header,
       event: eventOf(header),
-      cards,
+      cards: read.cards,
       lead,
       close,
     });
@@ -492,15 +657,42 @@ export function fromSource(source: string): Sketch {
 export function toSource(sketch: Sketch): string {
   const out: string[] = [...sketch.head];
 
+  /**
+   * One statement and everything under it.
+   *
+   * Recursive, mirroring `readStatements`: the header, then each slot's
+   * statements, with the separators that were written between them. A
+   * construct nobody has touched comes back out with its own `else` and `end`
+   * exactly as they were indented and spelled.
+   */
+  const emit = (card: Card, into: string[]): void => {
+    into.push(...card.lead);
+    // An empty text is the placeholder for trailing comments inside a block,
+    // which have already been emitted as `lead`.
+    if (card.text === "") return;
+    into.push(...card.text.split("\n"));
+
+    if (!card.slots) return;
+    for (const slot of NESTS[card.spec] ?? []) {
+      const held = card.slots[slot];
+      // The separator comes before the slot it introduces — `else` before the
+      // else-branch — and only when there is a branch to introduce.
+      if (slot !== (NESTS[card.spec] ?? [])[0]) {
+        const sep = card.seps?.[slot];
+        if (held === undefined) continue;
+        if (sep !== undefined) into.push(sep);
+        else into.push(`${indentOfText(card.text)}${slot}`);
+      }
+      for (const child of held ?? []) emit(child, into);
+    }
+    const end = card.seps?.["end"];
+    into.push(end === undefined ? `${indentOfText(card.text)}end` : end);
+  };
+
   for (const block of sketch.blocks) {
     out.push(...block.lead);
     out.push(block.header);
-    for (const card of block.cards) {
-      out.push(...card.lead);
-      // An empty text is the placeholder for trailing comments inside a block,
-      // which have already been emitted as `lead`.
-      if (card.text !== "") out.push(...card.text.split("\n"));
-    }
+    for (const card of block.cards) emit(card, out);
     if (block.close !== null) out.push(block.close);
   }
 
@@ -570,6 +762,11 @@ export function removeBlock(sketch: Sketch, blockId: string): Sketch {
 export function availableEvents(sketch: Sketch): EventName[] {
   const taken = new Set(sketch.blocks.map((b) => b.event).filter(Boolean));
   return EVENT_NAMES.filter((e) => !taken.has(e));
+}
+
+/** The leading whitespace of a line, for generating a matching closer. */
+function indentOfText(text: string): string {
+  return /^\s*/.exec(text)?.[0] ?? "  ";
 }
 
 function indentOf(block: Block): string {
