@@ -285,6 +285,14 @@ export function Workshop({
    * The default is the first, which for an Explorer is cards and for an
    * Engineer is text, so nobody is moved off what they came for.
    */
+  /*
+   * A beginner's Workshop has one {robot}, one opponent and one thing worth
+   * looking at. The instrument's three-column layout spends 380px on a column
+   * holding that one {robot} and 320px on a column holding that one opponent,
+   * and takes 305px of height in banners before the arena gets any. `compact`
+   * is what collapses all of that.
+   */
+  const compact = levelSpec(level).register === "simple";
   const ways = levelSpec(level).authoring;
   const [way, setWay] = useState<Authoring>(() => ways[0] ?? "text");
 
@@ -683,8 +691,17 @@ export function Workshop({
   }, [applyBlock, pane, pendingBlock]);
 
   return (
-    <div className="workshop">
-      <header className="screen-head">
+    <div className={`workshop${compact ? " compact" : ""}`}>
+      {/*
+        * Hidden below the instrument.
+        *
+        * "← Menu" and the word "Workshop" cost 55px of height and say what the
+        * journey bar already says with the Build station lit — and the arena
+        * was the thing paying for it, since the trial canvas is height-bound
+        * and was down to 320×220 in a 1512×827 window. A room code still has
+        * to appear, so the header stays when there is one.
+        */}
+      <header className={`screen-head${compact && !inSession ? " hidden" : ""}`}>
         <button type="button" className="btn small" onClick={() => navigate("menu")}>
           ← Menu
         </button>
@@ -2211,6 +2228,7 @@ function TrialPane({
    * they fold away, with the preset named on the fold, and open on a tap.
    */
   const simple = levelSpec(level).register === "simple";
+  const compact = simple;
   const [showSetup, setShowSetup] = useState(!simple);
   const [expanded, setExpanded] = useState(false);
   const [lastOutcome, setLastOutcome] = useState<MatchOutcome | null>(null);
@@ -2283,6 +2301,22 @@ function TrialPane({
 
   const start = () => {
     if (!robot || !canRun || broken) return;
+    /*
+     * At the simple register the fight fills the screen.
+     *
+     * The Trial pane shows the arena, its transport, the setup, who to fight
+     * and the debrief at once — which is right for tuning a robot, and wrong
+     * for watching one fight. The canvas is aspect-locked, so on an 827px
+     * window with this skin's type it was rendering at 206x142: nine percent
+     * of the screen for the only part of the game that moves.
+     *
+     * Rather than win that back twenty pixels at a time from panels that all
+     * have a reason to exist, the fight stops being one panel among them.
+     * Everything else is still there when it ends — this is the same expand
+     * the button beside it has always offered, taken automatically for
+     * somebody who has not yet met the button.
+     */
+    if (compact) setExpanded(true);
     // Filtered through the live list, so a version deleted since it was ticked
     // simply drops out rather than failing to compile.
     const chosen = contenders.filter((c) => opponents.includes(c.id));

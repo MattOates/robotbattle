@@ -30,6 +30,7 @@
  * `applySnippet` come across unchanged.
  */
 
+import { useEffect, useState } from "react";
 import { Avatar } from "../character/Avatar.js";
 import { Prose } from "../Prose.js";
 import { applySnippet } from "../tour/steps.js";
@@ -49,9 +50,23 @@ interface Props {
   speak?: (text: string) => void;
 }
 
+/*
+ * The explanation is folded away by default.
+ *
+ * It was open, and it cost 123px of height on every screen of the Workshop —
+ * which the trial arena was paying for, since the canvas is aspect-locked and
+ * height-bound. The instruction is one line and always visible; the *why* is a
+ * paragraph you want once and then never again, so it is a tap away rather
+ * than permanently in the way.
+ */
+
 export function HelperPanel({ quest, step, theme, say, fill, script, done, speak }: Props) {
   const met = quest.steps.filter((s) => done.has(stepKey(quest, s))).length;
   const help = step.help ? fill(say(step.help)) : null;
+  // Reopened per step rather than remembered, so the explanation for a step
+  // they have not seen is not silently hidden by a fold they closed earlier.
+  const [open, setOpen] = useState(false);
+  useEffect(() => setOpen(false), [step.id]);
   // Only offered where it can be applied: an insert button beside a script
   // somebody is not allowed to change is a button that does nothing.
   const canInsert = step.insert && script?.editable === true;
@@ -59,7 +74,7 @@ export function HelperPanel({ quest, step, theme, say, fill, script, done, speak
   return (
     <section className="helper">
       <span className="helper-face" aria-hidden="true">
-        <Avatar theme={theme} state="talking" size={44} />
+        <Avatar theme={theme} state="talking" size={32} />
       </span>
 
       <div className="helper-body">
@@ -70,13 +85,24 @@ export function HelperPanel({ quest, step, theme, say, fill, script, done, speak
           {fill(say(step.say))}
         </p>
 
-        {help ? (
+        {help && open ? (
           <p className="helper-help">
             <Prose text={help} />
           </p>
         ) : null}
 
         <div className="helper-actions">
+          {help ? (
+            <button
+              type="button"
+              className="btn small"
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+            >
+              {open ? "Got it" : "How?"}
+            </button>
+          ) : null}
+
           {canInsert ? (
             <button
               type="button"

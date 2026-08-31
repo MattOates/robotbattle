@@ -351,3 +351,177 @@
 :root[data-skin="playground"] .standing .tally {
   text-align: left;
 }
+
+/*
+ * The compact Workshop lives in this file, not in `styles.css`.
+ *
+ * It was written there first and silently lost: `.workshop.compact
+ * .workshop-body` and `:root[data-skin="playground"] .workshop-body` both
+ * score (0,3,0), so the tie went to whichever file loaded last — this one. The
+ * rules only ever apply in this skin anyway, so here is where they belong.
+ */
+
+/*
+ * A beginner's Workshop, laid out for what is actually in it.
+ *
+ * The instrument is three columns: shelves on the left, work in the middle,
+ * detail on the right. That is right for somebody with nine robots, four
+ * arenas and a room full of people. It is wrong for somebody with one robot
+ * and one opponent, and the cost is not merely aesthetic — the trial canvas is
+ * aspect-locked and height-bound, so 305px of banners and a 380px column of
+ * empty shelf left it rendering at 320x220 in a 1512x827 window. Nine percent
+ * of the screen for the only part of the game that moves.
+ *
+ * So in the simple register the shelves become a strip across the top, the
+ * headers shrink, and the middle column gets the whole width.
+ */
+:root[data-skin="playground"] .workshop.compact .screen-head.hidden {
+  display: none;
+}
+
+/*
+ * One column, two rows — and the rows have to be declared.
+ *
+ * Left to `auto`, the shelf strip and the work area split the height between
+ * them and the work area overflowed rather than shrinking, which is how the
+ * arena ended up at 192px inside a 677px body. The strip takes what it needs;
+ * everything else goes to the work.
+ */
+:root[data-skin="playground"] .workshop.compact .workshop-body {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+}
+
+/*
+ * The library, laid on its side and flattened.
+ *
+ * One robot is a toolbar, not a column — and not a panel with a heading, a
+ * storage meter, a row and a block of four buttons stacked under it either.
+ * That shape was 173px tall even lying down.
+ */
+:root[data-skin="playground"] .workshop.compact .sidebar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .panel {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-3);
+}
+
+/*
+ * The accordion head, the robot row and the buttons all on one line.
+ *
+ * `.panel-body` has to be in this list or the flattening stops one level
+ * short: the panel becomes a row of two, and the second of them is still a
+ * stack. That was the difference between 179px and 60px.
+ */
+:root[data-skin="playground"] .workshop.compact .sidebar .panel-head,
+:root[data-skin="playground"] .workshop.compact .sidebar .panel-body,
+:root[data-skin="playground"] .workshop.compact .sidebar .roster,
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-select {
+  flex: 1 1 auto;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-select {
+  border-left: 0;
+}
+
+/* The storage meter is a thing you look at once a year. */
+:root[data-skin="playground"] .workshop.compact .sidebar .panel-head .roster-meta {
+  display: none;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .panel {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-actions {
+  flex-wrap: nowrap;
+}
+
+/*
+ * The trial, arena first.
+ *
+ * Who to fight goes underneath rather than beside. At this level it is one or
+ * two chips, and as a column it was taking 320px of width from the only thing
+ * on the screen anybody is looking at.
+ */
+/*
+ * The arena takes the room; who-to-fight takes what is left.
+ *
+ * `1fr auto` alone is not enough: the second row is content-sized and its
+ * content is two panels, so it claimed 246px of a 446px column and left the
+ * aspect-locked canvas rendering at 47px tall. A floor on the arena and a
+ * ceiling on the row below it settles the argument in the right direction.
+ */
+:root[data-skin="playground"] .workshop.compact .trial-body {
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(300px, 1fr) auto;
+}
+
+:root[data-skin="playground"] .workshop.compact .trial-side {
+  max-height: 34vh;
+  overflow: auto;
+}
+
+:root[data-skin="playground"] .workshop.compact .trial-side {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+:root[data-skin="playground"] .workshop.compact .trial-side > * {
+  flex: 1 1 260px;
+}
+
+/*
+ * The arena panel's own chrome, trimmed.
+ *
+ * Its head and its readout were 140px between them around a 156px canvas —
+ * more furniture than picture. Neither is removed, because the transport
+ * buttons and the tick counter are how a match is watched; they are simply not
+ * allowed to be the bigger half.
+ */
+:root[data-skin="playground"] .workshop.compact .arena-panel .panel-head,
+:root[data-skin="playground"] .workshop.compact .readout {
+  padding-block: var(--sp-1);
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel .panel-head .silkscreen {
+  font-size: var(--t-8);
+}
+
+/* The name is the only part of the row worth room here. */
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-name {
+  font-size: var(--t-10);
+}
+
+/* The chips run across now, so they no longer need to stack. */
+:root[data-skin="playground"] .workshop.compact .trial-side .chip-group {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
