@@ -383,3 +383,34 @@ describe("remembering", () => {
     expect(through(decl)).toBe(decl);
   });
 });
+
+/**
+ * A value with no name for it must survive being shown.
+ *
+ * `turn body by 150` uses an angle the palette has no phrase for — the named
+ * ones are "at them", "45°", "right round" and so on. The block editor drew it
+ * as "at them", which is a lie about somebody's robot, and the guard against
+ * it writing that lie back is here: the value goes through the workspace
+ * untouched whether or not anything has a name for it.
+ */
+describe("values nothing has a name for", () => {
+  const odd = 'name "O"\nchassis tank\n\non hit wall\n  turn body by 150\nend';
+
+  it("survives the workspace", () => {
+    expect(through(odd)).toBe(odd);
+  });
+
+  it("is carried on the block as itself", () => {
+    const ws = sketchToWorkspace(fromSource(odd));
+    const turn = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    expect(turn.type).toBe(blockTypeFor("turn-body-by"));
+    expect(turn.fields!["V0"]).toBe("150");
+  });
+
+  it("is not confused with one that does have a name", () => {
+    const named = 'name "O"\nchassis tank\n\non sense robot\n  turn body by event.bearing\nend';
+    const ws = sketchToWorkspace(fromSource(named));
+    expect(ws.blocks!.blocks[0]!.inputs!["DO"]!.block.fields!["V0"]).toBe("event.bearing");
+    expect(through(named)).toBe(named);
+  });
+});

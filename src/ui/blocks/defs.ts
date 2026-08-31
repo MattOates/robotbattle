@@ -332,13 +332,7 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
         // A property the script names but this list does not is added as
         // itself, so a condition read out of somebody else's robot still
         // shows what it asks about rather than snapping to the nearest thing.
-        new Blockly.FieldDropdown(function (this: Blockly.FieldDropdown) {
-          const current = this.getValue();
-          const known = PROP_CHOICES.map((c) => [...c] as [string, string]);
-          return known.some(([, v]) => v === current) || !current
-            ? known
-            : [[current, current] as [string, string], ...known];
-        }),
+        openDropdown(PROP_CHOICES),
         "PROP",
       );
       this.setOutput(true, null);
@@ -367,14 +361,15 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
          * {robot} still shows its own name rather than snapping to one of
          * ours.
          */
-        new Blockly.FieldDropdown(function (this: Blockly.FieldDropdown) {
+        // The same open dropdown, over whatever the script has declared.
+        (new OpenDropdown(function (this: Blockly.FieldDropdown) {
           const current = String(this.getValue() ?? "");
           const known = knownVariables.map((n) => [n, n] as [string, string]);
           if (current !== "" && !knownVariables.includes(current)) {
             known.unshift([current, current]);
           }
           return known.length > 0 ? known : [["seen", "seen"]];
-        }),
+        }) as unknown as Blockly.Field),
         "NAME",
       );
       this.setOutput(true, null);
@@ -422,15 +417,75 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
   };
 }
 
+/**
+ * A dropdown that cannot lose the value it was given.
+ *
+ * Blockly falls back to the first option when a field holds something the list
+ * does not offer — so `turn body by 150`, whose 150 is not one of the named
+ * angles, rendered as "at them" and would have been *written back* as
+ * `event.bearing`. A dropdown silently rewriting somebody's {robot} is the
+ * worst bug this editor could have, and it is the same one the card view
+ * already guards against.
+ *
+ * So whatever the field holds is always an option, listed first.
+ */
+class OpenDropdown extends Blockly.FieldDropdown {
+  /**
+   * Accept the value, whatever it is.
+   *
+   * `FieldDropdown` validates against its option list and falls back to the
+   * first option when the value is not in it. A generator that adds the
+   * current value cannot save it either, because the generator runs before the
+   * value has been set — so `turn body by 150` was validated against a list
+   * built for the *default* value, rejected, and silently became
+   * `event.bearing`. This is the only place that can know the difference
+   * between "not one of the names we offer" and "not allowed".
+   */
+  protected override doClassValidation_(value?: unknown): string | null {
+    return value === undefined || value === null ? null : String(value);
+  }
+
+  /**
+   * Show the value when there is no name for it.
+   *
+   * `FieldDropdown` renders the label of its cached selected option, and the
+   * cache is built when the field is constructed — before the block's value
+   * arrives from the script. So a value with no matching option kept the
+   * *default* option's label: `turn body by 150` was drawn as "at them", which
+   * is a lie about somebody's {robot} even though the script underneath was
+   * still correct. Looked up fresh here, and falling back to the value itself,
+   * which is the honest thing to show for a number nobody has named.
+   */
+  protected override getText_(): string {
+    const value = String(this.getValue() ?? "");
+    const options = this.getOptions(false);
+    for (const [label, optionValue] of options) {
+      if (optionValue === value) return typeof label === "string" ? label : value;
+    }
+    return value;
+  }
+}
+
+function openDropdown(choices: readonly (readonly [string, string])[]): Blockly.Field {
+  // `exactOptionalPropertyTypes` makes the subclass structurally incompatible
+  // with `Field<unknown>` over an optional `validator_`. It is a Field.
+  return new OpenDropdown(function (this: Blockly.FieldDropdown) {
+    const current = String(this.getValue() ?? "");
+    const known = choices.map((c) => [...c] as [string, string]);
+    if (current !== "" && !known.some(([, value]) => value === current)) {
+      known.unshift([current, current]);
+    }
+    return known;
+  }) as unknown as Blockly.Field;
+}
+
 /** The control for one kind of value. */
 function fieldFor(kind: string, initial: string): Blockly.Field {
   if (kind === "angle") {
-    return new Blockly.FieldDropdown(
-      ANGLE_CHOICES.map((c) => [c.say, c.value] as [string, string]),
-    );
+    return openDropdown(ANGLE_CHOICES.map((c) => [c.say, c.value] as [string, string]));
   }
   if (kind === "power") {
-    return new Blockly.FieldDropdown([
+    return openDropdown([
       ["●", "1"],
       ["●●", "2"],
       ["●●●", "3"],

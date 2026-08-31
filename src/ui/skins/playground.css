@@ -405,11 +405,29 @@
   align-items: center;
   gap: var(--sp-3);
   flex-wrap: wrap;
+  /*
+   * A ceiling, and scroll past it.
+   *
+   * The strip holds whatever shelves the level shows, and in a session that
+   * grows by two more — who is here, and the chat — which between them pushed
+   * the editor off the bottom of the screen entirely. The shelves are things
+   * you glance at; the editor is the thing you are doing.
+   */
+  max-height: 30vh;
+  overflow-y: auto;
 }
 
 :root[data-skin="playground"] .workshop.compact .sidebar .panel {
   display: flex;
   align-items: center;
+  /*
+   * Wrap rather than scroll. Laid out in a row without this, a panel with more
+   * in it than fits — Work together, which carries two transport buttons, a
+   * start button, a code and a Join — grew a horizontal scrollbar and put its
+   * last control off the edge. A control you cannot see is a control you do
+   * not have.
+   */
+  flex-wrap: wrap;
   gap: var(--sp-3);
   flex: 1 1 auto;
   min-width: 0;

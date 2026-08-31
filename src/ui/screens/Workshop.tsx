@@ -614,6 +614,18 @@ export function Workshop({
     return yCollab(provider.textFor(sessionRobotId), provider.awareness);
   }, [provider, sessionRobotId, editable]);
 
+  /*
+   * The same shared document, for the block editor.
+   *
+   * `yCollab` above is a CodeMirror extension and means nothing to a block
+   * canvas, so the block editor is handed the two things it actually needs —
+   * the text to write into, and the awareness to say where it is.
+   */
+  const blockCollab = useMemo(() => {
+    if (!provider || !sessionRobotId || !editable) return undefined;
+    return { text: provider.textFor(sessionRobotId), awareness: provider.awareness };
+  }, [provider, sessionRobotId, editable]);
+
   const words = THEMES[theme];
   const sessionRobotName =
     robots.find((r) => r.id === sessionRobotId)?.name ??
@@ -990,10 +1002,17 @@ export function Workshop({
                 <Suspense fallback={<div className="empty">Loading blocks…</div>}>
                   <BlockEditor
                     source={editorSource}
-                    onSource={inSession ? () => undefined : updateSource}
+                    onSource={updateSource}
                     theme={theme}
                     register={levelSpec(level).register}
-                    editable={editable && !inSession}
+                    /*
+                     * Editable in a session too, unlike before. The block
+                     * editor writes into the shared document as a small diff
+                     * rather than replacing it, so two people can be in it at
+                     * once — which is the whole point of a session.
+                     */
+                    editable={editable}
+                    {...(blockCollab ? { collab: blockCollab } : {})}
                   />
                 </Suspense>
               ) : way === "cards" && selected ? (

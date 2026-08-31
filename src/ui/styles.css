@@ -5674,3 +5674,25 @@ select.hole {
 .block-editor .blocklyFlyoutBackground {
   fill: var(--well-deep);
 }
+
+/*
+ * Somebody else's cursor, on a block.
+ *
+ * A halo and a name rather than a caret, because a block canvas has no
+ * character positions to put a caret between. Drawn inside the block's own SVG
+ * group so it moves with the block for free — no second coordinate system to
+ * keep in step, which is where this kind of overlay usually goes wrong.
+ */
+.rb-presence {
+  pointer-events: none;
+}
+
+.rb-presence-name {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--well);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
