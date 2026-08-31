@@ -17,11 +17,18 @@ import { BRANDING } from "../branding.js";
 import { NEWS, formatNewsDate, newsBody, newsTitle } from "../news.js";
 import { Tour } from "../tour/Tour.js";
 import { useTour } from "../tour/useTour.js";
+import { levelSpec, showsMode, type Level } from "../level.js";
+import type { QuestApi } from "../quest/useQuests.js";
 
 interface Props {
   theme: Theme;
   robotCount: number;
   playerName: string;
+  level: Level;
+  quests: QuestApi;
+  say: (both: { full: string; simple: string }) => string;
+  fill: (text: string) => string;
+  onOpenLog: () => void;
 }
 
 interface ModeCard {
@@ -82,6 +89,9 @@ const MODES: ModeCard[] = [
   },
 ];
 
+/** The label over the next step. Two registers, like everything else. */
+const NEXT_LABEL = { full: "Next", simple: "Do this next" };
+
 /** Robots for the background fight. A mix that produces a lively match. */
 const BACKGROUND_BOTS = [
   { source: HUNTER },
@@ -90,7 +100,16 @@ const BACKGROUND_BOTS = [
   { source: DODGER },
 ];
 
-export function Menu({ theme, robotCount, playerName }: Props) {
+export function Menu({
+  theme,
+  robotCount,
+  playerName,
+  level,
+  quests,
+  say,
+  fill,
+  onOpenLog,
+}: Props) {
   // The tour opens here — a greeting and what the modes are for — before
   // sending somebody to the Workshop. Both screens mount it and each shows
   // only its own steps; the state lives in storage, so walking between them
@@ -111,6 +130,18 @@ export function Menu({ theme, robotCount, playerName }: Props) {
 
   const words = THEMES[theme];
   const brand = BRANDING[theme];
+
+  /*
+   * Which modes are on show.
+   *
+   * Not a permission — every screen is still reachable by its URL and by the
+   * journey bar, which draws locked stations dimmed rather than absent. This
+   * only decides what a beginner is offered *first*, and the quests hand the
+   * rest over one at a time so that each arrives with a reason attached.
+   */
+  const visible = MODES.filter((mode) => showsMode(level, mode.screen, quests.unlocked.modes));
+  const register = levelSpec(level).register;
+  const next = quests.next;
 
   return (
     <div className="menu">
@@ -135,8 +166,29 @@ export function Menu({ theme, robotCount, playerName }: Props) {
           <p className="menu-strap">{brand.strap}</p>
         </header>
 
+        {/*
+          * What to do next, above the modes rather than among them.
+          *
+          * The six cards are a directory: they say what each mode is and leave
+          * the choosing to somebody who already knows what a tournament is
+          * for. This is the one line that answers the question a beginner
+          * actually has, and it is the largest thing on the screen for exactly
+          * that reason.
+          */}
+        {next ? (
+          <button type="button" className="menu-next" onClick={onOpenLog}>
+            <span className="menu-next-icon" aria-hidden="true">
+              {next.quest.icon}
+            </span>
+            <span className="menu-next-body">
+              <span className="menu-next-label">{say(NEXT_LABEL)}</span>
+              <span className="menu-next-text">{fill(say(next.step.say))}</span>
+            </span>
+          </button>
+        ) : null}
+
         <nav className="menu-modes" aria-label="Game modes" data-tour="menu-modes">
-          {MODES.map((mode) => (
+          {visible.map((mode) => (
             <button
               key={mode.screen}
               type="button"
@@ -167,7 +219,13 @@ export function Menu({ theme, robotCount, playerName }: Props) {
         </nav>
 
         {/* Under the modes, not beside them: someone arriving for the first
-            time should meet the game before its changelog. */}
+            time should meet the game before its changelog.
+
+            And not at all at the simple register. A changelog is a list of
+            things that changed since a version you never played, written for
+            somebody who was already here. It is the one thing on this screen
+            with nothing in it for a beginner. */}
+        {register === "full" ? (
         <section className="menu-news" aria-labelledby="news-head">
           <h2 className="menu-news-head" id="news-head">
             News
@@ -182,6 +240,7 @@ export function Menu({ theme, robotCount, playerName }: Props) {
             ))}
           </ol>
         </section>
+        ) : null}
 
         <footer className="menu-foot">
           <span className="menu-note">

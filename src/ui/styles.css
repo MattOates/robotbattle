@@ -42,6 +42,10 @@
   /* One value where there were two, 86% and 90%, a hand's breadth apart and
      used for the same job in adjacent rules. */
   --veil-deep: rgb(13 15 11 / 88%);
+  /* A panel darkened slightly against whatever it floats on — the news list,
+     the selected tab, the snapshot strip. Was three alphas within six points
+     of each other doing one job. */
+  --veil-soft: rgb(0 0 0 / 22%);
   --wash: rgb(0 0 0 / 40%);
   --halo: rgb(0 0 0 / 80%);
 
@@ -1267,7 +1271,7 @@ button {
   flex-direction: column;
   gap: 14px;
   /* The match behind stays visible through it, like the rest of the menu. */
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--veil-soft);
   border-left: 2px solid var(--bezel);
   padding-left: 14px;
 }
@@ -1437,7 +1441,7 @@ button {
 /* ---------- snapshots ---------- */
 
 .snapshots {
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--veil-soft);
   border-bottom: 1px solid var(--bezel);
   padding: 4px 12px 8px 30px;
 }
@@ -3104,7 +3108,7 @@ button {
 }
 
 .trade-side.table {
-  background: rgba(0, 0, 0, 0.16);
+  background: var(--veil-soft);
 }
 
 .trade-side.over {
@@ -4776,4 +4780,442 @@ button {
   line-height: 1.4;
   color: var(--ink-strong);
   text-shadow: 0 1px 2px rgb(0 0 0 / 80%);
+}
+
+/* ---------- the journey, quest log and toasts ---------- */
+
+/*
+ * The spine.
+ *
+ * Fixed to the bottom rather than floated into each screen, because it is the
+ * one thing on the page that is true everywhere, and because a beginner who
+ * has scrolled into a corner of the Workshop should still be able to see where
+ * they are and what to do about it.
+ */
+.journey {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--sp-2) var(--sp-5);
+  background: var(--veil);
+  backdrop-filter: blur(8px);
+  border-top: var(--stroke) solid var(--bezel-light);
+}
+
+.journey-stations {
+  display: flex;
+  gap: var(--sp-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.journey-station {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  background: transparent;
+  border: var(--stroke) solid transparent;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: var(--t-6);
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.journey-station:hover {
+  color: var(--ink);
+  border-color: var(--bezel-light);
+}
+
+.journey-station.here {
+  color: var(--ink-strong);
+  border-color: var(--signal);
+  background: var(--panel-raised);
+}
+
+/* Dimmed, never disabled. It still goes there — see `JourneyBar.tsx`: the
+   dimming means "not yet the point", not "you may not". */
+.journey-station.locked {
+  opacity: 0.45;
+}
+
+.journey-icon {
+  font-size: var(--t-11);
+  line-height: 1;
+}
+
+.journey-next {
+  flex: 1;
+  min-width: 0;
+}
+
+.journey-todo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-4);
+  background: transparent;
+  border: var(--stroke) dashed var(--bezel-light);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  text-align: left;
+}
+
+.journey-todo:hover {
+  border-style: solid;
+  border-color: var(--signal);
+}
+
+.journey-todo-icon {
+  font-size: var(--t-11);
+  line-height: 1;
+}
+
+.journey-todo-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: var(--t-8);
+}
+
+.journey-tools {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+/*
+ * Everything else has to stop above the bar rather than run under it.
+ *
+ * On `body` rather than on the screen roots. There is no single wrapper to
+ * hang this off — `.app` is dead CSS that nothing has rendered for some time,
+ * and each screen brings its own root — so listing them would be a list that
+ * goes stale the next time a screen is added, and the failure it causes is a
+ * Start button hidden behind the bar. `body` is `height: 100%` with
+ * `box-sizing: border-box`, so the padding reserves the strip and `#root`
+ * takes what is left.
+ */
+:root[data-skin="playground"] body {
+  padding-bottom: 84px;
+}
+
+/* ---------- quest log ---------- */
+
+.quest-log {
+  position: fixed;
+  inset: auto var(--sp-5) 84px auto;
+  z-index: 45;
+  width: min(420px, calc(100vw - var(--sp-5) * 2));
+  max-height: min(70vh, 620px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: var(--stroke) solid var(--bezel-light);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px var(--halo);
+  overflow: hidden;
+}
+
+.quest-log-body {
+  overflow: auto;
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.quest-card {
+  padding: var(--sp-4);
+  border: var(--stroke) solid var(--bezel);
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+}
+
+.quest-card.current {
+  border-color: var(--signal);
+}
+
+/* The ones after the current one are a promise that there is more, not a list
+   to plan against — so they are quiet, and they do not show their steps. */
+.quest-card.later {
+  opacity: 0.55;
+}
+
+.quest-title {
+  margin: 0 0 var(--sp-3);
+  font-family: var(--font-display);
+  font-size: var(--t-10);
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.quest-steps {
+  list-style: none;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.quest-steps li {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: baseline;
+  font-size: var(--t-8);
+  color: var(--ink-muted);
+}
+
+.quest-steps li.next {
+  color: var(--ink-strong);
+  font-weight: 600;
+}
+
+.quest-steps li.met {
+  text-decoration: line-through;
+  color: var(--ink-muted);
+}
+
+.quest-tick {
+  color: var(--ok);
+}
+
+.quest-trophies {
+  border-top: var(--stroke) solid var(--bezel);
+  padding-top: var(--sp-3);
+}
+
+.quest-trophies ul {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--t-6);
+  color: var(--ink-muted);
+}
+
+/* ---------- toasts ---------- */
+
+/*
+ * Bottom centre, above the journey bar. Not a corner, and not the top.
+ *
+ * A corner is where a computer puts things it does not expect you to read, so
+ * that was never it. The top was the obvious alternative and it was wrong for
+ * a specific reason: a reward is usually a new tab or shelf appearing, and at
+ * the top the card landed squarely on the Workshop's tab row — covering the
+ * Fight tab at the exact moment of announcing it.
+ *
+ * Down here it sits directly above the journey bar, whose "do this next" line
+ * changes in the same instant, so both halves of the news are in one place and
+ * the thing being unlocked stays visible behind them.
+ */
+.quest-toasts {
+  position: fixed;
+  inset: auto 0 76px 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  animation: toast-in 0.24s ease-out;
+}
+
+.quest-toasts.leaving {
+  animation: toast-out 0.3s ease-in forwards;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.quest-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  max-width: min(560px, calc(100vw - var(--sp-6) * 2));
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--veil-deep);
+  backdrop-filter: blur(8px);
+  border: var(--stroke) solid var(--signal);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 34px var(--halo);
+}
+
+.quest-toast.quest {
+  border-color: var(--ok);
+}
+
+.quest-toast.levelUp {
+  border-color: var(--readout);
+  border-width: 2px;
+}
+
+.quest-toast-face {
+  flex: none;
+  line-height: 0;
+}
+
+.quest-toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.quest-toast-icon {
+  font-size: var(--t-11);
+}
+
+.quest-toast-text {
+  color: var(--ink-strong);
+  font-size: var(--t-9);
+  line-height: 1.4;
+}
+
+.quest-toast-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.quest-pips {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.quest-pips i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bezel-light);
+}
+
+.quest-pips i.on {
+  background: var(--ok);
+}
+
+.quest-toast-close {
+  flex: none;
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--ink-muted);
+  font-size: var(--t-12);
+  line-height: 1;
+}
+
+/* ---------- the menu's next step ---------- */
+
+/*
+ * The largest thing on the menu, above the six cards.
+ *
+ * The cards say what each mode *is*. This says what to do, which is the
+ * question somebody arriving actually has.
+ */
+.menu-next {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--veil);
+  backdrop-filter: blur(6px);
+  border: var(--stroke) solid var(--signal);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  text-align: left;
+}
+
+.menu-next:hover {
+  background: var(--panel-raised);
+}
+
+.menu-next-icon {
+  font-size: var(--t-15);
+  line-height: 1;
+}
+
+.menu-next-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.menu-next-label {
+  font-family: var(--font-display);
+  font-size: var(--t-4);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--signal);
+}
+
+.menu-next-text {
+  font-size: var(--t-11);
+  color: var(--ink-strong);
+}
+
+@media (width <= 760px) {
+  .journey {
+    flex-wrap: wrap;
+  }
+
+  .journey-next {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .journey-label {
+    display: none;
+  }
+}
+
+/*
+ * The fold over the trial's setup rows.
+ *
+ * Reads as a summary rather than as a button: it says what the fight is set to
+ * right now, so folding the controls away does not fold away the answer.
+ */
+.setup-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) 0;
+  background: transparent;
+  border: 0;
+  border-bottom: var(--stroke) solid var(--bezel);
+  cursor: pointer;
+  text-align: left;
+  color: var(--ink-muted);
+  font-size: var(--t-6);
+}
+
+.setup-toggle:hover {
+  color: var(--ink);
+}
+
+.setup-toggle .roster-meta {
+  margin-left: auto;
 }

@@ -71,7 +71,9 @@ import { ARENA_SIZE } from "../../net/matchsetup.js";
 import { AssistantPanel } from "../../assistant/AssistantPanel.js";
 import { Tour } from "../tour/Tour.js";
 import { useTour } from "../tour/useTour.js";
-import { applySnippet, findLines } from "../tour/steps.js";
+import { applySnippet, findLines, type TourSignal } from "../tour/steps.js";
+import { PANE_LABELS, PANE_LABELS_SIMPLE, type Pane, type PanelName } from "../panes.js";
+import { levelSpec, panesFor, showsPanel, type Level } from "../level.js";
 import { TrialPrefs } from "../../store/trial.js";
 import { WorkshopPrefs } from "../../store/workshop.js";
 import { useAssistantUsable } from "../../assistant/useAssistant.js";
@@ -96,28 +98,19 @@ interface Props {
   initialRoom: string | null;
   /** Which model the assistant downloads when it is first asked to. */
   assistantModel: string;
+  level: Level;
+  /** What quests have handed over, unioned with what the level starts with. */
+  unlocked: { panes: Pane[]; panels: PanelName[]; opponents: string[] };
+  /**
+   * The same events the tour is told about, forwarded to the quest system.
+   *
+   * Two consumers, one set of emitters — see the note on `TourSignal`. This is
+   * a prop rather than a hook call because the quests live in the shell: a step
+   * met here has to still be true after navigating away from this screen.
+   */
+  onQuestSignal: (signal: TourSignal) => void;
 }
 
-type Pane = "editor" | "map" | "trial" | "bench" | "history";
-
-const PANE_LABELS: Record<Pane, string> = {
-  editor: "Editor",
-  map: "Map",
-  trial: "Trial",
-  bench: "Test bench",
-  history: "History",
-};
-
-/**
- * Which tabs each kind of thing gets.
- *
- * An arena has no Editor because there is no script, and no History because a
- * map does not accumulate one: battle records are filed against a robot, and
- * "this wall layout used to win" is not a sentence. What it keeps is Trial and
- * Test bench, which is the point of editing a map inside the Workshop at all —
- * you draw a labyrinth and immediately find out whether anything can solve it.
- */
-const ROBOT_PANES: Pane[] = ["editor", "trial", "bench", "history"];
 
 /**
  * Spread an `ArenaSpec` into the two flat fields a manifest carries.
@@ -129,7 +122,6 @@ const ROBOT_PANES: Pane[] = ["editor", "trial", "bench", "history"];
 function specToManifest(spec: ArenaSpec) {
   return { terrain: spec.terrain, walls: spec.walls };
 }
-const ARENA_PANES: Pane[] = ["map", "trial", "bench"];
 
 /** What is on screen — for a guest, whatever the host is showing. */
 interface ViewedRobot {
@@ -139,7 +131,16 @@ interface ViewedRobot {
   source: string;
 }
 
-export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }: Props) {
+export function Workshop({
+  theme,
+  lib,
+  playerName,
+  initialRoom,
+  assistantModel,
+  level,
+  unlocked,
+  onQuestSignal,
+}: Props) {
   const { library, robots, refresh, chat } = lib;
   const workshopPrefs = useMemo(() => new WorkshopPrefs(), []);
   const [selectedId, setSelectedId] = useState<string | null>(() => {
@@ -165,7 +166,27 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
    * Off in a shared session: a coach mark telling somebody to press Start when
    * only the host can is worse than no help at all.
    */
-  const tour = useTour("workshop", theme, !initialRoom, playerName);
+  const rawTour = useTour("workshop", theme, !initialRoom, playerName);
+
+  /*
+   * One emitter, two listeners.
+   *
+   * Every `signal()` in this file was written for the tour. The quest system
+   * wants the same events, so rather than sprinkling a second call beside each
+   * of the six existing ones — which would have drifted apart the first time
+   * somebody added a button — the tour's own `signal` is wrapped once here and
+   * both are told. Neither knows the other exists.
+   */
+  const tour = useMemo(
+    () => ({
+      ...rawTour,
+      signal: (signal: TourSignal) => {
+        rawTour.signal(signal);
+        onQuestSignal(signal);
+      },
+    }),
+    [onQuestSignal, rawTour],
+  );
   const [showCones, setShowCones] = useState(true);
   /**
    * Whether the assistant tray is out.
@@ -226,7 +247,12 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
   const selected = robots.find((r) => r.id === selectedId) ?? robots[0] ?? null;
   const selectedArena = lib.arenas.find((a) => a.id === selectedArenaId) ?? null;
   const editingArena = selectedArena !== null;
-  const panes = editingArena ? ARENA_PANES : ROBOT_PANES;
+  // Two filters, both of which have to pass: what the thing being edited has,
+  // and what this player's level shows plus whatever their quests have opened.
+  const panes = panesFor(level, editingArena ? "arena" : "robot", unlocked.panes);
+  // "Test bench" is a machine-shop word. At the simple register the tabs are
+  // named for what you would go there to do instead — see `ui/panes.ts`.
+  const paneLabels = levelSpec(level).register === "simple" ? PANE_LABELS_SIMPLE : PANE_LABELS;
 
   useEffect(() => workshopPrefs.setSelectedRobotId(selectedId), [selectedId, workshopPrefs]);
   useEffect(() => workshopPrefs.setSelectedArenaId(selectedArenaId), [selectedArenaId, workshopPrefs]);
@@ -500,6 +526,22 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
     announceArrival({ kind: "screen", screen: "workshop" });
   }, [announceArrival]);
 
+  /*
+   * Announce the script as it stands, not only as it changes.
+   *
+   * `updateSource` below signals on every edit, which is all the tour ever
+   * needed — it is choreographing what somebody is doing right now. A quest is
+   * a claim about what they have ever done, and the starter {robot} already
+   * drives: without this, a step asking for a `drive` sat unticked in front of
+   * a script containing one until the player typed something, anything, to
+   * make the editor speak. Being ahead of the game is not a reason to be made
+   * to do it again.
+   */
+  useEffect(() => {
+    if (!selected) return;
+    onQuestSignal({ kind: "source", text: selected.source });
+  }, [onQuestSignal, selected?.id, selected?.source]);
+
   const updateSource = useCallback(
     (source: string) => {
       if (!selected) return;
@@ -552,7 +594,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
    * from one week to the next.
    */
   const assistantOpponents = useMemo(
-    () => buildContenders([], selected?.id ?? null),
+    () => buildContenders([], selected?.id ?? null, null),
     [selected?.id],
   );
 
@@ -705,6 +747,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
             />
           )}
 
+          {showsPanel(level, "behaviours", unlocked.panels) ? (
           <BlockShelf
             groups={shelfGroups}
             theme={theme}
@@ -723,13 +766,15 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
             onTake={(block) => {
               setPane("editor");
               setPendingBlock(block);
+              tour.signal({ kind: "blockTaken" });
             }}
           />
+          ) : null}
 
           {/* Last of the three shelves. Places are the thing you reach for
               least often, and the one whose selection changes the most. Hidden
               for a guest, who is here to look at somebody else's robot. */}
-          {!inSession || isHost ? (
+          {(!inSession || isHost) && showsPanel(level, "arenas", unlocked.panels) ? (
             <ArenaShelf
               lib={lib}
               theme={theme}
@@ -738,6 +783,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
             />
           ) : null}
 
+          {showsPanel(level, "room", unlocked.panels) ? (
           <SessionPanel
             room={room}
             inSession={inSession}
@@ -745,7 +791,9 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
             canStart={selected !== null}
             onStart={startSession}
           />
+          ) : null}
 
+          {showsPanel(level, "chat", unlocked.panels) ? (
           <ChatPanel
             inSession={inSession}
             robotId={inSession ? sessionRobotId : (selected?.id ?? null)}
@@ -773,6 +821,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               });
             }}
           />
+          ) : null}
         </aside>
 
         <div className="column">
@@ -790,7 +839,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                   tour.signal({ kind: "pane", pane: name });
                 }}
               >
-                {PANE_LABELS[name]}
+                {paneLabels[name]}
               </button>
             ))}
             <span className="spacer" />
@@ -902,6 +951,8 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                 tour.signal({ kind: "trial", opponents: ids, won })
               }
               onHistory={() => setPane("history")}
+              level={level}
+              unlockedOpponents={unlocked.opponents}
             />
           ) : null}
           {pane === "bench" ? (
@@ -918,6 +969,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                   report,
                 })
               }
+              onRan={() => tour.signal({ kind: "benchRun" })}
               inSession={inSession}
               arenaOverride={benchArena}
               arenaName={selectedArena?.name ?? null}
@@ -1923,8 +1975,23 @@ function SnapshotList({
  * yesterday's?" is the question the Workshop exists to answer, and it needs
  * the same list of answers in the Trial as in the Test bench.
  */
-function buildContenders(robots: StoredRobot[], currentId: string | null): Contender[] {
-  const out: Contender[] = SAMPLE_BOTS.map((b) => ({
+/**
+ * Everything that can be fought.
+ *
+ * `sampleIds` is the filter on the built-in {robotPlural}, and it is the one
+ * place a quest reward becomes visible as an actual thing rather than a
+ * sentence. An Explorer starts with the Sitting Duck and nothing else — a
+ * shelf of fourteen strangers with names like "Toolkit" and "Boid" is not a
+ * choice, it is a wall — and Hunter appears in it the moment they finish the
+ * quest that says he will. Null means the lot, which is every level above.
+ */
+function buildContenders(
+  robots: StoredRobot[],
+  currentId: string | null,
+  sampleIds: readonly string[] | null,
+): Contender[] {
+  const samples = sampleIds ? SAMPLE_BOTS.filter((b) => sampleIds.includes(b.id)) : SAMPLE_BOTS;
+  const out: Contender[] = samples.map((b) => ({
     id: b.id,
     label: b.title,
     source: b.source,
@@ -1978,6 +2045,8 @@ function TrialPane({
   onTrialStarted,
   onTrialFinished,
   onHistory,
+  level,
+  unlockedOpponents,
 }: {
   robot: StoredRobot | null;
   theme: Theme;
@@ -2008,6 +2077,9 @@ function TrialPane({
   onTrialFinished?: (ids: readonly string[], won: boolean) => void;
   /** Open the durable record after reading the immediate debrief. */
   onHistory: () => void;
+  level: Level;
+  /** Built-in {robotPlural} this player's quests have handed over. */
+  unlockedOpponents: readonly string[];
 }) {
   // Remembered between sessions: tuning a robot means running the same fight
   // over and over, and having the panel put its own two back each time is a
@@ -2030,9 +2102,29 @@ function TrialPane({
    * at once. Above 1 it becomes sides: your copies against theirs, which is the
    * only way to watch a robot that works with its own team actually do it.
    */
+  /*
+   * How the fight is set up before anybody touches it.
+   *
+   * Taken from the level rather than from one fixed preset. An Explorer fights
+   * with no {fuel} and flat ground, because both are good mechanics and both
+   * are a second thing to explain at the moment somebody is still working out
+   * why their {robot} drove into a wall.
+   */
+  const preset = levelSpec(level).match;
   const [teamSize, setTeamSize] = useState(1);
-  const [fuelLevel, setFuelLevel] = useState<FuelLevel>("normal");
-  const [terrainLevel, setTerrainLevel] = useState<TerrainLevel>("flat");
+  const [fuelLevel, setFuelLevel] = useState<FuelLevel>(preset.fuel);
+  const [terrainLevel, setTerrainLevel] = useState<TerrainLevel>(preset.terrain);
+  /*
+   * And whether those rows are on show at all.
+   *
+   * Eleven buttons across three rows, above the list of who to fight, every
+   * one of them a decision about a mechanic you have not met — sides, {fuel}
+   * scarcity, terrain amplitude. For a beginner they are not options, they are
+   * noise sitting between them and the one button they came here to press. So
+   * they fold away, with the preset named on the fold, and open on a tap.
+   */
+  const simple = levelSpec(level).register === "simple";
+  const [showSetup, setShowSetup] = useState(!simple);
   const [expanded, setExpanded] = useState(false);
   const [lastOutcome, setLastOutcome] = useState<MatchOutcome | null>(null);
   const [inspecting, setInspecting] = useState(false);
@@ -2048,11 +2140,26 @@ function TrialPane({
     return () => window.removeEventListener("keydown", onKey);
   }, [expanded]);
 
+  /*
+   * Which built-in {robotPlural} this player has met.
+   *
+   * The Duck is always there — it is the one you are meant to lose to first —
+   * and everything else at the simple register arrives as a quest reward. At
+   * the full register there is no filter at all.
+   */
+  const sampleIds = useMemo(
+    () => (simple ? ["sitting-duck", ...unlockedOpponents] : null),
+    [simple, unlockedOpponents],
+  );
   const contenders = useMemo(
-    () => buildContenders(lib.robots, robot?.id ?? null),
-    [lib.robots, robot?.id],
+    () => buildContenders(lib.robots, robot?.id ?? null, sampleIds),
+    [lib.robots, robot?.id, sampleIds],
   );
   const groups = useMemo(() => groupContenders(contenders, words), [contenders, words]);
+  const picked = useMemo(
+    () => contenders.filter((c) => opponents.includes(c.id)),
+    [contenders, opponents],
+  );
   const [manifest, setManifest] = useState<MatchManifest | null>(null);
   /** What each entry in the current manifest was picked as, entry order. */
   const [lineup, setLineup] = useState<string[]>([]);
@@ -2255,12 +2362,37 @@ function TrialPane({
             <span className="silkscreen">Who to fight</span>
             <span className="spacer" />
             <span className="roster-meta">
-              {opponents.length === 0
+              {/* Counted against the contenders rather than against the stored
+                  ticks. The two differ for anybody whose list has shrunk —
+                  a player dropping to a level that has met fewer built-in
+                  {robotPlural} keeps their ticks, and `start` already filters
+                  them out, so a raw count would promise two opponents and
+                  field none. */}
+              {picked.length === 0
                 ? "Nobody picked — it will run on its own"
-                : `${opponents.length} picked`}
+                : `${picked.length} picked`}
             </span>
           </div>
           <div className="panel-body">
+            {simple ? (
+              <button
+                type="button"
+                className="setup-toggle"
+                aria-expanded={showSetup}
+                onClick={() => setShowSetup((v) => !v)}
+              >
+                {showSetup ? "▾" : "▸"} How the fight is set up
+                <span className="roster-meta">
+                  {fuelLevel === "off" ? `no ${words.arena === "arena" ? "fuel" : "food"}` : fuelLevel}
+                  {" · "}
+                  {terrainLevelWord(terrainLevel, theme)}
+                  {teamSize === 1 ? "" : ` · ${teamSize} a side`}
+                </span>
+              </button>
+            ) : null}
+
+            {showSetup ? (
+            <>
             <div className="row" aria-label="copies per side">
               <span className="roster-meta">Per side</span>
               {[1, 2, 3, MAX_TEAM_SIZE].map((n) => (
@@ -2312,6 +2444,8 @@ function TrialPane({
               )}
             </div>
             <p className="empty small">Takes effect on the next start.</p>
+            </>
+            ) : null}
             {groups.map((group) => (
               <div key={group.title} className="chip-group">
                 <span className="chip-group-title">{group.title}</span>
@@ -2704,6 +2838,7 @@ function BenchPane({
   inSession,
   arenaOverride,
   arenaName,
+  onRan,
 }: {
   robot: StoredRobot | null;
   robots: StoredRobot[];
@@ -2711,6 +2846,8 @@ function BenchPane({
   canRun: boolean;
   sharedReport: TrialReport | null;
   onShare: (report: TrialReport) => void;
+  /** A batch finished here. Fires on the machine that ran it, not on watchers. */
+  onRan: () => void;
   inSession: boolean;
   /** The map to measure on, when an arena is being edited. See `TrialPane`. */
   arenaOverride: ArenaSpec | null;
@@ -2746,7 +2883,10 @@ function BenchPane({
 
   useEffect(() => () => workerRef.current?.terminate(), []);
 
-  const contenders = useMemo(() => buildContenders(robots, robot?.id ?? null), [robots, robot?.id]);
+  const contenders = useMemo(
+    () => buildContenders(robots, robot?.id ?? null, null),
+    [robots, robot?.id],
+  );
 
   const run = () => {
     if (!robot) return;
@@ -2764,6 +2904,7 @@ function BenchPane({
       if (message.type === "done") {
         setReport(message.report);
         setProgress(null);
+        onRan();
         // One machine burns the CPU; everyone else just gets the table.
         if (inSession) onShare(message.report);
       }

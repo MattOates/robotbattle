@@ -39,6 +39,7 @@
      the person reading the card may be sounding the words out. */
   --veil: rgb(255 255 255 / 92%);
   --veil-deep: rgb(255 255 255 / 95%);
+  --veil-soft: rgb(35 38 31 / 6%);
   --wash: rgb(242 239 230 / 65%);
   --halo: rgb(255 255 255 / 90%);
 
@@ -296,4 +297,57 @@
 :root[data-skin="playground"] .empty,
 :root[data-skin="playground"] .world-words {
   font-family: var(--font-body);
+}
+
+/*
+ * Checkboxes in the playground skin.
+ *
+ * The blanket touch-target rule gives every control a 44-52px minimum, which
+ * is right for a button and absurd for a checkbox — it produced a tick the
+ * size of a postage stamp next to a line of ordinary text. Sized deliberately
+ * instead: bigger than the instrument's, nowhere near a thumb-width slab, and
+ * with the padding on the label doing the work of making the whole row easy to
+ * hit.
+ */
+:root[data-skin="playground"] input[type="checkbox"] {
+  min-width: 0;
+  min-height: 0;
+  width: 22px;
+  height: 22px;
+}
+
+:root[data-skin="playground"] .check,
+:root[data-skin="playground"] .opponent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--touch-min);
+  padding: var(--sp-1) var(--sp-3);
+}
+
+/*
+ * The standings row, stacked.
+ *
+ * `.standing` is a five-column grid with 228px of that fixed — a 92px meter
+ * and a 62px tally — leaving the name whatever is left of a 300px column. At
+ * the instrument's 11px that is enough for "Hungry Hippo"; at this skin's type
+ * the fixed columns hold bigger text and the name is squeezed to "M…", which
+ * is the one thing in the row a child is actually reading.
+ *
+ * So the health bar and the tally drop under the name rather than fighting it
+ * for width. Three short rows beat one row with the important part missing.
+ */
+:root[data-skin="playground"] .standing {
+  grid-template-columns: auto 12px 1fr;
+  row-gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-1);
+}
+
+:root[data-skin="playground"] .standing .meter,
+:root[data-skin="playground"] .standing .tally {
+  grid-column: 3;
+}
+
+:root[data-skin="playground"] .standing .tally {
+  text-align: left;
 }

@@ -77,10 +77,18 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
     register: "simple",
     authoring: ["cards"],
     voiceDefault: true,
-    // No bench and no history: both are ways of asking "is this actually
-    // better", which is not a question you have yet at the point where the
-    // answer to "did it win" is still interesting on its own.
-    panes: ["editor", "trial"],
+    /*
+     * One tab. Not two.
+     *
+     * No bench and no history: both are ways of asking "is this actually
+     * better", which is not a question you have yet at the point where the
+     * answer to "did it win" is still interesting on its own. And no Trial
+     * either, at first — the opening quest hands it over the moment the
+     * {robot} can move, which takes about twenty seconds and makes the reward
+     * a real one. A first screen with a single tab on it is also a first
+     * screen with nothing to get wrong.
+     */
+    panes: ["editor"],
     sidebar: ["robots"],
     modes: ["learn", "workshop"],
     match: { fuel: "off", terrain: "flat", fire: "on" },
@@ -94,10 +102,20 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
     skin: "playground",
     register: "simple",
     authoring: ["cards", "guided"],
-    panes: ["editor", "map", "trial", "bench", "history"],
+    /*
+     * What a Builder is handed, as against what a Builder earns.
+     *
+     * The bench, the blocks shelf and the {arena} are all missing here and all
+     * given out by this level's own quests — because each of them only makes
+     * sense once you have felt the lack of it. A test bench shown to somebody
+     * who has never wondered whether a change actually helped is a tab of
+     * numbers; a test bench offered the moment they have changed something is
+     * the answer to a question they just asked.
+     */
+    panes: ["editor", "map", "trial", "history"],
     voiceDefault: false,
-    sidebar: ["robots", "behaviours", "arenas", "room", "chat", "session"],
-    modes: ["learn", "workshop", "arena", "trade"],
+    sidebar: ["robots", "arenas", "room", "chat", "session"],
+    modes: ["learn", "workshop", "trade"],
     match: { fuel: "normal", terrain: "flat", fire: "on" },
   },
   engineer: {

@@ -62,7 +62,28 @@ export type TourSignal =
   | { kind: "trial"; opponents: readonly string[]; won: boolean }
   | { kind: "saved" }
   /** The Next button. Only ever satisfies a `next` gate. */
-  | { kind: "next" };
+  | { kind: "next" }
+  /*
+   * Everything below is emitted for the quest system (`workshop/quests.ts`)
+   * rather than for the tour, and no tour gate reads any of it.
+   *
+   * They live in this union anyway, and that is the point: the tour and the
+   * quests are one system seen twice, so the Workshop emits each event once,
+   * to one `signal()`, and the two consumers decide independently whether they
+   * care. A second parallel union would have meant a second set of emitters to
+   * keep in step with the first, and they would have drifted the first time
+   * somebody added a button.
+   */
+  | { kind: "benchRun" }
+  | { kind: "blockTaken" }
+  | { kind: "mapDrawn" }
+  | { kind: "lessonDone"; lesson: string }
+  | { kind: "arenaPlayed" }
+  | { kind: "tradeGiven" }
+  /** A card was added in the composer, rather than a line typed. */
+  | { kind: "cardAdded" }
+  /** They took the picture debrief up on one of its suggested fixes. */
+  | { kind: "fixApplied" };
 
 export type Gate =
   /** Narration: the reader presses Next when they have read it. */
