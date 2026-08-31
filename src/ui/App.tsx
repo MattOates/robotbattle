@@ -39,7 +39,7 @@ const ROOM_SCREENS: ReadonlySet<ScreenName> = new Set<ScreenName>([
 
 export function App() {
   const route = useRoute();
-  const { profile, setName, setTheme, setAssistantModel, complete } = useProfile();
+  const { profile, setName, setTheme, setLevel, setAssistantModel, complete } = useProfile();
   // Nothing is seeded until a world has been chosen, because which robot a new
   // player starts with depends on whether they took the tour.
   const lib = useLibrary(starterRobot(profile.onboarded));
@@ -56,8 +56,8 @@ export function App() {
     return (
       <Welcome
         invitedTo={ROOM_SCREENS.has(route.screen) ? route.room : null}
-        onDone={(name, theme, wantsTour) => {
-          complete(name, theme, wantsTour);
+        onDone={(name, theme, level, wantsTour) => {
+          complete(name, theme, level, wantsTour);
           // The tour opens on the menu — a greeting, and what the modes are
           // for — and walks them to the Workshop itself.
           if (wantsTour && !ROOM_SCREENS.has(route.screen)) navigate("menu");
@@ -72,6 +72,7 @@ export function App() {
         profile={profile}
         onName={setName}
         onTheme={setTheme}
+        onLevel={setLevel}
         onAssistantModel={setAssistantModel}
         lib={lib}
       />

@@ -1,0 +1,299 @@
+/*
+ * The playground skin.
+ *
+ * `styles.css` dresses the game as a piece of lab equipment: dark, dense,
+ * 14px, cream micro-labels in tracked-out uppercase, 3px corners. That is a
+ * good interface and it stays exactly as it was for anyone who wants it. It is
+ * also completely wrong for a seven-year-old, and not because of the ideas in
+ * it — "when you see something, shoot it" is not hard — but because every label
+ * is small grey text and every control is mouse-sized.
+ *
+ * So this file changes nothing structural. It redefines the token ladder that
+ * `styles.css` was rewritten onto, plus a short list of components whose
+ * *character* is wrong rather than merely their size — chiefly `.silkscreen`,
+ * which is a tiny tracked-out uppercase label and cannot be fixed by scaling.
+ * Every rule is scoped to `:root[data-skin="playground"]`, so the two skins
+ * cannot leak into one another and the instrument renders byte-identically to
+ * how it did before either existed.
+ *
+ * Light rather than dark on purpose: this is the skin most likely to be used on
+ * a school laptop under fluorescent strip lights, and dark text on a pale ground
+ * survives that better than the reverse.
+ */
+
+:root[data-skin="playground"] {
+  /* Paper, not chassis. The greens keep a trace of the instrument's olive so
+     the two skins read as the same game in different clothes. */
+  --chassis: #f2efe6;
+  --panel: #ffffff;
+  --panel-raised: #ffffff;
+  --bezel: #d9d3c4;
+  --bezel-light: #c2bba9;
+
+  /* A recess in paper is a slightly greyer patch of paper, not a hole. */
+  --well: #f7f5ef;
+  --well-deep: #ebe7dc;
+
+  /* Inverted, and more opaque than the instrument's. The instrument leans on
+     the match showing faintly through its cards; here legibility wins, because
+     the person reading the card may be sounding the words out. */
+  --veil: rgb(255 255 255 / 92%);
+  --veil-deep: rgb(255 255 255 / 95%);
+  --wash: rgb(242 239 230 / 65%);
+  --halo: rgb(255 255 255 / 90%);
+
+  --gauge-track: rgb(35 38 31 / 14%);
+  /* The signal is a mid orange here, so white reads on it where the near-black
+     of the instrument's badges would not. */
+  --on-signal: #ffffff;
+  /* The map stays dark in both skins. It is a place being looked into rather
+     than a surface being read off, the walls and terrain are drawn in light on
+     it, and inverting it would mean redrawing them. */
+  --map-ground: #1b2027;
+
+  --ink: #23261f;
+  --ink-strong: #0f120c;
+  /* Muted, but still 4.6:1 on the panel — "muted" in this skin means quieter,
+     never harder to read. Half the meta text in the game uses this. */
+  --ink-muted: #5c604f;
+
+  --signal: #c2621a;
+  --signal-dim: #e8b98a;
+  --readout: #1c6f78;
+  --alert: #b8331a;
+  --alert-soft: #962914;
+  --ok: #3f7a22;
+
+  /* Syntax colours redarkened for a pale ground. The roles are the ones
+     `styles.css` sets out — amber structures a script, cyan is what it can act
+     on, green is the world talking back — kept recognisable so a child who
+     levels up does not have to relearn the colour of a keyword. */
+  --syn-comment: #6b6f5c;
+  --syn-keyword: #a8500f;
+  --syn-action: #12626b;
+  --syn-event: #7a3fa0;
+  --syn-object: #40691f;
+  --syn-property: #4d7a2a;
+  --syn-modifier: #6b6f5c;
+  --syn-number: #8a5a00;
+  --syn-string: #1f5a8a;
+  --syn-atom: #a8306b;
+  --syn-colour: #a8306b;
+  --syn-operator: #5c604f;
+  --syn-variable: #23261f;
+  --syn-invalid: #b8331a;
+
+  /* Round, not machined. */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 18px;
+
+  /*
+   * The ladder, moved up bodily. The instrument's rungs run 8-24px; these run
+   * 13-34px, so nothing on screen is smaller than the instrument's body text
+   * and the rungs that were micro-labels land at a comfortable reading size.
+   * The relative order is preserved exactly, which is why no layout breaks:
+   * everything that was smaller than something else still is.
+   */
+  --t-05: 13px;
+  --t-1: 13px;
+  --t-2: 14px;
+  --t-3: 14px;
+  --t-4: 15px;
+  --t-5: 15px;
+  --t-6: 16px;
+  --t-7: 16px;
+  --t-8: 17px;
+  --t-9: 18px;
+  --t-10: 19px;
+  --t-11: 21px;
+  --t-12: 23px;
+  --t-13: 25px;
+  --t-14: 29px;
+  --t-15: 34px;
+
+  --sp-1: 6px;
+  --sp-2: 10px;
+  --sp-3: 14px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 28px;
+  --gap: 18px;
+
+  --control-h: 44px;
+  --touch-min: 44px;
+  --stroke: 2px;
+
+  /*
+   * Lexend over IBM Plex Sans. Chosen for the letterforms rather than the
+   * mood: a single-storey `a` and `g` and an `l` that cannot be read as a `1`,
+   * which is what a child sounding out `turret` needs. It was drawn for
+   * reading proficiency and it measures wider than Plex, hence the extra
+   * spacing above rather than instead of it.
+   */
+  --font-body: "Lexend", "Trebuchet MS", system-ui, sans-serif;
+  --font-display: "Lexend", "Trebuchet MS", system-ui, sans-serif;
+}
+
+/* The youngest players get one more notch. Not a fourth skin — the same skin
+   with the ladder nudged, which is the whole reason the ladder is a token. */
+:root[data-skin="playground"][data-level="explorer"] {
+  --t-4: 16px;
+  --t-5: 16px;
+  --t-6: 17px;
+  --t-7: 17px;
+  --t-8: 19px;
+  --t-9: 20px;
+  --t-10: 22px;
+  --t-11: 24px;
+  --t-12: 26px;
+  --t-13: 28px;
+  --t-14: 32px;
+  --t-15: 38px;
+  --control-h: 52px;
+  --touch-min: 52px;
+  --gap: 22px;
+}
+
+/*
+ * The label that scaling cannot save.
+ *
+ * `.silkscreen` is the game's most-used label — panel heads, field names,
+ * every shelf — and it is 11px uppercase at 0.18em tracking in a muted grey.
+ * Tracked-out uppercase is among the slowest things there is to read, and it is
+ * slowest of all for someone still decoding words letter by letter. Made
+ * bigger it is merely large and slow. So here it stops being a silkscreen
+ * legend and becomes a heading.
+ */
+:root[data-skin="playground"] .silkscreen {
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+/*
+ * And everywhere else it appears, which is twenty-nine rules in `styles.css`:
+ * panel heads, tabs, mode cards, screen titles, table headers, badges. Listing
+ * them here would be a list that goes stale the first time a heading is added,
+ * so this inverts it — everything is sentence case except the wordmarks, which
+ * are logos rather than text and are meant to be shouted.
+ *
+ * `letter-spacing` goes with it. The two were always set together, and tracked
+ * lowercase is worse than tracked uppercase: it pulls words apart into
+ * letters, which is precisely the thing a child learning to read is trying to
+ * stop doing.
+ */
+:root[data-skin="playground"] :not(.menu-title, .menu-title *, .welcome-title, .welcome-title *, .world-name, .world-name *) {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Same argument, one level down: buttons are uppercase and tracked too. */
+:root[data-skin="playground"] .btn {
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 600;
+  min-height: var(--control-h);
+  padding: var(--sp-2) var(--sp-4);
+  border-width: var(--stroke);
+  border-color: var(--bezel-light);
+  box-shadow: 0 2px 0 var(--bezel);
+}
+
+:root[data-skin="playground"] .btn:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+/* `.btn.small` exists so a control can get out of the way. It may get out of
+   the way; it may not become untappable doing it. */
+:root[data-skin="playground"] .btn.small {
+  min-height: calc(var(--control-h) - 8px);
+}
+
+:root[data-skin="playground"] .btn.primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: #fff;
+}
+
+/*
+ * Anything that takes a tap gets a thumb-sized target, whatever it looks like.
+ * A blanket rule rather than a list, because the list would be out of date the
+ * first time a control was added — and `--touch-min` is 0 on the instrument, so
+ * this costs that skin nothing.
+ */
+:root[data-skin="playground"] button,
+:root[data-skin="playground"] [role="tab"],
+:root[data-skin="playground"] input[type="checkbox"],
+:root[data-skin="playground"] select {
+  min-height: var(--touch-min);
+}
+
+:root[data-skin="playground"] input[type="checkbox"] {
+  min-width: var(--touch-min);
+  accent-color: var(--signal);
+}
+
+:root[data-skin="playground"] .text-input,
+:root[data-skin="playground"] select {
+  border-width: var(--stroke);
+  border-radius: var(--radius);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+/* Panels become cards: a visible edge and a little lift, so a child can see
+   where one thing ends and the next begins without reading anything. */
+:root[data-skin="playground"] .panel,
+:root[data-skin="playground"] .mode-card,
+:root[data-skin="playground"] .world-card,
+:root[data-skin="playground"] .age-card,
+:root[data-skin="playground"] .welcome-card {
+  border-width: var(--stroke);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 2px 8px rgb(35 38 31 / 8%);
+}
+
+/* The focus ring has to survive a pale ground, and it is the only thing a
+   keyboard user has. */
+:root[data-skin="playground"] :focus-visible {
+  outline: 3px solid var(--readout);
+  outline-offset: 2px;
+}
+
+/*
+ * The Workshop sidebar was sized in pixels for 11px labels — 240 to 300 wide.
+ * At this skin's type that is not a narrow column, it is a column that
+ * truncates the robot's name to one letter. Type got bigger; the thing holding
+ * it has to as well.
+ */
+:root[data-skin="playground"] .workshop-body {
+  grid-template-columns: minmax(300px, 380px) 1fr;
+}
+
+/*
+ * Monospace back to the body face, for the text that is prose rather than
+ * code.
+ *
+ * `styles.css` uses IBM Plex Mono for a lot of small print — help text under a
+ * field, a mode card's footer, the menu strap, empty states. On the instrument
+ * that reads as machine annotation and it works. Here it is the opposite of
+ * what is wanted: monospace sets every letter on the same width, which pulls
+ * short words apart and squeezes wide ones, and it is the hardest kind of text
+ * for somebody still decoding words to read.
+ *
+ * Code keeps its mono, obviously — `.code-editor`, `.robo-block` and the
+ * script lines are untouched, because there the fixed pitch is doing real work
+ * lining up indentation.
+ */
+:root[data-skin="playground"] .roster-meta,
+:root[data-skin="playground"] .menu-strap,
+:root[data-skin="playground"] .welcome-strap,
+:root[data-skin="playground"] .mode-foot,
+:root[data-skin="playground"] .news-body,
+:root[data-skin="playground"] .news-date,
+:root[data-skin="playground"] .empty,
+:root[data-skin="playground"] .world-words {
+  font-family: var(--font-body);
+}

@@ -49,6 +49,7 @@ import { TOUR_ROBOT, TOUR_SEED } from "../bots/index.js";
 import { Tours } from "../store/tour.js";
 import { WORKSHOP_TOUR } from "./tour/steps.js";
 import type { StoredArena, StoredRobot } from "../store/types.js";
+import { levelSpec, parseLevel, type Level } from "./level.js";
 import type { Theme } from "../lang/vocab.js";
 
 export interface LibraryApi {
@@ -158,6 +159,7 @@ export function useLibrary(seed: string | null = TOUR_ROBOT): LibraryApi {
 }
 
 const THEME_KEY = "theme";
+const LEVEL_KEY = "level";
 const NAME_KEY = "playerName";
 const ONBOARDED_KEY = "onboarded";
 const ASSISTANT_MODEL_KEY = "assistantModel";
@@ -165,6 +167,13 @@ const ASSISTANT_MODEL_KEY = "assistantModel";
 export interface Profile {
   name: string;
   theme: Theme;
+  /**
+   * How much of the game is on show, and how it is dressed. Derived from an age
+   * band on the welcome screen and a plain setting afterwards — see
+   * `ui/level.ts`. Absent for everybody who predates it, which reads back as
+   * `engineer`: the game as it was.
+   */
+  level: Level;
   /** False on a first visit, when nothing has been chosen yet. */
   onboarded: boolean;
   /**
@@ -186,8 +195,9 @@ export function useProfile(): {
   profile: Profile;
   setName: (name: string) => void;
   setTheme: (theme: Theme) => void;
+  setLevel: (level: Level) => void;
   setAssistantModel: (id: string) => void;
-  complete: (name: string, theme: Theme, wantsTour: boolean) => void;
+  complete: (name: string, theme: Theme, level: Level, wantsTour: boolean) => void;
 } {
   const store = useMemo(() => defaultStore(), []);
 
@@ -202,12 +212,23 @@ export function useProfile(): {
     // Anyone who already has a name predates the welcome screen; do not make
     // them sit through it.
     const onboarded = store.get(ONBOARDED_KEY) === "yes" || name.trim() !== "";
-    return { name, theme, onboarded, assistantModel: readModel() };
+    const level = parseLevel(store.get(LEVEL_KEY));
+    return { name, theme, level, onboarded, assistantModel: readModel() };
   });
 
+  // Three independent dials on the root element, all read by CSS alone.
+  // `arena` retunes the signal colours, `skin` swaps the whole stylesheet the
+  // components are rendered through, and `level` lets the playground skin go a
+  // size further for the youngest players without needing a fourth skin.
   useEffect(() => {
     document.documentElement.dataset["arena"] = profile.theme;
   }, [profile.theme]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset["level"] = profile.level;
+    root.dataset["skin"] = levelSpec(profile.level).skin;
+  }, [profile.level]);
 
   // Changing your name or your world in one tab should be true in all of them.
   const reread = useCallback(() => {
@@ -215,10 +236,12 @@ export function useProfile(): {
       const name = store.get(NAME_KEY) ?? "";
       const theme: Theme = store.get(THEME_KEY) === "biological" ? "biological" : "mechanical";
       const onboarded = store.get(ONBOARDED_KEY) === "yes" || name.trim() !== "";
+      const level = parseLevel(store.get(LEVEL_KEY));
       const assistantModel = readModel();
       if (
         name === current.name &&
         theme === current.theme &&
+        level === current.level &&
         onboarded === current.onboarded &&
         assistantModel === current.assistantModel
       ) {
@@ -226,7 +249,7 @@ export function useProfile(): {
         // focus event.
         return current;
       }
-      return { name, theme, onboarded, assistantModel };
+      return { name, theme, level, onboarded, assistantModel };
     });
   }, [readModel, store]);
   useCrossTabSync(reread);
@@ -248,6 +271,14 @@ export function useProfile(): {
     [store],
   );
 
+  const setLevel = useCallback(
+    (level: Level) => {
+      store.set(LEVEL_KEY, level);
+      setProfile((p) => ({ ...p, level }));
+    },
+    [store],
+  );
+
   const setAssistantModel = useCallback(
     (id: string) => {
       if (!assistantRuntime()?.models.some((m) => m.id === id)) return;
@@ -258,10 +289,11 @@ export function useProfile(): {
   );
 
   const complete = useCallback(
-    (name: string, theme: Theme, wantsTour: boolean) => {
+    (name: string, theme: Theme, level: Level, wantsTour: boolean) => {
       const trimmed = name.trim().slice(0, 24) || "Player";
       store.set(NAME_KEY, trimmed);
       store.set(THEME_KEY, theme);
+      store.set(LEVEL_KEY, level);
       store.set(ONBOARDED_KEY, "yes");
       // Settled here rather than on arrival at the Workshop, because it also
       // decides which robot the library is seeded with — and that has to be
@@ -269,11 +301,11 @@ export function useProfile(): {
       const tours = new Tours(store);
       if (wantsTour) tours.begin("workshop", WORKSHOP_TOUR[0]!.id);
       else tours.skip("workshop");
-      setProfile((p) => ({ ...p, name: trimmed, theme, onboarded: true }));
+      setProfile((p) => ({ ...p, name: trimmed, theme, level, onboarded: true }));
     },
     [store],
   );
 
-  return { profile, setName, setTheme, setAssistantModel, complete };
+  return { profile, setName, setTheme, setLevel, setAssistantModel, complete };
 }
 
