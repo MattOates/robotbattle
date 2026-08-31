@@ -36,7 +36,7 @@
 import type { Level } from "../ui/level.js";
 import type { Pane, PanelName } from "../ui/panes.js";
 import type { ScreenName } from "../ui/router.js";
-import type { TourSignal } from "../ui/tour/steps.js";
+import { AIM_AND_CHASE, PICK_YOUR_RANGE, SEE_AND_CHASE, type TourSignal } from "../ui/tour/steps.js";
 
 /**
  * A quest reads the same signals the tour does — see `ui/tour/steps.ts`, where
@@ -84,6 +84,26 @@ export interface Step {
   gate: QuestGate;
   /** Where doing it happens, for the quest log's "take me there" button. */
   goTo?: { screen: ScreenName; pane?: Pane };
+  /**
+   * *How* to do it — one or two sentences, shown in the helper panel beside
+   * the {robot} while this step is the one being worked on.
+   *
+   * `say` is the instruction and this is the explanation, and they are separate
+   * because they are read in different places and at different lengths: `say`
+   * has to fit on one line of the journey bar, and this does not have to fit
+   * anywhere.
+   */
+  help?: { full: string; simple: string };
+  /**
+   * A one-tap "put this in for me".
+   *
+   * Carried over from the tour, which is the only part of it worth carrying:
+   * a beginner who has just lost twice does not need to be told to write
+   * something they have never seen, they need to see it appear and then be
+   * told what it does. `applySnippet` in `ui/tour/steps.ts` does the grafting,
+   * and every snippet is compiled by `tests/bots/tourRobot.test.ts`.
+   */
+  insert?: { label: string; snippet: string; replaces?: string };
 }
 
 /**
@@ -128,6 +148,10 @@ const EXPLORER: Quest[] = [
       {
         id: "open-workshop",
         say: { full: "Open the Workshop", simple: "Go to your workshop" },
+        help: {
+          full: "The Workshop is where a {robot} is written, tested and kept. Everything else in the game is somewhere to take one afterwards.",
+          simple: "The workshop is where your {robot} lives. You build it here, and then you fight with it.",
+        },
         gate: { kind: "screen", screen: "workshop" },
         goTo: { screen: "workshop" },
       },
@@ -136,6 +160,10 @@ const EXPLORER: Quest[] = [
         say: {
           full: "Give it something to do when the fight starts",
           simple: "Tell it to move when the fight starts",
+        },
+        help: {
+          full: "`on start` runs once, at the beginning. Everything between it and `end` is what your {robot} does first.",
+          simple: "`on start` happens once, right at the beginning. `drive forward 60` means go, at a bit over half speed.",
         },
         gate: { kind: "sourceHas", needle: "drive" },
         goTo: { screen: "workshop", pane: "editor" },
@@ -156,6 +184,10 @@ const EXPLORER: Quest[] = [
       {
         id: "fight",
         say: { full: "Fight the Sitting Duck", simple: "Fight the Sitting Duck" },
+        help: {
+          full: "The Duck does not move and does not shoot. Watch what happens — and what does not.",
+          simple: "Tick the Duck, then press Start. The Duck cannot move or shoot. Just watch.",
+        },
         gate: { kind: "fought" },
         goTo: { screen: "workshop", pane: "trial" },
       },
@@ -177,12 +209,26 @@ const EXPLORER: Quest[] = [
           full: "Do something when your {robot} senses another one",
           simple: "Do something when you see somebody",
         },
+        help: {
+          full: "`on sense robot` wakes up when something comes into view. `event.bearing` is which way it is, and `event.distance` is how far.",
+          simple: "`on sense robot` happens when your {robot} spots somebody. `event.bearing` is which way they are.",
+        },
+        insert: { label: "Start it off for me", snippet: AIM_AND_CHASE },
         gate: { kind: "sourceHas", needle: "on sense robot" },
         goTo: { screen: "workshop", pane: "editor" },
       },
       {
         id: "shoot",
         say: { full: "Now {fire} at what you found", simple: "Shoot at what you see" },
+        help: {
+          full: "Point the {turret} first, then {fire}. A shot leaves on the first tick the gun has come round to what it was aimed at, so aiming and firing on the same line works.",
+          simple: "`fire 2` shoots. Point the {turret} at them first, or the shot goes the wrong way.",
+        },
+        insert: {
+          label: "I would rather you did it",
+          snippet: SEE_AND_CHASE,
+          replaces: "sense robot",
+        },
         gate: { kind: "sourceHas", needle: "fire" },
         goTo: { screen: "workshop", pane: "editor" },
       },
@@ -202,6 +248,10 @@ const EXPLORER: Quest[] = [
       {
         id: "save",
         say: { full: "Save a version of your {robot}", simple: "Save your {robot}" },
+        help: {
+          full: "A saved version is kept forever and can be fought, so you can find out whether your next change actually helped.",
+          simple: "Press Save version. It keeps a copy, so you can always come back to this one.",
+        },
         gate: { kind: "saved" },
         goTo: { screen: "workshop" },
       },
@@ -220,6 +270,15 @@ const EXPLORER: Quest[] = [
       {
         id: "win",
         say: { full: "Win a fight against Hunter", simple: "Win a fight against Hunter" },
+        help: {
+          full: "Hunter shoots back and chases. One shot for everything is a compromise: heavy is slow and hits hard, light is fast and does not. Choose by how far away they are.",
+          simple: "Hunter shoots back. Try hitting hard when they are close, and firing light when they are far away.",
+        },
+        insert: {
+          label: "Write it for me",
+          snippet: PICK_YOUR_RANGE,
+          replaces: "sense robot",
+        },
         gate: { kind: "won", against: "hunter" },
         goTo: { screen: "workshop", pane: "trial" },
       },

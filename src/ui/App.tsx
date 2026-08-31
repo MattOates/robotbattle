@@ -167,6 +167,10 @@ function AppShell({
           unlocked={quests.unlocked}
           onQuestSignal={quests.signal}
           onQuestObserve={quests.observe}
+          helperStep={quests.next}
+          questsDone={quests.done}
+          say={say}
+          fill={fill}
         />
       ) : null}
 

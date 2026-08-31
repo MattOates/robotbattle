@@ -73,6 +73,8 @@ import { Tour } from "../tour/Tour.js";
 import { useTour } from "../tour/useTour.js";
 import { applySnippet, findLines, type TourSignal } from "../tour/steps.js";
 import { PANE_LABELS, PANE_LABELS_SIMPLE, type Pane, type PanelName } from "../panes.js";
+import { HelperPanel } from "../quest/HelperPanel.js";
+import type { Quest, Step } from "../../workshop/quests.js";
 import { levelSpec, panesFor, showsPanel, type Level } from "../level.js";
 import { TrialPrefs } from "../../store/trial.js";
 import { WorkshopPrefs } from "../../store/workshop.js";
@@ -111,6 +113,11 @@ interface Props {
   onQuestSignal: (signal: TourSignal) => void;
   /** The script as it stands, whenever it changes. See `settle`. */
   onQuestObserve: (world: { source: string | null }) => void;
+  /** The quest step being worked on, for the helper panel. Null when done. */
+  helperStep: { quest: Quest; step: Step } | null;
+  questsDone: ReadonlySet<string>;
+  say: (both: { full: string; simple: string }) => string;
+  fill: (text: string) => string;
 }
 
 
@@ -143,6 +150,10 @@ export function Workshop({
   unlocked,
   onQuestSignal,
   onQuestObserve,
+  helperStep,
+  questsDone,
+  say,
+  fill,
 }: Props) {
   const { library, robots, refresh, chat } = lib;
   const workshopPrefs = useMemo(() => new WorkshopPrefs(), []);
@@ -169,7 +180,18 @@ export function Workshop({
    * Off in a shared session: a coach mark telling somebody to press Start when
    * only the host can is worse than no help at all.
    */
-  const rawTour = useTour("workshop", theme, !initialRoom, playerName);
+  /*
+   * The coach-mark tour runs for the instrument skin only.
+   *
+   * Not a preference — see `quest/HelperPanel.tsx`. `Tour.tsx` places its card
+   * from a hard-coded `CARD = { width: 340, height: 260 }`, which is true at
+   * 11px type and roughly half the real height at this skin's, so every
+   * placement decision built on it is wrong. And the Explorer quest arc is
+   * this tour, in five beats instead of twenty, so running both taught the
+   * same lesson twice with two disagreeing progress counters on screen.
+   */
+  const guided = levelSpec(level).skin === "instrument";
+  const rawTour = useTour("workshop", theme, guided && !initialRoom, playerName);
 
   /*
    * One emitter, two listeners.
@@ -826,6 +848,23 @@ export function Workshop({
         </aside>
 
         <div className="column">
+          {/* Above the tabs and in the flow, so it can never cover them. */}
+          {!guided && helperStep ? (
+            <HelperPanel
+              quest={helperStep.quest}
+              step={helperStep.step}
+              theme={theme}
+              say={say}
+              fill={fill}
+              done={questsDone}
+              script={
+                pane === "editor" && selected
+                  ? { source: selected.source, onChange: updateSource, editable }
+                  : null
+              }
+            />
+          ) : null}
+
           <div className="pane-tabs" role="tablist">
             {panes.map((name) => (
               <button

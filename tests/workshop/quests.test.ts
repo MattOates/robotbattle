@@ -18,6 +18,9 @@ import { SAMPLE_BOTS } from "../../src/bots/index.js";
 import { fillVocab } from "../../src/learn/markdown.js";
 import { Quests } from "../../src/store/quests.js";
 import { TOUR_ROBOT, TOUR_SEED } from "../../src/bots/index.js";
+import { applySnippet } from "../../src/ui/tour/steps.js";
+import { checkScript } from "../../src/sim/world.js";
+import { translate } from "../../src/learn/translate.js";
 import { MemoryStore } from "../../src/store/storage.js";
 
 const ALL_PANES: Pane[] = [...new Set([...ROBOT_PANES, ...ARENA_PANES])];
@@ -376,5 +379,83 @@ describe("the store", () => {
     expect(new Quests(store).declinedLevelUp()).toBe(true);
     new Quests(store).clearDecline();
     expect(new Quests(store).declinedLevelUp()).toBe(false);
+  });
+});
+
+/**
+ * The same guarantees `tests/bots/tourRobot.test.ts` gives the tour's snippets,
+ * for the ones the quest helper offers. It is the same mechanism — `insert`
+ * plus `applySnippet` — and the failure it prevents is the same: a child
+ * pressing "Start it off for me" and being handed code that does not compile,
+ * or that does not satisfy the very step that offered it.
+ */
+describe("the code the helper offers to write for you", () => {
+  const withInsert = QUESTS.flatMap((quest) =>
+    quest.steps.filter((s) => s.insert).map((step) => ({ quest, step })),
+  );
+
+  const base = 'name "Test"\nchassis tank\n\non start\n  drive forward 10\nend\n';
+
+  it("has some", () => {
+    expect(withInsert.length).toBeGreaterThan(0);
+  });
+
+  it("compiles in both worlds", () => {
+    for (const { step } of withInsert) {
+      for (const theme of ["mechanical", "biological"] as const) {
+        const result = checkScript(translate(base + step.insert!.snippet, theme));
+        expect(result.ok ? null : `${step.id} in ${theme}: ${result.error?.message}`).toBe(null);
+      }
+    }
+  });
+
+  it("still compiles after grafting over an existing handler", () => {
+    /*
+     * Two of these carry `replaces`, which means `applySnippet` cuts out the
+     * `on sense robot` the previous step added and puts this one in its place.
+     * Appending instead would give the script two handlers for one event, and
+     * that is a compile error — so the graft, not just the snippet, is what
+     * has to be checked.
+     */
+    let source = base;
+    for (const { step } of withInsert) {
+      source = applySnippet(source, step.insert!);
+      const result = checkScript(source);
+      expect(result.ok ? null : `after ${step.id}: ${result.error?.message}`).toBe(null);
+    }
+  });
+
+  it("satisfies the gate of the step that offers it", () => {
+    for (const { step } of withInsert) {
+      if (step.gate.kind !== "sourceHas") continue;
+      expect(
+        step.insert!.snippet.toLowerCase(),
+        `${step.id} offers code that does not satisfy its own gate`,
+      ).toContain(step.gate.needle.toLowerCase());
+    }
+  });
+
+  it("explains every step it asks for, in both registers", () => {
+    // `help` is optional in the type but the Explorer arc is the one a
+    // beginner meets with no other guidance, so none of it may be silent.
+    for (const quest of questsFor("explorer")) {
+      for (const step of quest.steps) {
+        expect(step.help, `${quest.id}/${step.id} has no explanation`).toBeDefined();
+        expect(step.help!.simple.length).toBeGreaterThan(0);
+        expect(step.help!.full.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("uses only placeholders that resolve in the help text too", () => {
+    for (const quest of QUESTS) {
+      for (const step of quest.steps) {
+        if (!step.help) continue;
+        for (const theme of ["mechanical", "biological"] as const) {
+          expect(fillVocab(step.help.simple, theme)).not.toMatch(/[{}]/);
+          expect(fillVocab(step.help.full, theme)).not.toMatch(/[{}]/);
+        }
+      }
+    }
   });
 });

@@ -314,8 +314,13 @@ export function applySnippet(source: string, insert: NonNullable<TourStep["inser
 // Real RoboScript in canonical words, translated into the reader's vocabulary
 // on the way into the editor. `tests/bots/tourRobot.test.ts` compiles every one
 // of them, so a snippet that does not parse cannot be shipped.
+//
+// Exported because the quest helper offers the same ones. Being handed a
+// working handler and then told what it does is the one thing the tour did
+// that a checklist cannot, and it was worth keeping when the rest of the
+// overlay was not.
 
-const AIM_AND_CHASE = `
+export const AIM_AND_CHASE = `
 on sense robot
   -- Something came into view. event.bearing is which way it is.
   turret.aim at event.bearing
@@ -324,7 +329,7 @@ on sense robot
 end
 `;
 
-const SEE_AND_CHASE = `
+export const SEE_AND_CHASE = `
 on sense robot
   turret.aim at event.bearing
   fire 2
@@ -333,7 +338,7 @@ on sense robot
 end
 `;
 
-const PICK_YOUR_RANGE = `
+export const PICK_YOUR_RANGE = `
 on sense robot
   turret.aim at event.bearing
   turn body by event.bearing

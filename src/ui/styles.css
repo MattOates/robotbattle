@@ -645,7 +645,18 @@ button {
 /* CodeMirror mounts here; its own styling lives in roboscript-editor.ts. */
 .code-editor {
   flex: 1;
-  min-height: 0;
+  /*
+   * A floor, not zero.
+   *
+   * `min-height: 0` is what lets a flex child shrink below its content, and
+   * the editor needs it or a long script would push the panel taller than the
+   * column. But zero as the floor means the editor is the thing that gives way
+   * whenever anything else in the column grows — adding the helper panel above
+   * the tabs collapsed it to a single visible line, and the same would happen
+   * to any future row of chrome. Ten lines or so is the least that is still an
+   * editor rather than a slot.
+   */
+  min-height: 14em;
   overflow: hidden;
   background: var(--well);
   border-radius: 0 0 var(--radius) var(--radius);
@@ -5218,4 +5229,77 @@ button {
 
 .setup-toggle .roster-meta {
   margin-left: auto;
+}
+
+/* ---------- the helper panel ---------- */
+
+/*
+ * In the column, above the tabs, taking real space.
+ *
+ * The thing it replaces floated over the layout and had to be told how big it
+ * was in advance — see `quest/HelperPanel.tsx`. This one is a block element
+ * and knows its own size the way every other element does, which is the whole
+ * point of it: there is no arithmetic here to get wrong.
+ */
+.helper {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-start;
+  padding: var(--sp-4) var(--sp-5);
+  margin-bottom: var(--sp-3);
+  background: var(--panel);
+  border: var(--stroke) solid var(--signal);
+  border-radius: var(--radius-lg);
+}
+
+.helper-face {
+  flex: none;
+  line-height: 0;
+}
+
+.helper-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.helper-say {
+  margin: 0;
+  display: flex;
+  gap: var(--sp-3);
+  align-items: baseline;
+  font-family: var(--font-display);
+  font-size: var(--t-11);
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.helper-icon {
+  font-size: var(--t-11);
+  line-height: 1;
+}
+
+.helper-help {
+  margin: 0;
+  font-size: var(--t-8);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.helper-help code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--veil-soft);
+  color: var(--readout);
+}
+
+.helper-actions {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  flex-wrap: wrap;
 }

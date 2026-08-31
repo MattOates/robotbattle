@@ -114,7 +114,14 @@ export function Menu({
   // sending somebody to the Workshop. Both screens mount it and each shows
   // only its own steps; the state lives in storage, so walking between them
   // carries on where it left off.
-  const tour = useTour("workshop", theme, true, playerName);
+  /*
+   * Same rule as the Workshop: the coach-mark tour is for the instrument skin.
+   * See `quest/HelperPanel.tsx` — its card is placed from a hard-coded size
+   * that this skin's type invalidates, and the quests cover the same ground.
+   * On this screen the quests' replacement is the "Do this next" card, which
+   * is a real element on the page rather than a card floating over it.
+   */
+  const tour = useTour("workshop", theme, levelSpec(level).skin === "instrument", playerName);
   const [seed] = useState(() => Math.floor(Math.random() * 1e9));
 
   const manifest = useMemo(
