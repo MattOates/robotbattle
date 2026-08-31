@@ -58,10 +58,11 @@ export type PanelName = "robots" | "behaviours" | "arenas" | "room" | "chat" | "
  * built out of cards opens unchanged in the editor, which is the whole reason
  * a beginner's work is not a dead end.
  */
-export type Authoring = "cards" | "guided" | "text";
+export type Authoring = "cards" | "blocks" | "guided" | "text";
 
 export const AUTHORING_LABELS: Record<Authoring, string> = {
   cards: "Cards",
+  blocks: "Blocks",
   guided: "Sentences",
   text: "Code",
 };

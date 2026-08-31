@@ -166,6 +166,18 @@ export const CARDS: readonly CardSpec[] = [
   },
 ];
 
+/**
+ * The id of the pseudo-card that carries a run of comments.
+ *
+ * Comments are the reason the card view keeps every line verbatim, and they
+ * are also what a block editor normally destroys: Blockly regenerates code
+ * from blocks, so anything not represented as a block is gone the first time
+ * somebody moves one. Making a comment *a block* is the fix — it is carried,
+ * shown, dragged and re-emitted like any other, so a robot handed to you with
+ * its author's notes still has them after you change it.
+ */
+export const COMMENT = "comment";
+
 export function cardSpec(id: string): CardSpec | undefined {
   return CARDS.find((c) => c.id === id);
 }

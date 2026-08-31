@@ -75,7 +75,18 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
     ageHint: "About 6 to 8",
     skin: "playground",
     register: "simple",
-    authoring: ["cards"],
+    /*
+     * Cards first, blocks beside them.
+     *
+     * The two are the same catalogue drawn twice — cards are a vertical list
+     * with a slider and a dropdown per line, blocks are a Blockly canvas with
+     * the same controls on interlocking shapes. Cards ask less: nothing to
+     * drag, nothing to aim at, and it reads top to bottom like a list. Blocks
+     * ask more and give more, and they are what a child who has met Scratch at
+     * school already knows how to use. Which of those is the better first hour
+     * is not a thing to decide from a chair, so both are here.
+     */
+    authoring: ["cards", "blocks"],
     voiceDefault: true,
     /*
      * One tab. Not two.
@@ -101,7 +112,7 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
     ageHint: "About 9 to 11",
     skin: "playground",
     register: "simple",
-    authoring: ["cards", "guided"],
+    authoring: ["cards", "blocks", "guided"],
     /*
      * What a Builder is handed, as against what a Builder earns.
      *
@@ -128,7 +139,7 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
     // Text first because that is what an Engineer came for, but the other two
     // stay available: the card view is a decent way to read somebody else's
     // robot whoever you are.
-    authoring: ["text", "guided", "cards"],
+    authoring: ["text", "guided", "cards", "blocks"],
     voiceDefault: false,
     panes: ["editor", "map", "trial", "bench", "history"],
     sidebar: ["robots", "behaviours", "arenas", "room", "chat", "session"],

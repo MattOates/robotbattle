@@ -1,213 +1,209 @@
-/**
- * The block shelf: reading `can` blocks out of a library, and dropping one
- * into a script.
- *
- * The property that matters throughout is that a drop leaves a script that
- * still compiles. Everything else here — where the text lands, what happens to
- * a name already in use, which blocks travel with the one you dragged — is in
- * service of that, so most of these tests end by compiling the result.
- */
-
 import { describe, expect, it } from "vitest";
-import { blockInsertion, groupBlocks, libraryBlocks } from "../../src/workshop/blocks.js";
-import { blockSourcesIn } from "../../src/lang/complete.js";
+import {
+  COMMENT_BLOCK,
+  RAW_BLOCK,
+  WHEN_BLOCK,
+  blockTypeFor,
+  sketchToWorkspace,
+  specIdFor,
+  workspaceToSketch,
+  type BlockJson,
+} from "../../src/ui/blocks/bridge.js";
+import { CARDS, fromSource, toSource } from "../../src/workshop/compose.js";
+import { SAMPLE_BOTS, TOUR_ROBOT, TOUR_SEED } from "../../src/bots/index.js";
 import { compile } from "../../src/lang/compiler.js";
 import { parse } from "../../src/lang/parser.js";
+import { translate } from "../../src/learn/translate.js";
 
-const HEAD = 'name "Test"\nchassis tank\ncolor #ff8800\n';
+const ALL = [
+  ...SAMPLE_BOTS.map((b) => ({ id: b.id, source: b.source })),
+  { id: "tour-seed", source: TOUR_SEED },
+  { id: "tour-robot", source: TOUR_ROBOT },
+];
 
-/** A robot record of the shape the shelf reads. */
-const robot = (id: string, name: string, source: string) => ({ id, name, source });
+const through = (source: string) =>
+  toSource(workspaceToSketch(sketchToWorkspace(fromSource(source))));
 
-const DODGE = `can dodge given hit by bullet
-  turn body by event.bearing + 90
-  drive forward 100
-end`;
-
-const compiles = (source: string) => {
-  compile(parse(source));
-  return true;
-};
-
-describe("reading blocks out of a script", () => {
-  it("takes the whole block, comments and nesting and all", () => {
-    const source = `${HEAD}
-can hunt given sense robot
-  -- line up first
-  turret.aim at event.bearing
-  if event.distance > 100 then
-    fire 3
-  else
-    fire 1
-  end
-end
-
-on tick
-  do hunt
-end
-`;
-    const blocks = blockSourcesIn(source);
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0]!.text).toContain("-- line up first");
-    // The `end` it stops at is the block's own, not the `if`'s.
-    expect(blocks[0]!.text.trimEnd().endsWith("end")).toBe(true);
-    expect(blocks[0]!.text.split("\n")).toHaveLength(9);
+/**
+ * The same promise the card view makes, through Blockly's own serialisation
+ * format. A block editor that damaged a script somebody only opened to look at
+ * would be exactly as much of a trap here as there — more so, because dragging
+ * is the first thing anyone does.
+ */
+describe("a script through the block workspace and back", () => {
+  it("is exact for every robot in the game", () => {
+    for (const { id, source } of ALL) {
+      expect(through(source), id).toBe(source);
+    }
   });
 
-  it("leaves out a block that has not been finished", () => {
-    expect(blockSourcesIn(`${HEAD}\ncan half given tick\n  stop\n`)).toHaveLength(0);
+  it("is exact in both vocabularies", () => {
+    for (const { id, source } of ALL) {
+      for (const theme of ["mechanical", "biological"] as const) {
+        const themed = translate(source, theme);
+        expect(through(themed), `${id} in ${theme}`).toBe(themed);
+      }
+    }
   });
 
-  it("notices which blocks a block hands off to", () => {
-    const source = `${HEAD}\ncan a\n  do b\n  do c\n  do b\nend\n`;
-    expect(blockSourcesIn(source)[0]!.calls).toEqual(["b", "c"]);
+  it("produces identical bytecode", () => {
+    for (const { id, source } of ALL) {
+      const before = compile(parse(source));
+      const after = compile(parse(through(source)));
+      expect(JSON.stringify(after), id).toBe(JSON.stringify(before));
+    }
   });
 });
 
-describe("the shelf", () => {
-  it("gathers blocks from every robot", () => {
-    const shelf = libraryBlocks([
-      robot("1", "Scout", `${HEAD}\n${DODGE}\n`),
-      robot("2", "Hunter", `${HEAD}\ncan chase given sense robot\n  drive forward 90\nend\n`),
-    ]);
-    expect(shelf.map((b) => b.name).sort()).toEqual(["chase", "dodge"]);
-    expect(shelf.find((b) => b.name === "chase")!.robotName).toBe("Hunter");
+/**
+ * The reason comments are a block at all. Blockly regenerates code from the
+ * workspace, so anything with no block vanishes the first time somebody drags
+ * something — and the thing that vanishes is the author's explanation of what
+ * their robot does, which is most of what makes a traded robot worth having.
+ */
+describe("comments", () => {
+  const commented = [
+    "-- who I am",
+    'name "Commented"',
+    "chassis tank",
+    "",
+    "-- what I do at the start",
+    "on start",
+    "  -- look around first",
+    "  turret.sweep 45",
+    "",
+    "  -- then go",
+    "  drive forward 60",
+    "end",
+  ].join("\n");
+
+  it("survives the workspace", () => {
+    expect(through(commented)).toBe(commented);
   });
 
-  it("shows a block copied into two robots once, and says where it lives", () => {
-    const shelf = libraryBlocks([
-      robot("1", "Scout", `${HEAD}\n${DODGE}\n`),
-      robot("2", "Hunter", `${HEAD}\n${DODGE}\n`),
-    ]);
-    expect(shelf).toHaveLength(1);
-    expect(shelf[0]!.robotName).toBe("Scout");
-    expect(shelf[0]!.alsoIn).toEqual(["Hunter"]);
+  it("becomes real blocks rather than being carried out of band", () => {
+    const ws = sketchToWorkspace(fromSource(commented));
+    const types: string[] = [];
+    const walk = (b: BlockJson | undefined) => {
+      if (!b) return;
+      types.push(b.type);
+      walk(b.inputs?.["DO"]?.block);
+      walk(b.next?.block);
+    };
+    ws.blocks!.blocks.forEach(walk);
+    expect(types.filter((t) => t === COMMENT_BLOCK).length).toBe(2);
+    expect(types).toContain(WHEN_BLOCK);
   });
 
-  it("keeps two different blocks that happen to share a name", () => {
-    const other = DODGE.replace("100", "40");
-    const shelf = libraryBlocks([
-      robot("1", "Scout", `${HEAD}\n${DODGE}\n`),
-      robot("2", "Hunter", `${HEAD}\n${other}\n`),
-    ]);
-    expect(shelf).toHaveLength(2);
-  });
-
-  it("groups by the event a block is given", () => {
-    const shelf = libraryBlocks([
-      robot("1", "Scout", `${HEAD}\n${DODGE}\n\ncan look given sense robot\n  stop\nend\n`),
-    ]);
-    expect(groupBlocks(shelf).map((g) => g.event)).toEqual(["hit by bullet", "sense robot"]);
-  });
-
-  it("keeps a plain `can` off the shelf, because it composes with nothing", () => {
-    // A block with no `given` has not said what it works on, so there is no
-    // question it is the answer to and no promise it will fit anywhere else.
-    const shelf = libraryBlocks([
-      robot("1", "Scout", `${HEAD}\ncan regroup\n  stop\nend\n\n${DODGE}\n`),
-    ]);
-    const offered = groupBlocks(shelf).flatMap((g) => g.blocks.map((b) => b.name));
-    expect(offered).toEqual(["dodge"]);
-    // It is still in the library, because blocks that hand off to it need it.
-    expect(shelf.map((b) => b.name).sort()).toEqual(["dodge", "regroup"]);
+  it("keeps a comment attached to the statement it was written above", () => {
+    const ws = sketchToWorkspace(fromSource(commented));
+    const first = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    expect(first.type).toBe(COMMENT_BLOCK);
+    // The field is the readable body; the line as written rides in extraState.
+    expect(first.fields!["TEXT"]).toBe("look around first");
+    expect((first.extraState as { lines: string[] }).lines).toEqual(["  -- look around first"]);
+    expect(first.next!.block.type).toBe(blockTypeFor("turret-sweep"));
   });
 });
 
-describe("dropping a block into a script", () => {
-  const shelf = libraryBlocks([robot("1", "Scout", `${HEAD}\n${DODGE}\n`)]);
-  const dodge = shelf[0]!;
+describe("editing a note", () => {
+  const src = 'name "N"\nchassis tank\n\non start\n  -- first\n  -- second\n  stop\nend';
 
-  /** Apply an insertion, the way the editor applies it. */
-  const drop = (doc: string, at: number | null, block = dodge, from = shelf) => {
-    const edit = blockInsertion(doc, block, from, at);
-    expect(edit, "expected an insertion").not.toBeNull();
-    return { text: doc.slice(0, edit!.from) + edit!.text + doc.slice(edit!.from), edit: edit! };
-  };
-
-  it("lands at the end when nowhere in particular was asked for", () => {
-    const doc = `${HEAD}\non tick\n  drive forward 50\nend\n`;
-    const { text } = drop(doc, null);
-    expect(text).toBe(`${doc}\n${DODGE}\n`);
-    expect(compiles(text)).toBe(true);
+  it("comes back as it was written when nobody touches it", () => {
+    // Two lines, and they stay two lines rather than being tidied into one.
+    expect(through(src)).toBe(src);
   });
 
-  it("goes after the handler it was dropped into, never inside it", () => {
-    const doc = `${HEAD}\non tick\n  drive forward 50\nend\n\non start\n  stop\nend\n`;
-    // Offset of "drive forward 50", i.e. the middle of the first handler.
-    const { text } = drop(doc, doc.indexOf("drive"));
-    const lines = text.split("\n");
-    expect(lines.indexOf("can dodge given hit by bullet")).toBeGreaterThan(
-      lines.indexOf("on tick"),
-    );
-    expect(lines.indexOf("can dodge given hit by bullet")).toBeLessThan(lines.indexOf("on start"));
-    expect(compiles(text)).toBe(true);
+  it("becomes one tidy comment when it is edited", () => {
+    const ws = sketchToWorkspace(fromSource(src));
+    const note = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    expect(note.type).toBe(COMMENT_BLOCK);
+    note.fields!["TEXT"] = "changed my mind";
+    expect(toSource(workspaceToSketch(ws))).toContain("-- changed my mind");
   });
 
-  it("lands where it was dropped when that is already the outside edge", () => {
-    const doc = `${HEAD}\non tick\n  stop\nend\n`;
-    const { text } = drop(doc, doc.indexOf("on tick"));
-    expect(text.split("\n").indexOf("can dodge given hit by bullet")).toBeLessThan(
-      text.split("\n").indexOf("on tick"),
-    );
-    expect(compiles(text)).toBe(true);
+  it("drops a note whose text is cleared", () => {
+    const ws = sketchToWorkspace(fromSource(src));
+    ws.blocks!.blocks[0]!.inputs!["DO"]!.block.fields!["TEXT"] = "";
+    const out = toSource(workspaceToSketch(ws));
+    expect(out).not.toContain("--");
+    expect(out).toContain("stop");
+  });
+});
+
+describe("what cannot be a block yet", () => {
+  const nested =
+    'name "N"\nchassis tank\n\non sense robot\n  if event.distance < 100 then\n    fire 3\n  end\n  stop\nend';
+
+  it("is carried whole in a raw block, not dropped", () => {
+    const ws = sketchToWorkspace(fromSource(nested));
+    const first = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    expect(first.type).toBe(RAW_BLOCK);
+    expect(String(first.fields!["CODE"]).split("\n")).toHaveLength(3);
+    expect(through(nested)).toBe(nested);
   });
 
-  it("leaves a blank line either side and no more", () => {
-    const doc = `${HEAD}\non tick\n  stop\nend\n`;
-    const { text } = drop(doc, null);
-    expect(text).not.toMatch(/\n\n\n/);
-    expect(text).toMatch(/end\n\ncan dodge/);
+  it("keeps a `can` block, which has no event and is not a handler", () => {
+    const src = 'name "C"\nchassis tank\n\ncan dodge given hit by bullet\n  stop\nend';
+    expect(through(src)).toBe(src);
+  });
+});
+
+/**
+ * The subtle half of the round trip, and the one that broke first.
+ *
+ * Blockly regenerates code from the workspace, and the catalogue speaks
+ * canonical RoboScript — so regenerating every statement turned a biological
+ * script mechanical: `sting 3` went in and `fire 3` came out. It compiled, and
+ * it was not the robot anybody wrote. A block carries the line it came from,
+ * and only a block whose values actually changed is written afresh.
+ */
+describe("what happens to a line nobody touched", () => {
+  const bio = translate(
+    'name "B"\nchassis tank\n\non sense robot\n      fire 3\nend',
+    "biological",
+  );
+
+  it("comes back in the words it was written in", () => {
+    expect(through(bio)).toBe(bio);
+    expect(through(bio)).toContain("sting 3");
   });
 
-  it("refuses to add a second copy of a block already there", () => {
-    const doc = `${HEAD}\n${DODGE}\n`;
-    expect(blockInsertion(doc, dodge, shelf, null)).toBeNull();
+  it("keeps its own indentation", () => {
+    expect(through(bio)).toMatch(/\n {6}sting 3/);
   });
 
-  it("renames when the script already has that name for something else", () => {
-    const doc = `${HEAD}\ncan dodge given hit wall\n  turn body by 90\nend\n`;
-    const { text, edit } = drop(doc, null);
-    expect(edit.name).toBe("dodge2");
-    expect(text).toContain("can dodge2 given hit by bullet");
-    // Both survive, which is the point of renaming rather than refusing.
-    expect(blockSourcesIn(text).map((b) => b.name)).toEqual(["dodge", "dodge2"]);
-    expect(compiles(text)).toBe(true);
+  it("is rewritten only when its value changes", () => {
+    const ws = sketchToWorkspace(fromSource(bio));
+    const stmt = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    // Same value: the original line survives, biological words and all.
+    expect(toSource(workspaceToSketch(ws))).toContain("sting 3");
+
+    stmt.fields!["V0"] = "1";
+    const edited = toSource(workspaceToSketch(ws));
+    expect(edited).not.toContain("sting 3");
+    // Rewritten from the catalogue, which is canonical — the same thing the
+    // card view does when a hole is edited, and it still compiles in either
+    // world because both vocabularies parse anywhere.
+    expect(edited).toContain("fire 1");
+    // And it still lands where it was, not at the catalogue's default indent.
+    expect(edited).toMatch(/\n {6}fire 1/);
+  });
+});
+
+describe("block types", () => {
+  it("round-trip their catalogue ids", () => {
+    for (const spec of CARDS) {
+      expect(specIdFor(blockTypeFor(spec.id))).toBe(spec.id);
+    }
   });
 
-  it("brings the blocks it hands off to along with it", () => {
-    const source = `${HEAD}
-can close given sense robot
-  do steady
-  drive forward 80
-end
-
-can steady
-  turn body by 5
-end
-`;
-    const from = libraryBlocks([robot("1", "Scout", source)]);
-    const close = from.find((b) => b.name === "close")!;
-    const { text, edit } = drop(`${HEAD}\non tick\n  stop\nend\n`, null, close, from);
-    expect(edit.brought).toEqual(["steady"]);
-    expect(text).toContain("can steady");
-    expect(compiles(text)).toBe(true);
-  });
-
-  it("leaves a name the script has already spent to the script's own block", () => {
-    const source = `${HEAD}\ncan close given sense robot\n  do steady\nend\n\ncan steady\n  turn body by 5\nend\n`;
-    const from = libraryBlocks([robot("1", "Scout", source)]);
-    const close = from.find((b) => b.name === "close")!;
-    const doc = `${HEAD}\ncan steady\n  turn body by 40\nend\n`;
-    const { text, edit } = drop(doc, null, close, from);
-    expect(edit.brought).toEqual([]);
-    // The newcomer calls the one that was already here, unchanged.
-    expect(text).toContain("turn body by 40");
-    expect(text).not.toContain("turn body by 5");
-    expect(compiles(text)).toBe(true);
-  });
-
-  it("drops into an empty script without leaving stray blank lines", () => {
-    const edit = blockInsertion("", dodge, shelf, null)!;
-    expect(edit.text).toBe(`${DODGE}\n`);
+  it("do not collide with the structural blocks", () => {
+    const types = CARDS.map((c) => blockTypeFor(c.id));
+    expect(new Set(types).size).toBe(types.length);
+    for (const structural of [WHEN_BLOCK, COMMENT_BLOCK, RAW_BLOCK]) {
+      expect(types).not.toContain(structural);
+      expect(specIdFor(structural)).toBeNull();
+    }
   });
 });

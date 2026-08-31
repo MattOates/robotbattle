@@ -525,3 +525,23 @@
   flex-wrap: wrap;
 }
 
+
+/*
+ * The block canvas wants room, and the pane above it does not.
+ *
+ * Blockly measures itself from its host element, so a short host is a short
+ * canvas — the same trap the trial arena fell into. The editor panel is told
+ * to take what is going rather than to fit its contents.
+ */
+:root[data-skin="playground"] .workshop.compact .editor-panel {
+  min-height: 24em;
+}
+
+/* The shelf strip should sit at the left, not spread across the width. */
+:root[data-skin="playground"] .workshop.compact .sidebar .panel {
+  justify-content: flex-start;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-select {
+  flex: 0 1 auto;
+}

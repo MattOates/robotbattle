@@ -16,7 +16,7 @@
  *    conversation onto a robot nobody is working on.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { yCollab } from "y-codemirror.next";
 import type { EditorView } from "@codemirror/view";
 import { BLOCK_MIME, CodeEditor } from "../CodeEditor.js";
@@ -75,6 +75,10 @@ import { applySnippet, findLines, type TourSignal } from "../tour/steps.js";
 import { PANE_LABELS, PANE_LABELS_SIMPLE, type Pane, type PanelName } from "../panes.js";
 import { HelperPanel } from "../quest/HelperPanel.js";
 import { CardComposer } from "../compose/CardComposer.js";
+// A megabyte of Blockly, fetched only when somebody opens the tab that needs it.
+const BlockEditor = lazy(() =>
+  import("../blocks/BlockEditor.js").then((m) => ({ default: m.BlockEditor })),
+);
 import { AUTHORING_LABELS, type Authoring } from "../panes.js";
 import type { Quest, Step } from "../../workshop/quests.js";
 import { levelSpec, panesFor, showsPanel, type Level } from "../level.js";
@@ -982,7 +986,17 @@ export function Workshop({
                 ) : null}
               </div>
 
-              {way === "cards" && selected ? (
+              {way === "blocks" && selected ? (
+                <Suspense fallback={<div className="empty">Loading blocks…</div>}>
+                  <BlockEditor
+                    source={editorSource}
+                    onSource={inSession ? () => undefined : updateSource}
+                    theme={theme}
+                    register={levelSpec(level).register}
+                    editable={editable && !inSession}
+                  />
+                </Suspense>
+              ) : way === "cards" && selected ? (
                 <CardComposer
                   source={editorSource}
                   onSource={inSession ? () => undefined : updateSource}

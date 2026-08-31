@@ -5634,3 +5634,43 @@ select.hole {
 .btn.add-card {
   align-self: flex-start;
 }
+
+/* ---------- the block editor ---------- */
+
+/*
+ * Blockly fills the pane and nothing else.
+ *
+ * It measures its own canvas from this element, so it needs a real size rather
+ * than one that depends on its contents — the same floor the code editor and
+ * the card composer have, and for the same reason: this is the pane that gives
+ * way when anything above it grows.
+ */
+.block-editor {
+  flex: 1;
+  min-height: 18em;
+  background: var(--well);
+  border-radius: 0 0 var(--radius) var(--radius);
+  overflow: hidden;
+}
+
+/* Blockly draws its own chrome; only the parts that sit against ours need
+   retuning, so the canvas does not read as a window into another program. */
+.block-editor .blocklyMainBackground {
+  stroke: none;
+}
+
+.block-editor .blocklyToolboxDiv {
+  background: var(--panel);
+  border-right: var(--stroke) solid var(--bezel);
+  color: var(--ink);
+  font-family: var(--font-display);
+}
+
+.block-editor .blocklyTreeLabel {
+  font-family: var(--font-display);
+  font-size: var(--t-8);
+}
+
+.block-editor .blocklyFlyoutBackground {
+  fill: var(--well-deep);
+}
