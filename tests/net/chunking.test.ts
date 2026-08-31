@@ -213,6 +213,42 @@ describe("hostile input", () => {
     expect(badChunk({ k: "chunk" })).toHaveLength(0);
   });
 
+  it("ignores valid JSON that is not an envelope", () => {
+    const network = new LoopbackNetwork();
+    const host = new LoopbackTransport(network, "host", "host");
+    host.connect();
+    const guest = new LoopbackTransport(network, "guest1", "host");
+    guest.connect();
+    network.flush();
+
+    expect(() => {
+      for (const raw of ["null", "[]", "{}", '{"k":"peers","peers":null}']) {
+        network.deliver("host", "guest1", raw);
+      }
+      network.flush();
+    }).not.toThrow();
+  });
+
+  it("takes a guest's identity from its link, not its envelope", () => {
+    const network = new LoopbackNetwork();
+    const host = new LoopbackTransport(network, "host", "host");
+    host.connect();
+    const guest = new LoopbackTransport(network, "guest1", "host");
+    guest.connect();
+    network.flush();
+    const seen: string[] = [];
+    host.on("message", (from) => seen.push(from));
+
+    network.deliver(
+      "host",
+      "guest1",
+      JSON.stringify({ k: "msg", from: "host", to: "host", payload: { t: "ready", ready: true } }),
+    );
+    network.flush();
+
+    expect(seen).toEqual(["guest1"]);
+  });
+
   it("caps how many unfinished messages one peer can start", () => {
     const network = new LoopbackNetwork();
     const host = new LoopbackTransport(network, "host", "host");

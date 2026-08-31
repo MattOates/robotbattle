@@ -222,6 +222,10 @@ button {
   border-radius: var(--radius);
 }
 
+.panel.accordion:not(.open) {
+  min-height: 0;
+}
+
 /* Silkscreen label: the small stencilled text printed on real instruments. */
 .silkscreen {
   font-family: var(--font-display);
@@ -1728,6 +1732,12 @@ button {
 .chat-panel {
   flex: 1;
   min-height: 200px;
+}
+
+/* Accordion panels normally size to their contents. An open conversation is
+   the exception: it takes the sidebar's remaining height and scrolls its log. */
+.panel.accordion.chat-panel.open {
+  flex: 1;
 }
 
 .chat-log {

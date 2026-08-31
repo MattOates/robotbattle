@@ -57,6 +57,34 @@ describe("roster", () => {
     }
   });
 
+  it("does not let a guest replace the host's roster", () => {
+    const { network, host, guests } = createLoopbackRoom(2);
+    const sessions = [host, ...guests].map((transport, i) =>
+      new Session({ transport, displayName: i === 0 ? "Host" : `Guest ${i}`, robot: null }),
+    );
+    for (const session of sessions) session.announce();
+    network.flush();
+
+    // The host authenticates the sender as guest1 before relaying this frame.
+    network.deliver(
+      "host",
+      "guest1",
+      JSON.stringify({
+        k: "msg",
+        from: "host",
+        to: "all",
+        payload: { t: "roster", peers: [{ id: "fake", displayName: "Fake", isHost: true }] },
+      }),
+    );
+    network.flush();
+
+    expect(sessions[2]!.state.peers.map((peer) => peer.id).sort()).toEqual([
+      "guest1",
+      "guest2",
+      "host",
+    ]);
+  });
+
   it("announces itself even when the roster arrives before its own link", () => {
     // A real transport can deliver the host's roster before the guest's link
     // to the host is up. Announcing on "someone joined" therefore posts into an

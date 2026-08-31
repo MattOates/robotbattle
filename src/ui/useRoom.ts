@@ -60,10 +60,13 @@ export function useRoom(displayName: string, robot: RobotEntry | null): RoomApi 
   const [state, setState] = useState<SessionState | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const transportRef = useRef<Transport | null>(null);
+  const attemptRef = useRef(0);
   const listeners = useRef(new Set<(from: string, message: Message) => void>());
 
   const teardown = useCallback(() => {
+    attemptRef.current += 1;
     sessionRef.current?.close();
+    transportRef.current?.close();
     sessionRef.current = null;
     transportRef.current = null;
     setState(null);
@@ -72,7 +75,11 @@ export function useRoom(displayName: string, robot: RobotEntry | null): RoomApi 
     setError(null);
   }, []);
 
-  useEffect(() => () => sessionRef.current?.close(), []);
+  useEffect(() => () => {
+    attemptRef.current += 1;
+    sessionRef.current?.close();
+    transportRef.current?.close();
+  }, []);
 
   const attach = useCallback(
     (transport: Transport, code: string) => {
@@ -98,25 +105,42 @@ export function useRoom(displayName: string, robot: RobotEntry | null): RoomApi 
 
   const start = useCallback(
     async (kind: TransportKind, code: string, asHost: boolean) => {
+      const attempt = ++attemptRef.current;
+      sessionRef.current?.close();
+      transportRef.current?.close();
+      sessionRef.current = null;
+      transportRef.current = null;
       setPhase("connecting");
       setError(null);
+      let transport: (Transport & { connect(): void | Promise<void> }) | null = null;
       try {
         if (kind === "local") {
           if (!channelSupported()) {
             throw new Error("This browser cannot open a local room.");
           }
           const selfId = asHost ? `host-${code}` : newId("peer");
-          const transport = new ChannelTransport(code, selfId, asHost);
+          transport = new ChannelTransport(code, selfId, asHost);
           transport.connect();
+          if (attempt !== attemptRef.current) {
+            transport.close();
+            return;
+          }
           attach(transport, code);
           return;
         }
-        const transport = new PeerTransport({ room: code, asHost });
+        transport = new PeerTransport({ room: code, asHost });
+        // Make an in-flight connection reachable by Leave and unmount cleanup.
+        transportRef.current = transport;
         await transport.connect();
+        if (attempt !== attemptRef.current) {
+          transport.close();
+          return;
+        }
         attach(transport, code);
       } catch (err) {
-        sessionRef.current?.close();
-        sessionRef.current = null;
+        transport?.close();
+        if (attempt !== attemptRef.current) return;
+        if (transportRef.current === transport) transportRef.current = null;
         setPhase("error");
         setError(err instanceof Error ? err.message : "Could not open the room.");
       }
