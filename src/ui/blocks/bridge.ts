@@ -279,6 +279,7 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
    */
   const fields: Record<string, string | number> = {};
   const valueInputs: Record<string, { block: BlockJson }> = {};
+  let argCount: number | null = null;
   card.holes.forEach((hole, i) => {
     if (hole.kind === "value") {
       valueInputs[`V${i}`] = { block: valueBlock(hole.value) };
@@ -291,10 +292,15 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
        * split would make it five and quietly change what the routine is
        * called with.
        */
-      splitArgs(hole.value).forEach((arg, n) => {
+      const args = splitArgs(hole.value);
+      args.forEach((arg, n) => {
         valueInputs[`A${n}`] = { block: valueBlock(arg) };
       });
-      fields[`ARGC`] = splitArgs(hole.value).length;
+      // The count rides in `extraState`, not in a field, because the sockets
+      // have to exist before Blockly connects anything to them — and
+      // `loadExtraState` runs before the inputs are filled, where a field does
+      // not.
+      argCount = args.length;
     } else {
       fields[`V${i}`] = hole.value;
     }
@@ -314,7 +320,11 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
     id: path,
     fields,
     ...(Object.keys(valueInputs).length > 0 ? { inputs: valueInputs } : {}),
-    extraState: { text: card.text, was: card.holes.map((h) => h.value) },
+    extraState: {
+      text: card.text,
+      was: card.holes.map((h) => h.value),
+      ...(argCount === null ? {} : { args: argCount }),
+    },
   });
   return out;
 }
@@ -506,7 +516,7 @@ function readStatements(statements: BlockJson[]): Card[] {
         return { kind: h.kind, value: blockToCondition(st.inputs?.[`V${i}`]?.block) || h.default };
       }
       if (h.kind === "args") {
-        const count = Number(st.fields?.["ARGC"] ?? 0);
+        const count = Number(((st.extraState ?? {}) as { args?: number }).args ?? 0);
         const args: string[] = [];
         for (let n = 0; n < count; n++) {
           args.push(blockToCondition(st.inputs?.[`A${n}`]?.block));

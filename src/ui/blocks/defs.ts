@@ -22,6 +22,11 @@ import * as Blockly from "blockly/core";
  */
 import * as En from "blockly/msg/en";
 import { FieldSlider } from "@blockly/field-slider";
+import { FieldColour, registerFieldColour } from "@blockly/field-colour";
+import { PALETTE } from "../../lang/complete.js";
+
+// The plugin registers its own field type, and does it once.
+registerFieldColour();
 
 Blockly.setLocale(En as unknown as Record<string, string>);
 import { ANGLE_CHOICES, CARDS, type CardSpec } from "../../workshop/compose.js";
@@ -147,7 +152,9 @@ export function routineFlyout(): Blockly.utils.toolbox.FlyoutItemInfoArray {
         : {
             kind: "block",
             type: blockTypeFor("do-with"),
-            fields: { V0: routine.name, ARGC: routine.args },
+            fields: { V0: routine.name },
+            // The count builds the sockets, so it travels as state.
+            extraState: { args: routine.args },
           },
     ),
   ] as Blockly.utils.toolbox.FlyoutItemInfoArray;
@@ -171,6 +178,32 @@ export function variableFlyout(): Blockly.utils.toolbox.FlyoutItemInfoArray {
       fields: { NAME: name },
     })),
   ] as Blockly.utils.toolbox.FlyoutItemInfoArray;
+}
+
+/**
+ * Carry our own state across a save and load.
+ *
+ * Blockly discards a block's `extraState` unless the block says how to keep
+ * it — and `extraState` is where every verbatim thing lives: the line as it
+ * was written, the values it went in with, the `else` and `end` as they were
+ * spelt, a comment's own lines. Without these two methods the whole
+ * round-trip guarantee held between two functions of ours and nowhere near
+ * the editor: every statement was regenerated at the default indent, so
+ * `name "X"` came back as `  name "X"`, blank lines vanished, and a
+ * biological script came back mechanical.
+ *
+ * It is opaque JSON to us — we neither read nor validate it here — so one
+ * pair of methods serves every block type.
+ */
+function carryState(block: Blockly.Block, onLoad?: (state: unknown) => void): void {
+  const holder = block as Blockly.Block & { rbState_?: unknown };
+  block.saveExtraState = function (): unknown {
+    return holder.rbState_ ?? null;
+  };
+  block.loadExtraState = function (state: unknown): void {
+    holder.rbState_ = state;
+    onLoad?.(state);
+  };
 }
 
 let defined = false;
@@ -214,29 +247,13 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
           const hole = spec.holes[at];
           if (!hole) continue;
           if (hole.kind === "args") {
-            // A hidden count rather than a visible control: the number of
-            // arguments is decided by the routine, not by the caller.
-            input.appendField(new Blockly.FieldNumber(0, 0, 8, 1), "ARGC");
-            this.getField("ARGC")?.setVisible(false);
+            // Nothing here: a `do` call's sockets are built in
+            // `loadExtraState` below, because they must exist before Blockly
+            // has anything to connect to them.
           } else if (hole.kind === "value") {
             input = this.appendValueInput(`V${at}`);
           } else {
             input.appendField(fieldFor(hole.kind, hole.default), `V${at}`);
-          }
-        }
-
-        /*
-         * A `do` call grows one socket per argument.
-         *
-         * The count is not fixed by the block type — it is fixed by the
-         * routine being called — so the block reads it from its own state and
-         * builds itself. `ARGC` travels in the serialised fields, which is why
-         * a call loaded from a script comes back with the right shape.
-         */
-        if (spec.holes.some((h) => h.kind === "args")) {
-          const count = Number(this.getFieldValue("ARGC") ?? 0);
-          for (let n = 0; n < count; n++) {
-            this.appendValueInput(`A${n}`).appendField(n === 0 ? "" : "and");
           }
         }
 
@@ -253,10 +270,33 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
         for (let at = 0; at < spec.holes.length; at++) {
           if (this.getField(`V${at}`) || this.getInput(`V${at}`)) continue;
           const hole = spec.holes[at]!;
+          // An `args` hole is not a control at all — it is however many
+          // sockets `loadExtraState` builds — so the fallback must not invent
+          // a field for it. Left in, it put a stray `0` between the routine's
+          // name and its first argument.
+          if (hole.kind === "args") continue;
           if (hole.kind === "value") this.appendValueInput(`V${at}`);
           else input.appendField(fieldFor(hole.kind, hole.default), `V${at}`);
         }
 
+        /*
+         * A `do` call grows one socket per argument, and grows them when its
+         * state loads rather than when the block is created.
+         *
+         * How many it takes is decided by the routine being called, not by the
+         * block type — and Blockly fills a block's inputs after
+         * `loadExtraState`, so building them any earlier means building them
+         * against a count that has not arrived. Done in `init` from a field,
+         * every call came back with no sockets and Blockly refused the load.
+         */
+        carryState(this, (state) => {
+          const args = Number((state as { args?: number } | null)?.args ?? 0);
+          for (let n = 0; n < args; n++) {
+            if (!this.getInput(`A${n}`)) {
+              this.appendValueInput(`A${n}`).appendField(n === 0 ? "" : "and");
+            }
+          }
+        });
         this.setInputsInline(true);
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
@@ -288,6 +328,7 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
           "EVENT",
         );
       this.appendStatementInput("DO");
+      carryState(this);
       this.setColour(45);
       this.setTooltip(() => {
         const event = this.getFieldValue("EVENT") as EventName;
@@ -309,6 +350,7 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
       this.appendDummyInput()
         .appendField("💬 ")
         .appendField(new Blockly.FieldTextInput(""), "TEXT");
+      carryState(this);
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(0);
@@ -330,6 +372,7 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
     init(this: Blockly.Block) {
       this.appendDummyInput().appendField(`🤖 ${fillVocab("This {robot}", theme)}`);
       this.appendStatementInput("SETUP");
+      carryState(this);
       this.setColour(GROUP_HUE.robot);
       this.setTooltip(
         "What this {robot} is, and the things it remembers for the whole match.",
@@ -365,6 +408,7 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
           "GIVEN",
         );
       this.appendStatementInput("DO");
+      carryState(this);
       this.setColour(285);
       this.setTooltip(
         "A behaviour with a name. `given` says which event it works on, which is what makes it safe to give away.",
@@ -387,6 +431,7 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
       this.appendValueInput("COND").appendField("🔀 if");
       this.appendStatementInput("THEN").appendField("then");
       this.appendStatementInput("ELSE").appendField("else");
+      carryState(this);
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(60);
@@ -396,6 +441,7 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
   Blockly.Blocks[blockTypeFor("loop")] = {
     init(this: Blockly.Block) {
       this.appendStatementInput("BODY").appendField("🔁 keep doing");
+      carryState(this);
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(GROUP_HUE.repeat);
@@ -408,6 +454,7 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
         .appendField("🔁 repeat")
         .appendField(new FieldSlider(2, 1, 20, 1), "V0")
         .appendField("times");
+      carryState(this);
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(GROUP_HUE.repeat);
@@ -423,6 +470,7 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
         .appendField(new Blockly.FieldTextInput("1"), "V1")
         .appendField("to")
         .appendField(new Blockly.FieldTextInput("3"), "V2");
+      carryState(this);
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
       this.setColour(GROUP_HUE.repeat);
@@ -442,6 +490,7 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
         new Blockly.FieldDropdown(COMPARISONS.map((op) => [OP_WORDS[op] ?? op, op])),
         "OP",
       );
+      carryState(this);
       this.setInputsInline(true);
       this.setOutput(true, null);
       this.setColour(60);
@@ -606,6 +655,30 @@ function fieldFor(kind: string, initial: string): Blockly.Field {
   if (kind === "angle") {
     return openDropdown(ANGLE_CHOICES.map((c) => [c.say, c.value] as [string, string]));
   }
+  if (kind === "colour") {
+    /*
+     * The game's own palette, not Blockly's seventy.
+     *
+     * `complete.ts` keeps eight colours, chosen so that no colour a {robot}
+     * can wear reads as a distant {robot} — `tests/render/palette.test.ts`
+     * holds that line against the art packs. A picker offering every colour
+     * would quietly break it the first time somebody chose the same grey as a
+     * wall, and would be a worse choice besides: eight things with names beat
+     * a gradient nobody can aim at.
+     */
+    // No picker without a document — the tests run headless, and a field that
+    // throws there would mean the round trip could only be checked in a
+    // browser, which is where it went unchecked in the first place.
+    if (typeof document === "undefined") return new Blockly.FieldTextInput(initial);
+    const field = new FieldColour(initial);
+    field.setColours(
+      PALETTE.map((c) => c.hex),
+      PALETTE.map((c) => c.name),
+    );
+    field.setColumns(4);
+    return field as unknown as Blockly.Field;
+  }
+
   if (kind === "power") {
     return openDropdown([
       ["●", "1"],
