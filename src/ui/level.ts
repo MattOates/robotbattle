@@ -116,7 +116,7 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
      * is already familiar from school, and where the ideas that need nesting
      * are the ideas worth having. Cards stay as the quieter way back.
      */
-    authoring: ["blocks", "cards", "guided"],
+    authoring: ["blocks", "cards"],
     /*
      * What a Builder is handed, as against what a Builder earns.
      *
@@ -143,7 +143,7 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
     // Text first because that is what an Engineer came for, but the other two
     // stay available: the card view is a decent way to read somebody else's
     // robot whoever you are.
-    authoring: ["text", "guided", "cards", "blocks"],
+    authoring: ["text", "cards", "blocks"],
     voiceDefault: false,
     panes: ["editor", "map", "trial", "bench", "history"],
     sidebar: ["robots", "behaviours", "arenas", "room", "chat", "session"],

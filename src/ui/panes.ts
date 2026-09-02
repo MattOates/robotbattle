@@ -58,11 +58,22 @@ export type PanelName = "robots" | "behaviours" | "arenas" | "room" | "chat" | "
  * built out of cards opens unchanged in the editor, which is the whole reason
  * a beginner's work is not a dead end.
  */
-export type Authoring = "cards" | "blocks" | "guided" | "text";
+/**
+ * How a {robot} is authored. Three views over one script — see
+ * `workshop/compose.ts`: the stored form is always RoboScript text, so a
+ * {robot} built out of cards opens unchanged in the editor, which is the whole
+ * reason a beginner's work is not a dead end.
+ *
+ * There was a fourth, "guided" — the text editor with tap-to-choose chips over
+ * its argument positions. It is gone rather than built: it was planned before
+ * blocks existed, as the bridge between tapping and typing, and blocks are now
+ * that bridge and a better one. Offering it meanwhile was worse than not: the
+ * tab was there, said "Sentences", and rendered the ordinary code editor.
+ */
+export type Authoring = "cards" | "blocks" | "text";
 
 export const AUTHORING_LABELS: Record<Authoring, string> = {
   cards: "Cards",
   blocks: "Blocks",
-  guided: "Sentences",
   text: "Code",
 };

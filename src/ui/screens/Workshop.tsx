@@ -75,6 +75,8 @@ import { applySnippet, findLines, type TourSignal } from "../tour/steps.js";
 import { PANE_LABELS, PANE_LABELS_SIMPLE, type Pane, type PanelName } from "../panes.js";
 import { HelperPanel } from "../quest/HelperPanel.js";
 import { CardComposer } from "../compose/CardComposer.js";
+import { PictureDebrief, whereFixGoes } from "../fight/PictureDebrief.js";
+import { addCard, cardSpec, fromSource, toSource } from "../../workshop/compose.js";
 // A megabyte of Blockly, fetched only when somebody opens the tab that needs it.
 const BlockEditor = lazy(() =>
   import("../blocks/BlockEditor.js").then((m) => ({ default: m.BlockEditor })),
@@ -596,6 +598,32 @@ export function Workshop({
     [library, refresh, selected, tour],
   );
 
+  /**
+   * Take the picture debrief up on one of its suggestions.
+   *
+   * The card goes where it would actually run — a `fire` inside the handler
+   * that saw something, a sweep inside `on start` — rather than on the end of
+   * the script, where it would be legal, silent and baffling. When that
+   * handler does not exist yet the button is not offered at all: the finding's
+   * own words already say to add it, and adding a handler on somebody's behalf
+   * is a bigger move than adding a line to one.
+   */
+  const applyFix = useCallback(
+    (cardId: string) => {
+      if (!selected || !editable || inSession) return;
+      const spec = cardSpec(cardId);
+      if (!spec) return;
+      const sketch = fromSource(selected.source);
+      const blockId = whereFixGoes(sketch, cardId);
+      if (!blockId) return;
+      updateSource(toSource(addCard(sketch, blockId, spec)));
+      setPane("editor");
+      tour.signal({ kind: "fixApplied" });
+    },
+    [editable, inSession, selected, tour, updateSource],
+  );
+
+
   // In a session the shared document is the working copy, so the owner's
   // library is written as everyone types. Snapshots are the undo.
   useEffect(() => {
@@ -1090,6 +1118,9 @@ export function Workshop({
               onHistory={() => setPane("history")}
               level={level}
               unlockedOpponents={unlocked.opponents}
+              say={say}
+              fill={fill}
+              {...(applyFix ? { onApplyFix: applyFix } : {})}
             />
           ) : null}
           {pane === "bench" ? (
@@ -2184,6 +2215,9 @@ function TrialPane({
   onHistory,
   level,
   unlockedOpponents,
+  say,
+  fill,
+  onApplyFix,
 }: {
   robot: StoredRobot | null;
   theme: Theme;
@@ -2217,6 +2251,10 @@ function TrialPane({
   level: Level;
   /** Built-in {robotPlural} this player's quests have handed over. */
   unlockedOpponents: readonly string[];
+  say: (both: { full: string; simple: string }) => string;
+  fill: (text: string) => string;
+  /** Take the debrief up on one of its suggestions. */
+  onApplyFix?: ((cardId: string) => void) | undefined;
 }) {
   // Remembered between sessions: tuning a robot means running the same fight
   // over and over, and having the panel put its own two back each time is a
@@ -2298,6 +2336,8 @@ function TrialPane({
     () => contenders.filter((c) => opponents.includes(c.id)),
     [contenders, opponents],
   );
+  // The player is always entry zero in a trial.
+  const mineTelemetry = lastOutcome?.telemetry.find((entry) => entry.robotId === 0);
   const [manifest, setManifest] = useState<MatchManifest | null>(null);
   /** What each entry in the current manifest was picked as, entry order. */
   const [lineup, setLineup] = useState<string[]>([]);
@@ -2500,9 +2540,26 @@ function TrialPane({
       </section>
 
       <div className="trial-side">
-        {lastOutcome ? (
+        {lastOutcome && simple && mineTelemetry ? (
+          /*
+           * The numbers are still there behind "show me the numbers" — this
+           * replaces which of the two is on top, not the fact that both exist.
+           */
+          <PictureDebrief
+            facts={{
+              mine: mineTelemetry,
+              field: lastOutcome.telemetry,
+              ticks: status?.tick ?? 0,
+              ...(lastOutcome.inspection ? { coverage: lastOutcome.inspection.coverage } : {}),
+            }}
+            say={say}
+            fill={fill}
+            {...(onApplyFix ? { onFix: onApplyFix } : {})}
+            {...(lastOutcome.inspection ? { onDetail: () => setInspecting(true) } : {})}
+          />
+        ) : lastOutcome ? (
           <BattleDebrief
-            mine={lastOutcome.telemetry.find((entry) => entry.robotId === 0) ?? null}
+            mine={mineTelemetry ?? null}
             field={lastOutcome.telemetry}
             winnerId={lastOutcome.result.winnerId}
             onHistory={onHistory}

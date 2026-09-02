@@ -5696,3 +5696,78 @@ select.hole {
   stroke-width: 3px;
   stroke-linejoin: round;
 }
+
+/* ---------- the picture debrief ---------- */
+
+.picture-debrief {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-items: flex-start;
+}
+
+.findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: 100%;
+}
+
+.finding {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-start;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--panel-raised);
+  border: var(--stroke) solid var(--bezel-light);
+  border-radius: var(--radius);
+}
+
+/* The two that mean something went wrong say so before they are read. */
+.finding-never-fired,
+.finding-never-started,
+.finding-errors {
+  border-color: var(--signal);
+}
+
+.finding-won {
+  border-color: var(--ok);
+}
+
+.finding-icon {
+  font-size: var(--t-14);
+  line-height: 1;
+}
+
+.finding-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.finding-say {
+  font-family: var(--font-display);
+  font-size: var(--t-10);
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.finding-fix {
+  font-size: var(--t-8);
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.finding-fix code,
+.finding-say code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--veil-soft);
+  color: var(--readout);
+}
