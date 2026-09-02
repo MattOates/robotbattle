@@ -76,6 +76,7 @@ import { PANE_LABELS, PANE_LABELS_SIMPLE, type Pane, type PanelName } from "../p
 import { HelperPanel } from "../quest/HelperPanel.js";
 import { CardComposer } from "../compose/CardComposer.js";
 import { PictureDebrief, whereFixGoes } from "../fight/PictureDebrief.js";
+import { ScriptStatus } from "../ScriptStatus.js";
 import { addCard, cardSpec, fromSource, toSource } from "../../workshop/compose.js";
 // A megabyte of Blockly, fetched only when somebody opens the tab that needs it.
 const BlockEditor = lazy(() =>
@@ -1026,6 +1027,24 @@ export function Workshop({
                 ) : null}
               </div>
 
+              {/*
+                * The status belongs to the pane, not to the editor.
+                *
+                * A script that will not compile disables Start, and at this
+                * register there is no editor tab — so without this a child got
+                * a button that would not press and no way to find out why. The
+                * escape is the Code view, which is the only place the problem
+                * can actually be fixed when it lives in a raw block.
+                */}
+              {way !== "text" && selected ? (
+                <ScriptStatus
+                  source={editorSource}
+                  register={levelSpec(level).register}
+                  showLabel="Show me the writing"
+                  onShow={() => setWay("text")}
+                />
+              ) : null}
+
               {way === "blocks" && selected ? (
                 <Suspense fallback={<div className="empty">Loading blocks…</div>}>
                   <BlockEditor
@@ -1063,6 +1082,7 @@ export function Workshop({
                   readOnly={inSession && !editable}
                   onChange={inSession ? () => undefined : updateSource}
                   guide={editable || !inSession}
+                  register={levelSpec(level).register}
                   viewRef={editorViewRef}
                   onDrop={onEditorDrop}
                 />
@@ -1121,6 +1141,10 @@ export function Workshop({
               say={say}
               fill={fill}
               {...(applyFix ? { onApplyFix: applyFix } : {})}
+              onFixThere={() => {
+                setPane("editor");
+                setWay("text");
+              }}
             />
           ) : null}
           {pane === "bench" ? (
@@ -2218,6 +2242,7 @@ function TrialPane({
   say,
   fill,
   onApplyFix,
+  onFixThere,
 }: {
   robot: StoredRobot | null;
   theme: Theme;
@@ -2255,6 +2280,8 @@ function TrialPane({
   fill: (text: string) => string;
   /** Take the debrief up on one of its suggestions. */
   onApplyFix?: ((cardId: string) => void) | undefined;
+  /** Go to where a broken script can be fixed. */
+  onFixThere: () => void;
 }) {
   // Remembered between sessions: tuning a robot means running the same fight
   // over and over, and having the panel put its own two back each time is a
@@ -2491,6 +2518,22 @@ function TrialPane({
           {...(canRun ? { traceRobotId: 0 } : {})}
         />
 
+        {/*
+          * Why the button will not press, next to the button.
+          *
+          * A tooltip is not an answer for somebody who is not going to hover,
+          * and the Build tab's copy of this is on another tab. The disabled
+          * control and the reason for it belong in the same place.
+          */}
+        {broken && robot ? (
+          <ScriptStatus
+            source={robot.source}
+            register={levelSpec(level).register}
+            showLabel="Take me to it"
+            onShow={onFixThere}
+          />
+        ) : null}
+
         <div className="readout">
           <span
             className={`lamp ${!manifest ? "" : status?.over ? "done" : running ? "live" : "held"}`}
@@ -2510,7 +2553,13 @@ function TrialPane({
                 data-tour="trial-start"
                 onClick={start}
                 disabled={!robot || broken}
-                title={broken ? "Fix the line the editor is complaining about first" : undefined}
+                title={
+                  broken
+                    ? simple
+                      ? "Something in your robot does not make sense yet — see the message under it."
+                      : "Fix the line the editor is complaining about first"
+                    : undefined
+                }
               >
                 {manifest ? "Restart" : "Start trial"}
               </button>

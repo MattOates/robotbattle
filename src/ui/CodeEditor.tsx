@@ -17,9 +17,10 @@ import {
   roboExtensions,
   setSpotlight,
 } from "./roboscript-editor.js";
-import { checkScript } from "../sim/world.js";
 import type { Theme } from "../lang/vocab.js";
 import { GrammarGuide } from "./GrammarGuide.js";
+import { ScriptStatus } from "./ScriptStatus.js";
+import type { Register } from "./level.js";
 
 const readOnlyCompartment = new Compartment();
 
@@ -64,6 +65,8 @@ interface Props {
   copyable?: boolean;
   /** Extra status text alongside the compile result, e.g. who else is editing. */
   statusSuffix?: React.ReactNode;
+  /** Which register the status line is written in. Defaults to the full one. */
+  register?: Register;
   /**
    * Show the grammar guide under the editor. Off by default, so the previews
    * and the read-only views of other people's robots do not grow a teaching
@@ -114,6 +117,7 @@ export function CodeEditor({
   preview = false,
   copyable = false,
   statusSuffix,
+  register = "full",
   guide = false,
   viewRef: exposedRef,
   spotlight = null,
@@ -288,8 +292,6 @@ export function CodeEditor({
     return <div className="code-editor no-copy" ref={hostRef} />;
   }
 
-  const check = checkScript(source);
-
   return (
     <>
       <div className="code-editor" ref={hostRef} />
@@ -306,35 +308,26 @@ export function CodeEditor({
           }}
         />
       ) : null}
-      <div className={`diagnostic ${check.ok ? "ok" : "error"}`} role="status">
-        {check.ok ? (
-          <>
-            Ready to fight.
-            {/* Not offered on a script you cannot type into — someone else's,
-                or one you are only being shown. */}
-            {readOnly ? null : (
-              <button
-                type="button"
-                className="ghost-hint"
-                onClick={() => {
-                  const view = viewRef.current;
-                  if (!view) return;
-                  view.focus();
-                  startCompletion(view);
-                }}
-              >
-                Press Ctrl-Space for suggestions
-              </button>
-            )}
-          </>
-        ) : (
-          <>
-            <strong>Line {check.error?.line}:</strong> {check.error?.message}
-            {check.error?.hint ? <span className="hint"> — {check.error.hint}</span> : null}
-          </>
+      {/* One implementation of "will this run", shared with the card and block
+          views — see `ScriptStatus.tsx`. */}
+      <ScriptStatus source={source} register={register} suffix={statusSuffix}>
+        {/* Not offered on a script you cannot type into — someone else's, or
+            one you are only being shown. */}
+        {readOnly ? null : (
+          <button
+            type="button"
+            className="ghost-hint"
+            onClick={() => {
+              const view = viewRef.current;
+              if (!view) return;
+              view.focus();
+              startCompletion(view);
+            }}
+          >
+            Press Ctrl-Space for suggestions
+          </button>
         )}
-        {statusSuffix}
-      </div>
+      </ScriptStatus>
     </>
   );
 }
