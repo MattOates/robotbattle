@@ -26,6 +26,7 @@ import { FieldSlider } from "@blockly/field-slider";
 Blockly.setLocale(En as unknown as Record<string, string>);
 import { ANGLE_CHOICES, CARDS, type CardSpec } from "../../workshop/compose.js";
 import {
+  CAN_BLOCK,
   COMMENT_BLOCK,
   COMPARE_BLOCK,
   COMPARISONS,
@@ -38,8 +39,9 @@ import {
   blockTypeFor,
 } from "./bridge.js";
 import { EVENT_DOCS } from "../../lang/events.js";
+import { EVENT_NAMES, type EventName } from "../../lang/ast.js";
+import { fillVocab } from "../../learn/markdown.js";
 import { phraseFor, type Theme } from "../../lang/vocab.js";
-import type { EventName } from "../../lang/ast.js";
 
 /** Which events a new hat block may be set to. Matches the card composer's. */
 export const OFFERED_EVENTS: readonly EventName[] = [
@@ -63,6 +65,7 @@ const GROUP_HUE: Record<CardSpec["group"], number> = {
   wait: 280,
   remember: 330,
   repeat: 120,
+  do: 260,
 };
 
 /**
@@ -116,6 +119,37 @@ export function setKnownVariables(names: readonly string[]): void {
 
 /** The palette category name for the variables a script has made. */
 export const VARIABLE_CATEGORY = "RB_VARIABLES";
+/** The palette category for the behaviours a script has named. */
+export const ROUTINE_CATEGORY = "RB_ROUTINES";
+
+/** The `can` blocks the open script declares, with how many arguments each takes. */
+let knownRoutines: readonly { name: string; args: number }[] = [];
+
+export function setKnownRoutines(routines: readonly { name: string; args: number }[]): void {
+  knownRoutines = routines;
+}
+
+/**
+ * The Do category, worked out when it is opened.
+ *
+ * One call block per behaviour the script has named, each already carrying the
+ * right number of argument sockets — because "how many does this one take" is
+ * a thing the script knows and the person calling it should not have to.
+ */
+export function routineFlyout(): Blockly.utils.toolbox.FlyoutItemInfoArray {
+  return [
+    { kind: "block", type: CAN_BLOCK },
+    ...knownRoutines.map((routine) =>
+      routine.args === 0
+        ? { kind: "block", type: blockTypeFor("do"), fields: { V0: routine.name } }
+        : {
+            kind: "block",
+            type: blockTypeFor("do-with"),
+            fields: { V0: routine.name, ARGC: routine.args },
+          },
+    ),
+  ] as Blockly.utils.toolbox.FlyoutItemInfoArray;
+}
 
 /**
  * The contents of the Remember category, worked out when it is opened.
@@ -161,7 +195,10 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
          * or a whole expression, and those are all the same kind of thing.
          * Everything else is a field on the block itself: a speed is a speed.
          */
-        const phrase = register === "simple" ? spec.say.simple : spec.say.full;
+        // Filled, not raw: these carry `{turret}`, `{Fire}` and `{radar}`, and
+        // without this the blocks read "Point the {turret} at" — the braces on
+        // screen, and the biological words never reached at all.
+        const phrase = fillVocab(register === "simple" ? spec.say.simple : spec.say.full, theme);
         const parts = phrase.split(/(\{\d\})/);
         let input: Blockly.Input = this.appendDummyInput().appendField(`${spec.icon} `);
 
@@ -174,10 +211,30 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
           const at = Number(slot[1]);
           const hole = spec.holes[at];
           if (!hole) continue;
-          if (hole.kind === "value") {
+          if (hole.kind === "args") {
+            // A hidden count rather than a visible control: the number of
+            // arguments is decided by the routine, not by the caller.
+            input.appendField(new Blockly.FieldNumber(0, 0, 8, 1), "ARGC");
+            this.getField("ARGC")?.setVisible(false);
+          } else if (hole.kind === "value") {
             input = this.appendValueInput(`V${at}`);
           } else {
             input.appendField(fieldFor(hole.kind, hole.default), `V${at}`);
+          }
+        }
+
+        /*
+         * A `do` call grows one socket per argument.
+         *
+         * The count is not fixed by the block type — it is fixed by the
+         * routine being called — so the block reads it from its own state and
+         * builds itself. `ARGC` travels in the serialised fields, which is why
+         * a call loaded from a script comes back with the right shape.
+         */
+        if (spec.holes.some((h) => h.kind === "args")) {
+          const count = Number(this.getFieldValue("ARGC") ?? 0);
+          for (let n = 0; n < count; n++) {
+            this.appendValueInput(`A${n}`).appendField(n === 0 ? "" : "and");
           }
         }
 
@@ -216,9 +273,16 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
       this.appendDummyInput()
         .appendField("when ")
         .appendField(
-          new Blockly.FieldDropdown(
-            OFFERED_EVENTS.map((e) => [phraseFor(e, theme), e] as [string, string]),
-          ),
+          /*
+           * Every event, not the offered few.
+           *
+           * The palette offers six because six is what a first {robot} is
+           * built from. The *field* has to hold whatever the script says, and
+           * a dropdown that cannot hold its value falls back to the first
+           * option — `on ping robot` was drawn as "start", which is a lie
+           * about somebody's {robot} and the same bug the angles had.
+           */
+          openDropdown(EVENT_NAMES.map((e) => [phraseFor(e, theme), e] as [string, string])),
           "EVENT",
         );
       this.appendStatementInput("DO");
@@ -247,6 +311,38 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
       this.setNextStatement(true, null);
       this.setColour(0);
       this.setTooltip("A note. It does not do anything — it explains.");
+    },
+  };
+
+  /**
+   * A named behaviour.
+   *
+   * The thing worth handing to somebody else, and the reason it is worth
+   * handing over is `given`: it says which event the body may read through
+   * `event.*`, so the compiler can refuse it anywhere it would not make sense.
+   * The name is typed because it is the author's own word; everything else is
+   * chosen, because everything else has a fixed set of right answers.
+   */
+  Blockly.Blocks[CAN_BLOCK] = {
+    init(this: Blockly.Block) {
+      this.appendDummyInput()
+        .appendField("🧩 to")
+        .appendField(new Blockly.FieldTextInput("dodge"), "NAME")
+        .appendField("with")
+        .appendField(new Blockly.FieldTextInput(""), "PARAMS")
+        .appendField("when")
+        .appendField(
+          openDropdown([
+            ["anything", ""],
+            ...OFFERED_EVENTS.map((e) => [phraseFor(e, theme), e] as [string, string]),
+          ]),
+          "GIVEN",
+        );
+      this.appendStatementInput("DO");
+      this.setColour(285);
+      this.setTooltip(
+        "A behaviour with a name. `given` says which event it works on, which is what makes it safe to give away.",
+      );
     },
   };
 
@@ -549,6 +645,12 @@ export function toolboxFor(register: "simple" | "full"): Blockly.utils.toolbox.T
           })),
         ],
       })),
+      {
+        kind: "category",
+        name: register === "simple" ? "Your bits" : "Behaviours",
+        colour: String(GROUP_HUE.do),
+        custom: ROUTINE_CATEGORY,
+      },
       {
         kind: "category",
         name: register === "simple" ? "Remember" : "Variables",

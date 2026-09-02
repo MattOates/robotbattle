@@ -140,10 +140,23 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
     ageHint: "12 and up, or anyone who would rather just get on with it",
     skin: "instrument",
     register: "full",
-    // Text first because that is what an Engineer came for, but the other two
-    // stay available: the card view is a decent way to read somebody else's
-    // robot whoever you are.
-    authoring: ["text", "cards", "blocks"],
+    /*
+     * Blocks and code, in that order, because this is where the crossing
+     * happens.
+     *
+     * An Engineer arriving from Builder has written everything in blocks and
+     * is about to write their first RoboScript. Putting the two side by side
+     * as tabs over one script is the whole transition: change it in blocks,
+     * read what that says in code, change it in code, watch the blocks follow.
+     * That only works if the blocks can say everything the code can, which is
+     * what `tests/workshop/parity.test.ts` holds them to — every statement and
+     * every header in every {robot} the game ships is a block somebody could
+     * have built.
+     *
+     * Cards stay last: a decent way to read a small {robot}, and not what
+     * anybody here is coming for.
+     */
+    authoring: ["blocks", "text", "cards"],
     voiceDefault: false,
     panes: ["editor", "map", "trial", "bench", "history"],
     sidebar: ["robots", "behaviours", "arenas", "room", "chat", "session"],

@@ -74,7 +74,15 @@ export type HoleKind =
    * expression. Drawn as a socket, so what goes in it is a block rather than
    * something to be typed.
    */
-  | "value";
+  | "value"
+  /**
+   * A comma-separated argument list, as written.
+   *
+   * Held as one string because the count varies with the routine being called
+   * and a spec has a fixed shape. The block layer splits it into one socket
+   * per argument — see `splitArgs`, which has to respect nesting.
+   */
+  | "args";
 
 export interface Hole {
   kind: HoleKind;
@@ -90,6 +98,20 @@ export interface CardSpec {
   /** Canonical RoboScript, with `{0}` where the hole goes. */
   template: string;
   holes: readonly { kind: HoleKind; default: string }[];
+  /**
+   * The only values this spec will read back.
+   *
+   * A spec whose control is a dropdown or a stepped slider can only *hold* the
+   * values that control offers, so it must only claim the lines it can hold.
+   * `turn body by 150` is not one of the named angles and `drive forward 55`
+   * is not a step of ten — matched by the friendly spec, both would be
+   * silently rounded or replaced. Each of those statements has a twin below
+   * with a plain value socket, which takes anything: a number nobody named, a
+   * variable, or an expression.
+   *
+   * Absent means "anything", which is what the twins are.
+   */
+  choices?: readonly string[];
   /**
    * A matcher for statements the generic one cannot read.
    *
@@ -110,7 +132,7 @@ export interface CardSpec {
    */
   needsLoop?: boolean;
   /** How the palette is grouped. */
-  group: "move" | "look" | "shoot" | "wait" | "remember" | "repeat";
+  group: "move" | "look" | "shoot" | "wait" | "remember" | "repeat" | "do";
 }
 
 /**
@@ -121,9 +143,24 @@ export interface CardSpec {
  * lessons cover. Anything outside it is still reachable through the text view,
  * and shows here as a `raw` card rather than being hidden.
  */
+/** The speeds the slider can land on. Anything else needs the value twin. */
+const SPEEDS = Array.from({ length: 11 }, (_, i) => String(i * 10));
+/** Likewise for a wait. */
+const TICKS = Array.from({ length: 13 }, (_, i) => String(i * 5));
+const POWERS = ["1", "2", "3"];
+const ANGLES = [
+  "event.bearing",
+  "event.bearing + 90",
+  "event.bearing + 180",
+  "45",
+  "90",
+  "180",
+];
+
 export const CARDS: readonly CardSpec[] = [
   {
     id: "drive-forward",
+    choices: SPEEDS,
     icon: "▶",
     say: { full: "Drive forward at {0}", simple: "Go forwards at {0}" },
     template: "drive forward {0}",
@@ -132,6 +169,7 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     id: "drive-back",
+    choices: SPEEDS,
     icon: "◀",
     say: { full: "Drive backwards at {0}", simple: "Go backwards at {0}" },
     template: "drive back {0}",
@@ -148,6 +186,7 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     id: "turn-body-by",
+    choices: ANGLES,
     icon: "↻",
     say: { full: "Turn by {0}", simple: "Turn {0}" },
     template: "turn body by {0}",
@@ -156,6 +195,7 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     id: "turret-aim",
+    choices: ANGLES,
     icon: "🎯",
     say: { full: "Point the {turret} at {0}", simple: "Point {0}" },
     template: "turret.aim at {0}",
@@ -164,6 +204,7 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     id: "turret-sweep",
+    choices: ANGLES,
     icon: "🌀",
     say: { full: "Sweep the {turret} {0}", simple: "Look around {0}" },
     template: "turret.sweep {0}",
@@ -172,6 +213,7 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     id: "radar-sweep",
+    choices: ANGLES,
     icon: "📡",
     say: { full: "Sweep the {radar} {0}", simple: "Search around {0}" },
     template: "radar.sweep {0}",
@@ -180,6 +222,7 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     id: "ping",
+    choices: POWERS,
     icon: "🔎",
     say: { full: "{Ping} at power {0}", simple: "Look a long way, power {0}" },
     template: "ping {0}",
@@ -188,6 +231,7 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     id: "fire",
+    choices: POWERS,
     icon: "💥",
     say: { full: "{Fire} at power {0}", simple: "Shoot {0}" },
     template: "fire {0}",
@@ -196,6 +240,7 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     id: "turn-body-to",
+    choices: ANGLES,
     icon: "🧭",
     say: { full: "Turn to face {0}", simple: "Face {0}" },
     template: "turn body to {0}",
@@ -204,6 +249,7 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     id: "turret-turn-by",
+    choices: ANGLES,
     icon: "↺",
     say: { full: "Swing the {turret} by {0}", simple: "Swing the {turret} {0}" },
     template: "turret.turn by {0}",
@@ -212,6 +258,7 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     id: "radar-aim",
+    choices: ANGLES,
     icon: "📶",
     say: { full: "Point the {radar} at {0}", simple: "Point the {radar} {0}" },
     template: "radar.aim at {0}",
@@ -270,13 +317,211 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     id: "wait",
+    choices: TICKS,
     icon: "⏱",
     say: { full: "Wait {0} ticks", simple: "Wait {0}" },
     template: "wait {0} ticks",
     holes: [{ kind: "ticks", default: "10" }],
     group: "wait",
   },
+
+  /*
+   * The plain-value twins.
+   *
+   * One statement, two blocks: the one above with a name for the value ("at
+   * them", three shells, a speed dial) and the one here with a socket that
+   * takes anything — a number nobody named, a variable, an expression. That is
+   * how the language keeps its whole range while a beginner still gets a
+   * control they cannot be wrong with, and it is what makes a round trip
+   * possible for scripts like `drive cruise * 0.5` or `turn body by 150`.
+   *
+   * Ordered after their named siblings, and the matcher prefers the first spec
+   * that will actually hold the value, so a named angle stays a named angle.
+   */
+  {
+    id: "drive-forward-value",
+    icon: "▶",
+    say: { full: "Drive forward at {0}", simple: "Go forwards at {0}" },
+    template: "drive forward {0}",
+    holes: [{ kind: "value", default: "70" }],
+    group: "move",
+  },
+  {
+    id: "drive-back-value",
+    icon: "◀",
+    say: { full: "Drive backwards at {0}", simple: "Go backwards at {0}" },
+    template: "drive back {0}",
+    holes: [{ kind: "value", default: "60" }],
+    group: "move",
+  },
+  {
+    /*
+     * `drive <speed>` with no direction word: a signed speed, where a negative
+     * one reverses. Three of the sample {robotPlural} are written this way and
+     * none of them could be a block before.
+     */
+    id: "drive-value",
+    icon: "⏩",
+    say: { full: "Drive at {0}", simple: "Go at {0}" },
+    template: "drive {0}",
+    holes: [{ kind: "value", default: "70" }],
+    group: "move",
+  },
+  {
+    id: "turn-body-by-value",
+    icon: "↻",
+    say: { full: "Turn by {0}", simple: "Turn by {0}" },
+    template: "turn body by {0}",
+    holes: [{ kind: "value", default: "90" }],
+    group: "move",
+  },
+  {
+    id: "turn-body-to-value",
+    icon: "🧭",
+    say: { full: "Turn to face {0}", simple: "Face {0}" },
+    template: "turn body to {0}",
+    holes: [{ kind: "value", default: "90" }],
+    group: "move",
+  },
+  {
+    /* `turn to X` — the shorthand for `turn body to X`. */
+    id: "turn-to-value",
+    icon: "🧭",
+    say: { full: "Turn to face {0}", simple: "Face {0}" },
+    template: "turn to {0}",
+    holes: [{ kind: "value", default: "90" }],
+    group: "move",
+  },
+  {
+    id: "turret-aim-value",
+    icon: "🎯",
+    say: { full: "Point the {turret} at {0}", simple: "Point at {0}" },
+    template: "turret.aim at {0}",
+    holes: [{ kind: "value", default: "event.bearing" }],
+    group: "look",
+  },
+  {
+    id: "turret-sweep-value",
+    icon: "🌀",
+    say: { full: "Sweep the {turret} {0}", simple: "Look around {0}" },
+    template: "turret.sweep {0}",
+    holes: [{ kind: "value", default: "45" }],
+    group: "look",
+  },
+  {
+    id: "turret-turn-by-value",
+    icon: "↺",
+    say: { full: "Swing the {turret} by {0}", simple: "Swing the {turret} by {0}" },
+    template: "turret.turn by {0}",
+    holes: [{ kind: "value", default: "45" }],
+    group: "look",
+  },
+  {
+    id: "turret-turn-to-value",
+    icon: "↺",
+    say: { full: "Swing the {turret} to {0}", simple: "Swing the {turret} to {0}" },
+    template: "turret.turn to {0}",
+    holes: [{ kind: "value", default: "90" }],
+    group: "look",
+  },
+  {
+    id: "radar-aim-value",
+    icon: "📶",
+    say: { full: "Point the {radar} at {0}", simple: "Point the {radar} at {0}" },
+    template: "radar.aim at {0}",
+    holes: [{ kind: "value", default: "event.bearing" }],
+    group: "look",
+  },
+  {
+    id: "radar-sweep-value",
+    icon: "📡",
+    say: { full: "Sweep the {radar} {0}", simple: "Search around {0}" },
+    template: "radar.sweep {0}",
+    holes: [{ kind: "value", default: "90" }],
+    group: "look",
+  },
+  {
+    id: "radar-turn-by-value",
+    icon: "📡",
+    say: { full: "Swing the {radar} by {0}", simple: "Swing the {radar} by {0}" },
+    template: "radar.turn by {0}",
+    holes: [{ kind: "value", default: "45" }],
+    group: "look",
+  },
+  {
+    id: "radar-turn-to-value",
+    icon: "📡",
+    say: { full: "Swing the {radar} to {0}", simple: "Swing the {radar} to {0}" },
+    template: "radar.turn to {0}",
+    holes: [{ kind: "value", default: "90" }],
+    group: "look",
+  },
+  {
+    id: "fire-value",
+    icon: "💥",
+    say: { full: "{Fire} at power {0}", simple: "Shoot at power {0}" },
+    template: "fire {0}",
+    holes: [{ kind: "value", default: "2" }],
+    group: "shoot",
+  },
+  {
+    id: "ping-value",
+    icon: "🔎",
+    say: { full: "{Ping} at power {0}", simple: "Look a long way, power {0}" },
+    template: "ping {0}",
+    holes: [{ kind: "value", default: "1" }],
+    group: "look",
+  },
+  {
+    /* Bare `ping`, which takes the default power. Eight of the sample
+       {robotPlural} use it and none of them could be a block before. */
+    id: "ping-plain",
+    icon: "🔎",
+    say: { full: "{Ping}", simple: "Look a long way" },
+    template: "ping",
+    holes: [],
+    group: "look",
+  },
+  {
+    /*
+     * `do NAME` and `do NAME with a, b, c` — running a named behaviour.
+     *
+     * The arguments are kept as one string here and split into sockets by the
+     * block layer, because the count varies per routine and a `CardSpec` has a
+     * fixed shape. Splitting has to respect nesting: one of the sample
+     * {robotPlural} calls `do fold with mx, my, number(field(event.data, 5))`,
+     * and a naive split on commas would tear that last argument into three.
+     */
+    id: "do-with",
+    icon: "▶️",
+    say: { full: "Do {0} with {1}", simple: "Do {0} with {1}" },
+    template: "do {0} with {1}",
+    holes: [
+      { kind: "name", default: "dodge" },
+      { kind: "args", default: "0" },
+    ],
+    match: /^do\s+([A-Za-z_]\w*)\s+with\s+(.+)$/,
+    group: "do",
+  },
+  {
+    id: "do",
+    icon: "▶️",
+    say: { full: "Do {0}", simple: "Do {0}" },
+    template: "do {0}",
+    holes: [{ kind: "name", default: "dodge" }],
+    match: /^do\s+([A-Za-z_]\w*)\s*$/,
+    group: "do",
+  },
+  {
+    id: "wait-value",
+    icon: "⏱",
+    say: { full: "Wait {0} ticks", simple: "Wait {0}" },
+    template: "wait {0} ticks",
+    holes: [{ kind: "value", default: "10" }],
+    group: "wait",
+  },
 ];
+
 
 /**
  * The id of the pseudo-card that carries a run of comments.
@@ -357,8 +602,27 @@ export interface Block {
   id: string;
   /** The verbatim header line: `on sense robot`, `can dodge given hit by bullet`. */
   header: string;
-  /** The event, when this is an `on` block the card table understands. */
+  /**
+   * Which kind of top-level block this is.
+   *
+   * `on` is a handler for an event. `can` is a named behaviour, which is the
+   * thing worth passing to somebody else — it says which event it works on
+   * through `given`, may take parameters, and becomes the handler itself when
+   * no `on` block claims that event.
+   */
+  kind: "on" | "can";
+  /** The event handled, or the `given` of a `can`. Null when there is none. */
   event: EventName | null;
+  /** A `can` block's name. */
+  name?: string;
+  /**
+   * A `can` block's parameters, as written — `power`, `power=2`.
+   *
+   * Kept verbatim including any default, because a default is part of the
+   * contract and rewriting `power=2` as `power` would change what a call with
+   * no arguments does.
+   */
+  params?: string[];
   cards: Card[];
   lead: string[];
   /**
@@ -394,12 +658,90 @@ function canonicalWords(line: string): string[] {
   return out.map((w) => w.toLowerCase());
 }
 
-/** `on sense robot` -> "sense robot", if it names an event we know. */
-function eventOf(header: string): EventName | null {
+/**
+ * Read a block header.
+ *
+ * `on sense robot every 30`, `can dodge given hit by bullet`,
+ * `can chase with power=2 given sense robot`. The cadence clauses (`every`,
+ * `after`, `before`, `at`) are left in the verbatim header rather than pulled
+ * out: nothing edits them yet, and carrying them as fields would mean writing
+ * them back, which is a chance to get them wrong for no gain.
+ */
+function readHeader(header: string): {
+  kind: "on" | "can";
+  event: EventName | null;
+  name?: string;
+  params?: string[];
+} {
+  const words = canonicalWords(header);
+
+  if (words[0] === "on") return { kind: "on", event: eventOfHeader(header) };
+
+  if (words[0] === "can") {
+    const parsed = parseCanHeader(header);
+    return {
+      kind: "can",
+      event: parsed.given,
+      ...(parsed.name ? { name: parsed.name } : {}),
+      ...(parsed.params.length > 0 ? { params: parsed.params } : {}),
+    };
+  }
+
+  return { kind: "on", event: null };
+}
+
+/**
+ * Take apart a `can` header. The one place that knows its grammar.
+ *
+ * It was written twice — here and in the block bridge, to decide whether a
+ * header had changed — and the two disagreed the moment a biological script
+ * appeared: the bridge compared the author's `given sense organism` against the
+ * canonical `sense robot`, concluded the header had been edited, and rewrote
+ * it in mechanical words. A grammar with two readers has two grammars.
+ *
+ * `name` and `params` come off the raw text rather than the canonical words,
+ * because a parameter is the author's own identifier and must never go through
+ * the synonym table; `given` is canonicalised, because it names an event and
+ * events have canonical names.
+ */
+export function parseCanHeader(header: string): {
+  name: string;
+  params: string[];
+  given: EventName | null;
+} {
+  const text = header.trim();
+  const name = /^can\s+([A-Za-z_]\w*)/.exec(text)?.[1] ?? "";
+  const withPart =
+    /\bwith\s+([^]*?)(?=\s+given\b|\s+every\b|\s+after\b|\s+before\b|\s+at\b|$)/.exec(text)?.[1];
+  const givenRaw =
+    /\bgiven\s+(.+?)(?=\s+every\b|\s+after\b|\s+before\b|\s+at\b|$)/.exec(text)?.[1]?.trim();
+  const given = givenRaw ? canonicalWords(givenRaw).join(" ") : null;
+  return {
+    name,
+    params: withPart ? splitArgs(withPart) : [],
+    given: given && (EVENT_NAMES as readonly string[]).includes(given) ? (given as EventName) : null,
+  };
+}
+
+/** The words that start a cadence clause on a block header. */
+const CADENCE = ["every", "after", "before", "at"];
+
+/**
+ * The event an `on` header handles. The one place that reads one.
+ *
+ * Stops at the first cadence word, so `on tick every 30` handles `tick`, and
+ * canonicalises, so `on stung` handles `hit by bullet`.
+ */
+export function eventOfHeader(header: string): EventName | null {
   const words = canonicalWords(header);
   if (words[0] !== "on") return null;
-  const rest = words.slice(1).join(" ");
-  return (EVENT_NAMES as readonly string[]).includes(rest) ? (rest as EventName) : null;
+  const rest: string[] = [];
+  for (const word of words.slice(1)) {
+    if (CADENCE.includes(word)) break;
+    rest.push(word);
+  }
+  const phrase = rest.join(" ");
+  return (EVENT_NAMES as readonly string[]).includes(phrase) ? (phrase as EventName) : null;
 }
 
 /** The words a template reduces to, with the hole removed. */
@@ -452,6 +794,9 @@ function matchCard(line: string): { spec: CardSpec; holes: Hole[] } | null {
     // that `event.bearing + 90` survives as written.
     const value = valueBetween(line, before.length, after.length);
     if (value === null) continue;
+    // A spec whose control cannot hold this value does not get to claim the
+    // line — its plain-value twin further down the list will.
+    if (spec.choices && !spec.choices.includes(value)) continue;
     return { spec, holes: [{ kind: spec.holes[0]!.kind, value }] };
   }
   return null;
@@ -675,7 +1020,7 @@ export function fromSource(source: string): Sketch {
     blocks.push({
       id: nextId("b"),
       header,
-      event: eventOf(header),
+      ...readHeader(header),
       cards: read.cards,
       lead,
       close,
@@ -787,6 +1132,7 @@ export function addBlock(sketch: Sketch, event: EventName): Sketch {
   const block: Block = {
     id: nextId("b"),
     header: `on ${event}`,
+    kind: "on",
     event,
     cards: [],
     // A blank line before it, so the script reads the way a person would write it.
@@ -850,4 +1196,52 @@ export function declaredVariables(sketch: Sketch): string[] {
   for (const block of sketch.blocks) walk(block.cards);
 
   return names;
+}
+
+/**
+ * Split an argument list on its top-level commas.
+ *
+ * `mx, my, number(field(event.data, 5))` is three arguments, not five. A naive
+ * split tears the last one into pieces and a round trip would put it back as
+ * three separate arguments to a routine that takes one — which compiles, and
+ * is a different program.
+ */
+export function splitArgs(text: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  let quoted = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (ch === '"') quoted = !quoted;
+    if (quoted) continue;
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (ch === "," && depth === 0) {
+      out.push(text.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  const last = text.slice(start).trim();
+  if (last !== "") out.push(last);
+  return out;
+}
+
+/** Put them back the way they are written, one comma and a space apart. */
+export function joinArgs(args: readonly string[]): string {
+  return args.join(", ");
+}
+
+/**
+ * Every behaviour the script names, and how many things each takes.
+ *
+ * Fills the Do palette: a call block per routine, already carrying the right
+ * number of argument sockets, because how many one takes is something the
+ * script knows and the person calling it should not have to.
+ */
+export function declaredRoutines(sketch: Sketch): { name: string; args: number }[] {
+  return sketch.blocks
+    .filter((b) => b.kind === "can" && b.name)
+    .map((b) => ({ name: b.name!, args: b.params?.length ?? 0 }));
 }

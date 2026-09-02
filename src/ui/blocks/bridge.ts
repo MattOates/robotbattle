@@ -26,6 +26,10 @@
 import {
   CARDS,
   NESTS,
+  eventOfHeader,
+  joinArgs,
+  parseCanHeader,
+  splitArgs,
   cardSpec,
   cardText,
   isNest,
@@ -52,6 +56,8 @@ export interface WorkspaceJson {
 
 export const BLOCK_PREFIX = "rb_";
 export const WHEN_BLOCK = `${BLOCK_PREFIX}when`;
+/** A named behaviour: `can dodge given hit by bullet`. */
+export const CAN_BLOCK = `${BLOCK_PREFIX}can`;
 export const COMMENT_BLOCK = `${BLOCK_PREFIX}comment`;
 export const RAW_BLOCK = `${BLOCK_PREFIX}raw`;
 /** Value blocks: the things that plug into a condition socket. */
@@ -272,8 +278,24 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
   const fields: Record<string, string | number> = {};
   const valueInputs: Record<string, { block: BlockJson }> = {};
   card.holes.forEach((hole, i) => {
-    if (hole.kind === "value") valueInputs[`V${i}`] = { block: valueBlock(hole.value) };
-    else fields[`V${i}`] = hole.value;
+    if (hole.kind === "value") {
+      valueInputs[`V${i}`] = { block: valueBlock(hole.value) };
+    } else if (hole.kind === "args") {
+      /*
+       * One socket per argument, so a `do` call is assembled the way a call
+       * looks — a name and the things handed to it — rather than typed as a
+       * comma-separated string. Split on top-level commas only: `do fold with
+       * mx, my, number(field(event.data, 5))` is three arguments, and a naive
+       * split would make it five and quietly change what the routine is
+       * called with.
+       */
+      splitArgs(hole.value).forEach((arg, n) => {
+        valueInputs[`A${n}`] = { block: valueBlock(arg) };
+      });
+      fields[`ARGC`] = splitArgs(hole.value).length;
+    } else {
+      fields[`V${i}`] = hole.value;
+    }
   });
   /*
    * The line as it was written travels with the block.
@@ -298,9 +320,12 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
 function blockJsonFor(block: Block, at: number): BlockJson {
   const body = chain(block.cards.flatMap((c, i) => cardBlocks(c, `h${at}.${i}.`)));
   const json: BlockJson = {
-    type: WHEN_BLOCK,
+    type: block.kind === "can" ? CAN_BLOCK : WHEN_BLOCK,
     id: `h${at}`,
-    fields: { EVENT: block.event ?? "" },
+    fields:
+      block.kind === "can"
+        ? { NAME: block.name ?? "", GIVEN: block.event ?? "", PARAMS: joinArgs(block.params ?? []) }
+        : { EVENT: block.event ?? "" },
     extraState: { header: block.header, lead: block.lead, close: block.close },
   };
   if (body) json.inputs = { DO: { block: body } };
@@ -330,6 +355,39 @@ export function sketchToWorkspace(sketch: Sketch): WorkspaceJson {
 }
 
 let counter = 0;
+
+/** Write a `can` header from its parts. */
+function canHeader(name: string, params: readonly string[], given: string | null): string {
+  const withPart = params.length > 0 ? ` with ${joinArgs(params)}` : "";
+  const givenPart = given ? ` given ${given}` : "";
+  return `can ${name}${withPart}${givenPart}`;
+}
+
+/**
+ * Does this header already say these things?
+ *
+ * Compared on the parts, through the one reader that knows the grammar, so a
+ * header carrying a cadence clause nothing here models — `can scan given tick
+ * every 30` — is recognised as unchanged and kept whole rather than rewritten
+ * without its `every 30`. And so that a biological `given sense organism` is
+ * compared as the event it names rather than as the words it is spelt with:
+ * reading it here with a second regex is exactly how it came to be rewritten
+ * in mechanical words.
+ */
+function canHeaderMatches(
+  header: string,
+  name: string,
+  params: readonly string[],
+  given: string | null,
+): boolean {
+  const had = parseCanHeader(header);
+  return (
+    had.name === name &&
+    (had.given ?? null) === given &&
+    had.params.length === params.length &&
+    had.params.every((p, i) => p === params[i])
+  );
+}
 
 /** Regenerate a construct's header line when its values have been edited. */
 function nestText(spec: string, holes: { value: string }[], was?: string): string {
@@ -425,13 +483,20 @@ function readStatements(statements: BlockJson[]): Card[] {
 
     const spec = specId ? cardSpec(specId) : undefined;
     if (!spec) continue;
-    const holes = spec.holes.map((h, i) => ({
-      kind: h.kind,
-      value:
-        h.kind === "value"
-          ? blockToCondition(st.inputs?.[`V${i}`]?.block) || h.default
-          : String(st.fields?.[`V${i}`] ?? h.default),
-    }));
+    const holes = spec.holes.map((h, i) => {
+      if (h.kind === "value") {
+        return { kind: h.kind, value: blockToCondition(st.inputs?.[`V${i}`]?.block) || h.default };
+      }
+      if (h.kind === "args") {
+        const count = Number(st.fields?.["ARGC"] ?? 0);
+        const args: string[] = [];
+        for (let n = 0; n < count; n++) {
+          args.push(blockToCondition(st.inputs?.[`A${n}`]?.block));
+        }
+        return { kind: h.kind, value: joinArgs(args) };
+      }
+      return { kind: h.kind, value: String(st.fields?.[`V${i}`] ?? h.default) };
+    });
     const kept = (st.extraState ?? {}) as { text?: string; was?: string[] };
     // Untouched means untouched: same values as it went in with, so the line
     // it came from is still the right line, in the player's own words.
@@ -463,18 +528,57 @@ export function workspaceToSketch(json: WorkspaceJson): Sketch {
   const blocks: Block[] = [];
 
   for (const hat of json.blocks?.blocks ?? []) {
-    if (hat.type !== WHEN_BLOCK) continue;
+    if (hat.type !== WHEN_BLOCK && hat.type !== CAN_BLOCK) continue;
     const extra = (hat.extraState ?? {}) as {
       header?: string;
       lead?: string[];
       close?: string | null;
     };
+    const cards = readStatements(unchain(hat.inputs?.["DO"]?.block));
+
+    if (hat.type === CAN_BLOCK) {
+      const name = String(hat.fields?.["NAME"] ?? "");
+      const given = String(hat.fields?.["GIVEN"] ?? "") || null;
+      const params = splitArgs(String(hat.fields?.["PARAMS"] ?? ""));
+      // Regenerated only when something about the header actually changed, so
+      // a `can` nobody touched keeps its own spacing and its cadence clause.
+      const rebuilt = canHeader(name, params, given);
+      const untouched = extra.header !== undefined && canHeaderMatches(extra.header, name, params, given);
+      blocks.push({
+        id: `h${++counter}`,
+        header: untouched ? extra.header! : rebuilt,
+        kind: "can",
+        event: given as Block["event"],
+        name,
+        params,
+        cards,
+        lead: extra.lead ?? [],
+        close: extra.close === undefined ? "end" : extra.close,
+      });
+      continue;
+    }
+
     const event = String(hat.fields?.["EVENT"] ?? "") || null;
+    /*
+     * Follow the dropdown when it has been changed.
+     *
+     * The header used to be kept verbatim whatever the field said, which meant
+     * the event dropdown did nothing at all: you could set a handler to
+     * `hit wall`, watch the block say so, and find the script unchanged.
+     * Compared against the header's own event so that a cadence clause the
+     * bridge does not model — `on tick every 30` — survives untouched.
+     */
+    const hadEvent = extra.header ? eventOfHeader(extra.header) : null;
+    const header =
+      extra.header !== undefined && hadEvent === event
+        ? extra.header
+        : `on ${event ?? "start"}`;
     blocks.push({
       id: `h${++counter}`,
-      header: extra.header ?? `on ${event ?? "start"}`,
+      header,
+      kind: "on",
       event: (event as Block["event"]) ?? null,
-      cards: readStatements(unchain(hat.inputs?.["DO"]?.block)),
+      cards,
       lead: extra.lead ?? [],
       close: extra.close === undefined ? "end" : extra.close,
     });

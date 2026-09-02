@@ -183,9 +183,27 @@ describe("what it recognises", () => {
     expect(s.blocks.every((b) => b.event === null || EVENT_NAMES.includes(b.event))).toBe(true);
   });
 
-  it("gives a `can` block no event, so it is never edited as a handler", () => {
-    const s = fromSource('name "C"\nchassis tank\n\ncan dodge given hit by bullet\n  stop\nend');
-    expect(s.blocks[0]!.event).toBeNull();
+  it("reads a `can` block's name, parameters and `given`", () => {
+    const s = fromSource(
+      'name "C"\nchassis tank\n\ncan dodge with power=2, hard given hit by bullet\n  stop\nend',
+    );
+    const block = s.blocks[0]!;
+    expect(block.kind).toBe("can");
+    expect(block.name).toBe("dodge");
+    // Kept verbatim, default and all: a default is part of the contract, and
+    // rewriting `power=2` as `power` changes what a call with no arguments does.
+    expect(block.params).toEqual(["power=2", "hard"]);
+    expect(block.event).toBe("hit by bullet");
+  });
+
+  it("reads a `given` written in the other vocabulary", () => {
+    const s = fromSource('name "C"\nbody ciliate\n\ncan dodge given stung\n  stop\nend');
+    expect(s.blocks[0]!.event).toBe("hit by bullet");
+  });
+
+  it("does not mistake a cadence clause for the event", () => {
+    const s = fromSource('name "C"\nchassis tank\n\non tick every 30\n  stop\nend');
+    expect(s.blocks[0]!.event).toBe("tick");
   });
 });
 
@@ -235,12 +253,13 @@ describe("editing", () => {
   });
 
   it("leaves a raw card alone when asked to edit it", () => {
-    // A `do` of a named behaviour: real RoboScript, deliberately outside the
+    // A conditional break: real RoboScript, deliberately outside the
     // catalogue, and it must be shown rather than rewritten.
-    const s = fromSource('name "R"\nchassis tank\n\non start\n  do dodge\nend');
+    const s = fromSource('name "R"\nchassis tank\n\non start\n  loop\n    break if me.fuel < 5\n  end\nend');
     const block = s.blocks[0]!;
-    expect(block.cards[0]!.spec).toBe("raw");
-    expect(toSource(editCard(s, block.id, block.cards[0]!.id, 0, "99"))).toContain("do dodge");
+    const inner = block.cards[0]!.slots!["body"]![0]!;
+    expect(inner.spec).toBe("raw");
+    expect(toSource(editCard(s, block.id, inner.id, 0, "99"))).toContain("break if me.fuel < 5");
   });
 });
 
@@ -262,7 +281,9 @@ describe("what the cards produce", () => {
       const body = spec.needsLoop
         ? `  loop\n  ${newCard(spec).text}\n  end`
         : newCard(spec).text;
-      const script = `name "T"\nchassis tank\nvar seen = 0\n\n${header}\n${body}\nend\n`;
+      // A `do` needs something to do, so the routine it names is declared.
+      const routine = spec.group === "do" ? "can dodge with power=1\n  stop\nend\n\n" : "";
+      const script = `name "T"\nchassis tank\nvar seen = 0\n\n${routine}${header}\n${body}\nend\n`;
       for (const theme of ["mechanical", "biological"] as const) {
         const result = checkScript(translate(script, theme));
         expect(result.ok ? null : `${spec.id} in ${theme}: ${result.error?.message}`).toBe(null);
@@ -367,8 +388,52 @@ describe("the catalogue", () => {
       const card = newCard(spec);
       const script = `name "T"\nchassis tank\n\non sense robot\n${card.text}\nend`;
       const read = fromSource(script).blocks[0]!.cards[0]!;
-      expect(read.spec, spec.id).toBe(spec.id);
+      /*
+       * A plain-value twin whose default happens to be a value its named
+       * sibling can hold reads back as the sibling, and that is right: the
+       * friendly block is the better way to say `drive forward 70`, and the
+       * twin exists for the values the sibling cannot hold. What must never
+       * happen is a statement reading back as `raw`, or with a different value.
+       */
+      expect(read.spec, spec.id).not.toBe("raw");
       expect(read.holes.map((h) => h.value), spec.id).toEqual(card.holes.map((h) => h.value));
+    }
+  });
+
+  /**
+   * The value-eaters, all in one place.
+   *
+   * A spec whose control is a dropdown or a stepped slider can only hold what
+   * that control offers. Claiming a line it cannot hold means silently
+   * rounding or replacing somebody's value — `turn body by 150` became "at
+   * them", and `drive forward 55` would have been rounded to 60 by a slider
+   * with a step of ten. Each of these must land on the plain-value twin.
+   */
+  it("hands a value its control cannot hold to the plain twin", () => {
+    const cases: [string, string, string][] = [
+      ["turn body by 150", "turn-body-by-value", "150"],
+      ["drive forward 55", "drive-forward-value", "55"],
+      ["fire power", "fire-value", "power"],
+      ["wait 7 ticks", "wait-value", "7"],
+      ["turret.aim at target", "turret-aim-value", "target"],
+      ["drive cruise * 0.5", "drive-value", "cruise * 0.5"],
+    ];
+    for (const [line, expected, value] of cases) {
+      const s = fromSource(`name "T"\nchassis tank\n\non sense robot\n  ${line}\nend`);
+      expect(s.blocks[0]!.cards[0]!.spec, line).toBe(expected);
+      expect(s.blocks[0]!.cards[0]!.holes[0]?.value, line).toBe(value);
+    }
+  });
+
+  it("keeps the friendly block for a value it can hold", () => {
+    for (const [line, expected] of [
+      ["turn body by 90", "turn-body-by"],
+      ["drive forward 70", "drive-forward"],
+      ["fire 3", "fire"],
+      ["turret.aim at event.bearing", "turret-aim"],
+    ] as [string, string][]) {
+      const s = fromSource(`name "T"\nchassis tank\n\non sense robot\n  ${line}\nend`);
+      expect(s.blocks[0]!.cards[0]!.spec, line).toBe(expected);
     }
   });
 });

@@ -13,11 +13,19 @@
 
 import { useEffect, useRef } from "react";
 import * as Blockly from "blockly/core";
-import { declaredVariables, fromSource, toSource } from "../../workshop/compose.js";
+import {
+  declaredRoutines,
+  declaredVariables,
+  fromSource,
+  toSource,
+} from "../../workshop/compose.js";
 import { sketchToWorkspace, workspaceToSketch, type WorkspaceJson } from "./bridge.js";
 import {
+  ROUTINE_CATEGORY,
   VARIABLE_CATEGORY,
   defineBlocks,
+  routineFlyout,
+  setKnownRoutines,
   setKnownVariables,
   toolboxFor,
   variableFlyout,
@@ -74,7 +82,9 @@ export function BlockEditor({
 
   useEffect(() => {
     if (!host.current) return;
-    setKnownVariables(declaredVariables(fromSource(sourceRef.current)));
+    const opening = fromSource(sourceRef.current);
+    setKnownVariables(declaredVariables(opening));
+    setKnownRoutines(declaredRoutines(opening));
     defineBlocks(theme, register);
 
     const ws = Blockly.inject(host.current, {
@@ -95,6 +105,7 @@ export function BlockEditor({
     // Recomputed by Blockly every time the category is opened, so a variable
     // declared a moment ago is already there to pick up.
     ws.registerToolboxCategoryCallback(VARIABLE_CATEGORY, () => variableFlyout());
+    ws.registerToolboxCategoryCallback(ROUTINE_CATEGORY, () => routineFlyout());
 
     const onChange = (event: Blockly.Events.Abstract) => {
       if (ws.isDragging()) return;
@@ -108,7 +119,9 @@ export function BlockEditor({
       if (next === sourceRef.current) return;
       // Declaring a variable has to make it offerable straight away, without
       // waiting for the script to come back round through React.
-      setKnownVariables(declaredVariables(fromSource(next)));
+      const grown = fromSource(next);
+      setKnownVariables(declaredVariables(grown));
+      setKnownRoutines(declaredRoutines(grown));
       ours.current = next;
       // In a session the shared document is the truth, and it is written as
       // the small edit this really was — see `sharedText.ts`.
@@ -138,7 +151,9 @@ export function BlockEditor({
     // best and would interrupt a drag at worst.
     if (ours.current === source) return;
     ours.current = null;
-    setKnownVariables(declaredVariables(fromSource(source)));
+    const sketch = fromSource(source);
+    setKnownVariables(declaredVariables(sketch));
+    setKnownRoutines(declaredRoutines(sketch));
     Blockly.Events.disable();
     try {
       Blockly.serialization.workspaces.load(

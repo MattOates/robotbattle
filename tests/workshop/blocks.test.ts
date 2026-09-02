@@ -400,11 +400,17 @@ describe("values nothing has a name for", () => {
     expect(through(odd)).toBe(odd);
   });
 
-  it("is carried on the block as itself", () => {
+  it("goes to the plain-value twin rather than being squeezed into a dropdown", () => {
+    /*
+     * This used to be the named `turn-body-by` block, whose dropdown has no
+     * option for 150 — so it drew "at them" and only the untouched-line rule
+     * stopped it writing that back. The twin takes a socket and holds
+     * anything, which is the real fix and the reason every action has one.
+     */
     const ws = sketchToWorkspace(fromSource(odd));
     const turn = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
-    expect(turn.type).toBe(blockTypeFor("turn-body-by"));
-    expect(turn.fields!["V0"]).toBe("150");
+    expect(turn.type).toBe(blockTypeFor("turn-body-by-value"));
+    expect(turn.inputs!["V0"]!.block.fields!["NUM"]).toBe("150");
   });
 
   it("is not confused with one that does have a name", () => {
