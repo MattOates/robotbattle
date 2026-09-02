@@ -60,8 +60,32 @@ describe("the level table", () => {
       for (const pane of below.panes) expect(above.panes).toContain(pane);
       for (const panel of below.sidebar) expect(above.sidebar).toContain(panel);
       for (const mode of below.modes) expect(above.modes).toContain(mode);
-      for (const way of below.authoring) expect(above.authoring).toContain(way);
     }
+  });
+
+  /**
+   * Authoring is the one exception to that, deliberately.
+   *
+   * Cards are dropped at Engineer. Blocks are held to saying everything the
+   * language can — `tests/workshop/parity.test.ts` enforces it — and cards
+   * never will be: they are a flat list with one control per line, and an
+   * Engineer's robot is full of `can`, `do` and nesting that a card can only
+   * show as a lump of text it refuses to edit. A view that cannot hold your
+   * work is worse than no view.
+   */
+  it("runs the authoring tabs in one order everywhere, most of the language first", () => {
+    const ORDER = ["text", "blocks", "cards"];
+    for (const level of LEVELS) {
+      const ways = LEVEL_SPECS[level].authoring;
+      const ranks = ways.map((w) => ORDER.indexOf(w));
+      expect(ranks, level).toEqual([...ranks].sort((a, b) => a - b));
+      expect(ranks.every((r) => r >= 0), level).toBe(true);
+    }
+  });
+
+  it("gives the oldest players code and blocks, and not cards", () => {
+    expect(LEVEL_SPECS.engineer.authoring).toEqual(["text", "blocks"]);
+    expect(LEVEL_SPECS.explorer.authoring).toEqual(["cards"]);
   });
 
   it("tops out at Engineer with the whole game", () => {

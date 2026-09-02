@@ -5775,68 +5775,30 @@ select.hole {
 /* ---------- blocks on the instrument ---------- */
 
 /*
- * The block canvas has to belong here too.
+ * Almost all of this is a Blockly `Theme` now — see `blocks/theme.ts`, which
+ * builds one from these very tokens so the canvas follows both adult skins and
+ * both arenas without a second table. Overriding a library's internal class
+ * names is a bet on those names, and it is a bet you lose quietly on the next
+ * upgrade.
  *
- * Blockly's Zelos renderer is drawn for a white page — a light workspace, a
- * light toolbox, and block colours picked to sit on them. Dropped into the
- * instrument it read as a window into another program, which is exactly what
- * an editor for the oldest players must not be: they are meant to move between
- * blocks and code all day, and two halves of the same screen should not look
- * like two applications.
- *
- * Only the surfaces are retuned. The block shapes and their hues are left
- * alone, because a `fire` block should be the same colour whoever is looking
- * at it — somebody moving up from Builder has already learnt what the orange
- * ones do.
+ * What is left is the two things a theme's `componentStyles` has no name for:
+ * the text inside an editable field, and the pill drawn behind it. Zelos draws
+ * both for a white page.
  */
-:root[data-skin="instrument"] .block-editor .blocklyMainBackground {
-  fill: var(--well);
-  stroke: none;
+:root[data-skin="instrument"] .block-editor .blocklyEditableText > rect {
+  fill: var(--well-deep);
+  fill-opacity: 0.55;
+  stroke: var(--bezel-light);
 }
 
-:root[data-skin="instrument"] .block-editor .blocklyToolboxDiv {
-  background: var(--panel);
-  border-right: 1px solid var(--bezel);
+:root[data-skin="instrument"] .block-editor .blocklyEditableText > text {
+  fill: var(--ink-strong);
 }
 
-:root[data-skin="instrument"] .block-editor .blocklyToolboxCategory .blocklyTreeLabel,
+/* The category labels, which take the theme's foreground but not its font. */
 :root[data-skin="instrument"] .block-editor .blocklyTreeLabel {
   font-family: var(--font-display);
   font-size: var(--t-4);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  /* `--ink-muted` is for text beside something brighter. A toolbox label is
-     the only thing in its column, so muted here just means hard to read. */
-  color: var(--ink);
-}
-
-:root[data-skin="instrument"] .block-editor .blocklyToolboxCategory:hover .blocklyTreeLabel,
-:root[data-skin="instrument"] .block-editor .blocklyTreeSelected .blocklyTreeLabel {
-  color: var(--ink-strong);
-}
-
-:root[data-skin="instrument"] .block-editor .blocklyFlyoutBackground {
-  fill: var(--well-deep);
-  fill-opacity: 1;
-}
-
-/* The grid the instrument draws everywhere else, under the blocks as well. */
-:root[data-skin="instrument"] .block-editor .blocklyZoom > image,
-:root[data-skin="instrument"] .block-editor .blocklyZoom > svg {
-  opacity: 0.55;
-}
-
-:root[data-skin="instrument"] .block-editor .blocklyScrollbarHandle {
-  fill: var(--bezel-light);
-}
-
-/* Editable fields are recessed here, the way every other input on the bench
-   is, rather than the white pills Zelos draws for a white page. */
-:root[data-skin="instrument"] .block-editor .blocklyEditableText > rect {
-  fill: var(--well-deep);
-  fill-opacity: 0.55;
-}
-
-:root[data-skin="instrument"] .block-editor .blocklyEditableText > text {
-  fill: var(--ink-strong);
 }

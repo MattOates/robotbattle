@@ -141,22 +141,24 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
     skin: "instrument",
     register: "full",
     /*
-     * Blocks and code, in that order, because this is where the crossing
-     * happens.
+     * Code and blocks, and no cards.
      *
-     * An Engineer arriving from Builder has written everything in blocks and
-     * is about to write their first RoboScript. Putting the two side by side
-     * as tabs over one script is the whole transition: change it in blocks,
-     * read what that says in code, change it in code, watch the blocks follow.
-     * That only works if the blocks can say everything the code can, which is
-     * what `tests/workshop/parity.test.ts` holds them to — every statement and
-     * every header in every {robot} the game ships is a block somebody could
-     * have built.
+     * The tabs run Code, Blocks, Cards everywhere they appear — most of the
+     * language to least — and a level shows the leading part of that it has
+     * earned. So an Engineer opens on code, which is what they came for, with
+     * blocks one tab away: that pairing is the crossing itself, since the two
+     * are views of one script. Change it in blocks, read what that says in
+     * code, change it in code, watch the blocks follow.
      *
-     * Cards stay last: a decent way to read a small {robot}, and not what
-     * anybody here is coming for.
+     * Cards are dropped here, and this is the one place the levels are not
+     * cumulative. Blocks are held to saying everything the language can say —
+     * `tests/workshop/parity.test.ts` will not let them be anything less — and
+     * cards never will be: they are a flat list with one control per line, and
+     * an Engineer's {robot} is full of `can`, `do` and nesting that a card can
+     * only show as a lump of text it refuses to edit. Offering a view that
+     * cannot hold your work is worse than not offering it.
      */
-    authoring: ["blocks", "text", "cards"],
+    authoring: ["text", "blocks"],
     voiceDefault: false,
     panes: ["editor", "map", "trial", "bench", "history"],
     sidebar: ["robots", "behaviours", "arenas", "room", "chat", "session"],

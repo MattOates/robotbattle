@@ -30,6 +30,7 @@ import {
   toolboxFor,
   variableFlyout,
 } from "./defs.js";
+import { themeFor, themeKey } from "./theme.js";
 import { PRESENCE_FIELD, byBlock, remoteCursors } from "./presence.js";
 import { writeShared, type SharedText } from "./sharedText.js";
 import type { Theme } from "../../lang/vocab.js";
@@ -68,6 +69,16 @@ export function BlockEditor({
   editable,
   collab,
 }: Props) {
+  /*
+   * Which skin and arena the canvas is dressed for.
+   *
+   * Read at render rather than passed in: the two are already on the document
+   * element, put there by `useProfile`, and threading them through four
+   * components to arrive at the same answer would be four more places to
+   * forget. A change to either rebuilds the workspace, because a Blockly theme
+   * is chosen when the workspace is injected.
+   */
+  const skinKey = themeKey();
   const host = useRef<HTMLDivElement | null>(null);
   const workspace = useRef<Blockly.WorkspaceSvg | null>(null);
   /**
@@ -89,6 +100,13 @@ export function BlockEditor({
 
     const ws = Blockly.inject(host.current, {
       toolbox: toolboxFor(register),
+      /*
+       * Built from the skin's own CSS custom properties — see `theme.ts`.
+       * Blockly draws the workspace, toolbox and flyout as SVG with colours it
+       * computes itself, so a stylesheet could only reach some of them and the
+       * toolbox labels stayed grey on grey.
+       */
+      theme: themeFor(skinKey.split("-")[0]!, skinKey.split("-")[1]!),
       // The Scratch look: rounded, chunky, inline fields. Blockly and
       // scratch-blocks are the same lineage, and this renderer is that half of
       // the fork — without scratch-blocks' own build pipeline.
@@ -135,9 +153,9 @@ export function BlockEditor({
       ws.dispose();
       workspace.current = null;
     };
-    // Rebuilt only when the shape of the editor itself changes. The script is
-    // pushed in by the effect below rather than by re-injecting.
-  }, [editable, register, theme]);
+    // Rebuilt only when the shape or the dress of the editor changes. The
+    // script is pushed in by the effect below rather than by re-injecting.
+  }, [editable, register, theme, skinKey]);
 
   // Kept in a ref so the change listener above reads the current script
   // without being torn down and rebuilt on every keystroke elsewhere.
