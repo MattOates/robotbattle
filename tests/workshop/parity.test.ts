@@ -1,29 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { CARDS, fromSource, toSource, type Card } from "../../src/workshop/compose.js";
+import { CARDS, fromSource, type Card } from "../../src/workshop/compose.js";
 import { fillVocab } from "../../src/learn/markdown.js";
-import {
-  CAN_BLOCK,
-  WHEN_BLOCK,
-  sketchToWorkspace,
-  workspaceToSketch,
-  type BlockJson,
-} from "../../src/ui/blocks/bridge.js";
+import { WHEN_BLOCK } from "../../src/ui/blocks/bridge.js";
+import { blocksOfType, edit, loadWorkspace, roundTrip } from "./helpers/workspace.js";
 import { SAMPLE_BOTS, TOUR_ROBOT, TOUR_SEED } from "../../src/bots/index.js";
 import { compile } from "../../src/lang/compiler.js";
 import { parse } from "../../src/lang/parser.js";
 import { translate } from "../../src/learn/translate.js";
 
 
-/**
- * The first *handler* in a workspace.
- *
- * Not `blocks[0]`, which is the robot's declarations now — name, chassis,
- * colour and the globals became a block of their own so they could be seen and
- * changed rather than merely carried.
- */
-function hatOf(ws: { blocks?: { blocks: BlockJson[] } }): BlockJson | undefined {
-  return ws.blocks?.blocks.find((b) => b.type === WHEN_BLOCK || b.type === CAN_BLOCK);
-}
 
 const HOUSE = [
   ...SAMPLE_BOTS.map((b) => ({ id: b.id, source: b.source })),
@@ -104,7 +89,7 @@ describe("the house robots, as blocks", () => {
     const declarations = sketch.blocks.find((b) => b.kind === "robot")!;
     expect(declarations.cards.map((c) => c.spec)).toContain("var");
     expect(declarations.cards.find((c) => c.spec === "var")!.holes[0]!.value).toBe("seen");
-    expect(toSource(workspaceToSketch(sketchToWorkspace(sketch)))).toBe(src);
+    expect(roundTrip(src)).toBe(src);
   });
 
   it("has no block header that cannot be a hat", () => {
@@ -122,8 +107,7 @@ describe("the house robots, as blocks", () => {
 
   it("round-trips character for character through the workspace", () => {
     for (const { id, source } of HOUSE) {
-      const out = toSource(workspaceToSketch(sketchToWorkspace(fromSource(source))));
-      expect(out, id).toBe(source);
+      expect(roundTrip(source), id).toBe(source);
     }
   });
 
@@ -131,8 +115,7 @@ describe("the house robots, as blocks", () => {
     for (const { id, source } of HOUSE) {
       for (const theme of ["mechanical", "biological"] as const) {
         const themed = translate(source, theme);
-        const out = toSource(workspaceToSketch(sketchToWorkspace(fromSource(themed))));
-        expect(out, `${id} in ${theme}`).toBe(themed);
+        expect(roundTrip(themed), `${id} in ${theme}`).toBe(themed);
       }
     }
   });
@@ -140,7 +123,7 @@ describe("the house robots, as blocks", () => {
   it("compiles to identical bytecode after the trip", () => {
     for (const { id, source } of HOUSE) {
       const before = compile(parse(source));
-      const after = compile(parse(toSource(workspaceToSketch(sketchToWorkspace(fromSource(source))))));
+      const after = compile(parse(roundTrip(source)));
       expect(JSON.stringify(after), id).toBe(JSON.stringify(before));
     }
   });
@@ -161,8 +144,7 @@ describe("named behaviours", () => {
     // `can scan given tick every 30` — nothing here edits `every`, so the
     // header has to come back whole rather than be rebuilt without it.
     const src = 'name "R"\nchassis tank\n\ncan scan given tick every 30\n  ping\nend';
-    const out = toSource(workspaceToSketch(sketchToWorkspace(fromSource(src))));
-    expect(out).toBe(src);
+    expect(roundTrip(src)).toBe(src);
   });
 });
 
@@ -174,13 +156,13 @@ describe("calling a behaviour", () => {
       'name "R"\nchassis tank\n\ncan fold with a, b, c\n  stop\nend\n\non start\n  do fold with mx, my, number(field(event.data, 5))\nend';
     const call = statements(src).find((c) => c.spec === "do-with")!;
     expect(call.holes[1]!.value).toBe("mx, my, number(field(event.data, 5))");
-    expect(toSource(workspaceToSketch(sketchToWorkspace(fromSource(src))))).toBe(src);
+    expect(roundTrip(src)).toBe(src);
   });
 
   it("reads a call with no arguments", () => {
     const src = 'name "R"\nchassis tank\n\ncan fold\n  stop\nend\n\non start\n  do fold\nend';
     expect(statements(src).some((c) => c.spec === "do")).toBe(true);
-    expect(toSource(workspaceToSketch(sketchToWorkspace(fromSource(src))))).toBe(src);
+    expect(roundTrip(src)).toBe(src);
   });
 });
 
@@ -194,30 +176,34 @@ describe("controls that must not lie", () => {
     // The palette offers six events because six is what a first robot is
     // built from. `on ping robot` is not one of them and was drawn as "start".
     const src = 'name "R"\nchassis tank\n\non ping robot\n  ping\nend';
-    const ws = sketchToWorkspace(fromSource(src));
-    expect(hatOf(ws)!.fields!["EVENT"]).toBe("ping robot");
-    expect(toSource(workspaceToSketch(ws))).toBe(src);
+    const { ws } = loadWorkspace(src);
+    expect(blocksOfType(ws, WHEN_BLOCK)[0]!.getFieldValue("EVENT")).toBe("ping robot");
+    ws.dispose();
+    expect(roundTrip(src)).toBe(src);
   });
 
   it("follows the event dropdown when it is changed", () => {
     // And the other half: the header used to be kept verbatim whatever the
     // field said, so the control did nothing at all.
     const src = 'name "R"\nchassis tank\n\non start\n  ping\nend';
-    const ws = sketchToWorkspace(fromSource(src));
-    hatOf(ws)!.fields!["EVENT"] = "hit wall";
-    expect(toSource(workspaceToSketch(ws))).toContain("on hit wall");
+    expect(
+      edit(src, (ws) => {
+        blocksOfType(ws, WHEN_BLOCK)[0]!.setFieldValue("hit wall", "EVENT");
+      }),
+    ).toContain("on hit wall");
   });
 
   it("leaves a cadence clause alone when the event has not changed", () => {
     const src = 'name "R"\nchassis tank\n\non tick every 30\n  ping\nend';
-    expect(toSource(workspaceToSketch(sketchToWorkspace(fromSource(src))))).toBe(src);
+    expect(roundTrip(src)).toBe(src);
   });
 
   it("reads an event written in the other vocabulary", () => {
     const src = 'name "R"\nbody ciliate\n\non stung\n  stop\nend';
-    const ws = sketchToWorkspace(fromSource(src));
-    expect(hatOf(ws)!.fields!["EVENT"]).toBe("hit by bullet");
-    expect(toSource(workspaceToSketch(ws))).toBe(src);
+    const { ws } = loadWorkspace(src);
+    expect(blocksOfType(ws, WHEN_BLOCK)[0]!.getFieldValue("EVENT")).toBe("hit by bullet");
+    ws.dispose();
+    expect(roundTrip(src)).toBe(src);
   });
 });
 

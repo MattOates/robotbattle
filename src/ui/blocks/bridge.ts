@@ -219,7 +219,18 @@ export function readable(lines: string[]): string {
 
 function cardBlocks(card: Card, path: string): BlockJson[] {
   const out: BlockJson[] = [];
-  if (card.lead.length > 0) {
+  /*
+   * A note becomes a block; blank lines do not.
+   *
+   * Both used to: a run of two blank lines between the declarations and the
+   * first handler arrived as a comment block with nothing in it, which is a
+   * thing on the canvas that says nothing, cannot be usefully edited, and is
+   * there because of whitespace the author never thought about. The lines
+   * still have to come back, so they ride on the statement below them
+   * instead — carried, and not drawn.
+   */
+  const pad = readable(card.lead) === "" ? card.lead : [];
+  if (card.lead.length > 0 && pad.length === 0) {
     out.push({ ...commentBlock(card.lead), id: `${path}c` });
   }
   if (card.text === "") return out;
@@ -254,6 +265,7 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
       extraState: {
         text: card.text,
         was: card.holes.map((h) => h.value),
+        ...(pad.length > 0 ? { pad } : {}),
         seps: card.seps ?? {},
         // Which slots existed, so an `if` written with an empty `else` still
         // has one when it comes back.
@@ -266,7 +278,15 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
 
   const spec = cardSpec(card.spec);
   if (!spec) {
-    out.push({ type: RAW_BLOCK, id: path, fields: { CODE: card.text } });
+    // A placeholder card exists only to carry a trailing run of blank lines,
+    // and there is nothing to draw for it.
+    if (card.text === "") return out;
+    out.push({
+      type: RAW_BLOCK,
+      id: path,
+      fields: { CODE: card.text },
+      ...(pad.length > 0 ? { extraState: { pad } } : {}),
+    });
     return out;
   }
   /*
@@ -323,6 +343,7 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
     extraState: {
       text: card.text,
       was: card.holes.map((h) => h.value),
+      ...(pad.length > 0 ? { pad } : {}),
       ...(argCount === null ? {} : { args: argCount }),
     },
   });
@@ -330,7 +351,16 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
 }
 
 function blockJsonFor(block: Block, at: number): BlockJson {
-  const body = chain(block.cards.flatMap((c, i) => cardBlocks(c, `h${at}.${i}.`)));
+  /*
+   * A trailing run of blank or comment lines has no statement to ride on, so
+   * it rides on the block itself. Without somewhere to put it the lines were
+   * simply lost, which is a round trip that silently eats the gap between one
+   * handler and the next.
+   */
+  const last = block.cards[block.cards.length - 1];
+  const tailPad = last && last.text === "" ? last.lead : [];
+  const carried = tailPad.length > 0 ? block.cards.slice(0, -1) : block.cards;
+  const body = chain(carried.flatMap((c, i) => cardBlocks(c, `h${at}.${i}.`)));
 
   if (block.kind === "robot") {
     /*
@@ -342,7 +372,11 @@ function blockJsonFor(block: Block, at: number): BlockJson {
      * changed in blocks. A block editor that cannot show a third of the file
      * is not a view of the file.
      */
-    const json: BlockJson = { type: ROBOT_BLOCK, id: `h${at}`, extraState: { lead: block.lead } };
+    const json: BlockJson = {
+      type: ROBOT_BLOCK,
+      id: `h${at}`,
+      extraState: { lead: block.lead, ...(tailPad.length > 0 ? { tailPad } : {}) },
+    };
     if (body) json.inputs = { SETUP: { block: body } };
     return json;
   }
@@ -354,7 +388,12 @@ function blockJsonFor(block: Block, at: number): BlockJson {
       block.kind === "can"
         ? { NAME: block.name ?? "", GIVEN: block.event ?? "", PARAMS: joinArgs(block.params ?? []) }
         : { EVENT: block.event ?? "" },
-    extraState: { header: block.header, lead: block.lead, close: block.close },
+    extraState: {
+      header: block.header,
+      lead: block.lead,
+      close: block.close,
+      ...(tailPad.length > 0 ? { tailPad } : {}),
+    },
   };
   if (body) json.inputs = { DO: { block: body } };
   return json;
@@ -380,6 +419,12 @@ export function sketchToWorkspace(sketch: Sketch): WorkspaceJson {
     blocks: { languageVersion: 0, blocks: sketch.blocks.map(blockJsonFor) },
     rb: { head: sketch.head, tail: sketch.tail },
   };
+}
+
+/** Put back a trailing run of lines that had no statement to ride on. */
+function withTailPad(cards: Card[], tailPad: string[] | undefined): Card[] {
+  if (!tailPad || tailPad.length === 0) return cards;
+  return [...cards, { id: `b${++counter}`, spec: "raw", holes: [], text: "", lead: tailPad }];
 }
 
 let counter = 0;
@@ -450,12 +495,13 @@ function readStatements(statements: BlockJson[]): Card[] {
     }
 
     if (st.type === RAW_BLOCK) {
+      const padded = ((st.extraState ?? {}) as { pad?: string[] }).pad ?? [];
       cards.push({
         id: `b${++counter}`,
         spec: "raw",
         holes: [],
         text: String(st.fields?.["CODE"] ?? ""),
-        lead,
+        lead: [...padded, ...lead],
       });
       lead = [];
       continue;
@@ -467,9 +513,11 @@ function readStatements(statements: BlockJson[]): Card[] {
       const kept = (st.extraState ?? {}) as {
         text?: string;
         was?: string[];
+        pad?: string[];
         seps?: Record<string, string>;
         slots?: string[];
       };
+      lead = [...(kept.pad ?? []), ...lead];
       const holes =
         specId === "if"
           ? [{ kind: "expr" as const, value: blockToCondition(st.inputs?.["COND"]?.block) }]
@@ -525,7 +573,8 @@ function readStatements(statements: BlockJson[]): Card[] {
       }
       return { kind: h.kind, value: String(st.fields?.[`V${i}`] ?? h.default) };
     });
-    const kept = (st.extraState ?? {}) as { text?: string; was?: string[] };
+    const kept = (st.extraState ?? {}) as { text?: string; was?: string[]; pad?: string[] };
+    lead = [...(kept.pad ?? []), ...lead];
     // Untouched means untouched: same values as it went in with, so the line
     // it came from is still the right line, in the player's own words.
     const unchanged =
@@ -557,13 +606,13 @@ export function workspaceToSketch(json: WorkspaceJson): Sketch {
 
   for (const hat of json.blocks?.blocks ?? []) {
     if (hat.type === ROBOT_BLOCK) {
-      const extra = (hat.extraState ?? {}) as { lead?: string[] };
+      const extra = (hat.extraState ?? {}) as { lead?: string[]; tailPad?: string[] };
       blocks.push({
         id: `h${++counter}`,
         header: "",
         kind: "robot",
         event: null,
-        cards: readStatements(unchain(hat.inputs?.["SETUP"]?.block)),
+        cards: withTailPad(readStatements(unchain(hat.inputs?.["SETUP"]?.block)), extra.tailPad),
         lead: extra.lead ?? [],
         close: null,
       });
@@ -574,8 +623,9 @@ export function workspaceToSketch(json: WorkspaceJson): Sketch {
       header?: string;
       lead?: string[];
       close?: string | null;
+      tailPad?: string[];
     };
-    const cards = readStatements(unchain(hat.inputs?.["DO"]?.block));
+    const cards = withTailPad(readStatements(unchain(hat.inputs?.["DO"]?.block)), extra.tailPad);
 
     if (hat.type === CAN_BLOCK) {
       const name = String(hat.fields?.["NAME"] ?? "");

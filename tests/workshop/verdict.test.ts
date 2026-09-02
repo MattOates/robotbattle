@@ -1,8 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { verdict, type MatchFacts } from "../../src/workshop/verdict.js";
 import { fillVocab } from "../../src/learn/markdown.js";
+import { createWorld, makeManifest } from "../../src/sim/world.js";
+import { collectTelemetry } from "../../src/sim/telemetry.js";
+import { step } from "../../src/sim/step.js";
+import { SITTING_DUCK, HUNTER } from "../../src/bots/index.js";
 import type { ScriptCoverage } from "../../src/sim/inspection.js";
 import type { RobotTelemetry } from "../../src/store/types.js";
+
+/**
+ * Facts from a match that really happened.
+ *
+ * The cases below build telemetry by hand, which is fine for exercising the
+ * ranking but proves nothing about whether those numbers are the numbers the
+ * simulation produces — a field renamed or a counter that never increments
+ * would leave every one of them green. So the fixtures are checked against a
+ * real fight first: run two of the house robots, collect the telemetry the
+ * Workshop collects, and assert the verdict reads it correctly.
+ */
+function fight(a: string, b: string, ticks: number): MatchFacts {
+  const world = createWorld(makeManifest([{ source: a }, { source: b }], { seed: 7 }));
+  for (let i = 0; i < ticks && !world.robots.every((r) => !r.alive); i++) step(world);
+  const telemetry = collectTelemetry(world);
+  return { mine: telemetry[0]!, field: telemetry, ticks: world.tick };
+}
 
 function robot(over: Partial<RobotTelemetry> = {}): RobotTelemetry {
   return {
@@ -50,6 +71,54 @@ const ids = (f: MatchFacts) => verdict(f).map((v) => v.id);
  * something the robot *never did*, which is exactly what a table of what it
  * did cannot show.
  */
+describe("against a match that really happened", () => {
+  it("reads the telemetry the simulation actually produces", () => {
+    // The Duck cannot move or shoot, so this is the exact shape the Explorer
+    // arc turns on: a fight where the interesting fact is what did not happen.
+    const facts = fight(SITTING_DUCK, SITTING_DUCK, 200);
+    expect(facts.mine.shotsFired).toBe(0);
+    expect(verdict(facts).map((v) => v.id)).toContain("never-fired");
+  });
+
+  it("does not say `never fired` about a robot that fired", () => {
+    /*
+     * A whole match. Six hundred ticks was not enough with this seed — Hunter
+     * spends the opening sweeping for something to shoot at, and a fixture
+     * that stops before it finds anything is testing the wrong thing. Worth
+     * recording: nothing about the hand-built cases below would ever have said
+     * so.
+     */
+    const facts = fight(HUNTER, SITTING_DUCK, 3600);
+    expect(facts.mine.shotsFired).toBeGreaterThan(0);
+    expect(verdict(facts).map((v) => v.id)).not.toContain("never-fired");
+  });
+
+  it("counts the hits both ways from real numbers", () => {
+    const facts = fight(HUNTER, SITTING_DUCK, 3600);
+    const trading = verdict(facts).find((v) => v.id === "trading");
+    if (facts.mine.shotsHit > 0) {
+      expect(trading?.say.simple).toContain(String(facts.mine.shotsHit));
+    }
+  });
+
+  it("has every field the verdict reads", () => {
+    // A rename in `collectTelemetry` would leave the hand-built fixtures below
+    // green and this one red, which is the point of it.
+    const facts = fight(HUNTER, SITTING_DUCK, 100);
+    for (const key of [
+      "shotsFired",
+      "shotsHit",
+      "damageTaken",
+      "place",
+      "survived",
+      "errors",
+      "lastError",
+    ] as const) {
+      expect(facts.mine, key).toHaveProperty(key);
+    }
+  });
+});
+
 describe("what the robot never did", () => {
   it("leads with never having fired", () => {
     expect(ids(facts())[0]).toBe("never-fired");
