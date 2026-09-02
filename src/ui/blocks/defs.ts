@@ -170,13 +170,19 @@ export function routineFlyout(): Blockly.utils.toolbox.FlyoutItemInfoArray {
  */
 export function variableFlyout(): Blockly.utils.toolbox.FlyoutItemInfoArray {
   return [
+    // Making one, and changing one.
     { kind: "block", type: blockTypeFor("var") },
     { kind: "block", type: blockTypeFor("set") },
+    // Then the things you can pick up: your own variables first, because they
+    // are what you came here for, and then the two generic values — a number
+    // and something the world reports.
     ...knownVariables.map((name) => ({
       kind: "block",
       type: VAR_BLOCK,
       fields: { NAME: name },
     })),
+    { kind: "block", type: NUM_BLOCK },
+    { kind: "block", type: PROP_BLOCK },
   ] as Blockly.utils.toolbox.FlyoutItemInfoArray;
 }
 
@@ -770,12 +776,20 @@ export function toolboxFor(register: "simple" | "full"): Blockly.utils.toolbox.T
         kind: "category",
         name: register === "simple" ? "Choose" : "Logic",
         colour: "60",
+        /*
+         * Deciding, and only deciding.
+         *
+         * The three round reporters — a property, a variable and a number —
+         * used to sit here too, and they are not logic. They are values, and a
+         * value goes in any socket: the amount to drive at, how far to turn,
+         * how hard to shoot. Filed under Choose they read as things you use
+         * when writing an `if`, which is one of the places they go and not the
+         * interesting one. They are with the variables now, where the rest of
+         * the things you can pick up and drop already are.
+         */
         contents: [
           { kind: "block", type: blockTypeFor("if") },
           { kind: "block", type: COMPARE_BLOCK },
-          { kind: "block", type: PROP_BLOCK },
-          { kind: "block", type: VAR_BLOCK },
-          { kind: "block", type: NUM_BLOCK },
         ],
       },
       {
