@@ -58,6 +58,8 @@ export const BLOCK_PREFIX = "rb_";
 export const WHEN_BLOCK = `${BLOCK_PREFIX}when`;
 /** A named behaviour: `can dodge given hit by bullet`. */
 export const CAN_BLOCK = `${BLOCK_PREFIX}can`;
+/** The declarations at the top of the file: name, chassis, colour, globals. */
+export const ROBOT_BLOCK = `${BLOCK_PREFIX}robot`;
 export const COMMENT_BLOCK = `${BLOCK_PREFIX}comment`;
 export const RAW_BLOCK = `${BLOCK_PREFIX}raw`;
 /** Value blocks: the things that plug into a condition socket. */
@@ -319,6 +321,22 @@ function cardBlocks(card: Card, path: string): BlockJson[] {
 
 function blockJsonFor(block: Block, at: number): BlockJson {
   const body = chain(block.cards.flatMap((c, i) => cardBlocks(c, `h${at}.${i}.`)));
+
+  if (block.kind === "robot") {
+    /*
+     * The declarations, as a hat with the globals stacked inside it.
+     *
+     * They were carried out of band as a run of untouched lines: they
+     * round-tripped exactly, and they were invisible — `name`, `chassis` and
+     * every global `var` could be read in the code tab and neither seen nor
+     * changed in blocks. A block editor that cannot show a third of the file
+     * is not a view of the file.
+     */
+    const json: BlockJson = { type: ROBOT_BLOCK, id: `h${at}`, extraState: { lead: block.lead } };
+    if (body) json.inputs = { SETUP: { block: body } };
+    return json;
+  }
+
   const json: BlockJson = {
     type: block.kind === "can" ? CAN_BLOCK : WHEN_BLOCK,
     id: `h${at}`,
@@ -528,6 +546,19 @@ export function workspaceToSketch(json: WorkspaceJson): Sketch {
   const blocks: Block[] = [];
 
   for (const hat of json.blocks?.blocks ?? []) {
+    if (hat.type === ROBOT_BLOCK) {
+      const extra = (hat.extraState ?? {}) as { lead?: string[] };
+      blocks.push({
+        id: `h${++counter}`,
+        header: "",
+        kind: "robot",
+        event: null,
+        cards: readStatements(unchain(hat.inputs?.["SETUP"]?.block)),
+        lead: extra.lead ?? [],
+        close: null,
+      });
+      continue;
+    }
     if (hat.type !== WHEN_BLOCK && hat.type !== CAN_BLOCK) continue;
     const extra = (hat.extraState ?? {}) as {
       header?: string;

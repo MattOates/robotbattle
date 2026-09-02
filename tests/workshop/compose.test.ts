@@ -14,6 +14,7 @@ import {
   removeCard,
   setHole,
   toSource,
+  type Sketch,
 } from "../../src/workshop/compose.js";
 import { SAMPLE_BOTS, TOUR_ROBOT, TOUR_SEED } from "../../src/bots/index.js";
 import { checkScript } from "../../src/sim/world.js";
@@ -23,6 +24,15 @@ import { translate } from "../../src/learn/translate.js";
 import { EVENT_NAMES } from "../../src/lang/ast.js";
 import { fillVocab } from "../../src/learn/markdown.js";
 import { WHEN_PROMPT } from "../../src/ui/compose/CardComposer.js";
+
+/**
+ * The first handler in a sketch.
+ *
+ * Not `blocks[0]`, which is the declarations now — `name`, `chassis`, `color`
+ * and the globals became a block of their own so they could be seen and
+ * changed in the block view rather than merely carried through it.
+ */
+const handlerOf = (sk: Sketch) => sk.blocks.find((b) => b.kind === "on")!;
 
 const ALL = [
   ...SAMPLE_BOTS.map((b) => ({ id: b.id, source: b.source })),
@@ -113,23 +123,26 @@ describe("what it recognises", () => {
 
   it("recognises a statement written in the other vocabulary", () => {
     const bio = fromSource('name "B"\nbody ciliate\n\non start\n  swim forward 60\nend');
-    expect(bio.blocks[0]!.cards[0]!.spec).toBe("drive-forward");
-    expect(bio.blocks[0]!.cards[0]!.holes[0]!.value).toBe("60");
+    const handler = handlerOf(bio);
+    expect(handler.cards[0]!.spec).toBe("drive-forward");
+    expect(handler.cards[0]!.holes[0]!.value).toBe("60");
   });
 
   it("reads an expression argument back as written", () => {
     const s = fromSource(
       'name "E"\nchassis tank\n\non hit by bullet\n  turn body by event.bearing + 90\nend',
     );
-    expect(s.blocks[0]!.cards[0]!.spec).toBe("turn-body-by");
-    expect(s.blocks[0]!.cards[0]!.holes[0]!.value).toBe("event.bearing + 90");
+    // `event.bearing + 90` is one of the named angles ("across them"), so it
+    // keeps the friendly block — and the expression is still exact.
+    expect(handlerOf(s).cards[0]!.spec).toBe("turn-body-by");
+    expect(handlerOf(s).cards[0]!.holes[0]!.value).toBe("event.bearing + 90");
   });
 
   it("reads a nested construct as a tree, not a slab of text", () => {
     const s = fromSource(
       'name "N"\nchassis tank\n\non sense robot\n  if event.distance < 100 then\n    fire 3\n  else\n    fire 1\n  end\n  stop\nend',
     );
-    const cards = s.blocks[0]!.cards;
+    const cards = handlerOf(s).cards;
     expect(cards[0]!.spec).toBe("if");
     expect(cards[0]!.holes[0]!.value).toBe("event.distance < 100");
     expect(cards[0]!.slots!["then"]!.map((c) => c.spec)).toEqual(["fire"]);
@@ -157,7 +170,7 @@ describe("what it recognises", () => {
       "end",
     ].join("\n");
     const s = fromSource(src);
-    const outer = s.blocks[0]!.cards[0]!;
+    const outer = handlerOf(s).cards[0]!;
     expect(outer.spec).toBe("loop");
     const inner = outer.slots!["body"]![0]!;
     expect(inner.spec).toBe("if");
@@ -170,7 +183,7 @@ describe("what it recognises", () => {
     const s = fromSource(
       'name "F"\nchassis tank\n\non start\n  repeat 3 times\n    stop\n  end\n  for i = 1 to 4\n    stop\n  end\nend',
     );
-    const [rep, forl] = s.blocks[0]!.cards;
+    const [rep, forl] = handlerOf(s).cards;
     expect(rep!.spec).toBe("repeat");
     expect(rep!.holes[0]!.value).toBe("3");
     expect(forl!.spec).toBe("for");
@@ -187,7 +200,7 @@ describe("what it recognises", () => {
     const s = fromSource(
       'name "C"\nchassis tank\n\ncan dodge with power=2, hard given hit by bullet\n  stop\nend',
     );
-    const block = s.blocks[0]!;
+    const block = s.blocks.find((b) => b.kind === "can")!;
     expect(block.kind).toBe("can");
     expect(block.name).toBe("dodge");
     // Kept verbatim, default and all: a default is part of the contract, and
@@ -198,12 +211,12 @@ describe("what it recognises", () => {
 
   it("reads a `given` written in the other vocabulary", () => {
     const s = fromSource('name "C"\nbody ciliate\n\ncan dodge given stung\n  stop\nend');
-    expect(s.blocks[0]!.event).toBe("hit by bullet");
+    expect(s.blocks.find((b) => b.kind === "can")!.event).toBe("hit by bullet");
   });
 
   it("does not mistake a cadence clause for the event", () => {
     const s = fromSource('name "C"\nchassis tank\n\non tick every 30\n  stop\nend');
-    expect(s.blocks[0]!.event).toBe("tick");
+    expect(handlerOf(s).event).toBe("tick");
   });
 });
 
@@ -212,35 +225,35 @@ describe("editing", () => {
 
   it("rewrites only the card that changed", () => {
     const s = fromSource(base);
-    const block = s.blocks[0]!;
+    const block = handlerOf(s);
     const next = editCard(s, block.id, block.cards[0]!.id, 0, "100");
     expect(toSource(next)).toBe('name "E"\nchassis tank\n\non start\n  drive forward 100\nend');
   });
 
   it("keeps the card's own indentation when it rewrites it", () => {
     const s = fromSource('name "E"\nchassis tank\n\non start\n      drive forward 60\nend');
-    const block = s.blocks[0]!;
+    const block = handlerOf(s);
     const next = editCard(s, block.id, block.cards[0]!.id, 0, "10");
     expect(toSource(next)).toContain("      drive forward 10");
   });
 
   it("adds, moves and removes cards", () => {
     const s = fromSource(base);
-    const block = s.blocks[0]!;
+    const block = handlerOf(s);
     const added = addCard(s, block.id, cardSpec("fire")!);
     expect(toSource(added)).toContain("  fire 2");
 
-    const moved = moveCard(added, block.id, added.blocks[0]!.cards[1]!.id, -1);
+    const moved = moveCard(added, block.id, handlerOf(added).cards[1]!.id, -1);
     const lines = toSource(moved).split("\n");
     expect(lines.indexOf("  fire 2")).toBeLessThan(lines.indexOf("  drive forward 60"));
 
-    const removed = removeCard(added, block.id, added.blocks[0]!.cards[0]!.id);
+    const removed = removeCard(added, block.id, handlerOf(added).cards[0]!.id);
     expect(toSource(removed)).not.toContain("drive forward");
   });
 
   it("refuses to move a card off either end", () => {
     const s = fromSource(base);
-    const block = s.blocks[0]!;
+    const block = handlerOf(s);
     expect(toSource(moveCard(s, block.id, block.cards[0]!.id, -1))).toBe(base);
     expect(toSource(moveCard(s, block.id, block.cards[0]!.id, 1))).toBe(base);
   });
@@ -256,7 +269,7 @@ describe("editing", () => {
     // A conditional break: real RoboScript, deliberately outside the
     // catalogue, and it must be shown rather than rewritten.
     const s = fromSource('name "R"\nchassis tank\n\non start\n  loop\n    break if me.fuel < 5\n  end\nend');
-    const block = s.blocks[0]!;
+    const block = handlerOf(s);
     const inner = block.cards[0]!.slots!["body"]![0]!;
     expect(inner.spec).toBe("raw");
     expect(toSource(editCard(s, block.id, inner.id, 0, "99"))).toContain("break if me.fuel < 5");
@@ -283,7 +296,15 @@ describe("what the cards produce", () => {
         : newCard(spec).text;
       // A `do` needs something to do, so the routine it names is declared.
       const routine = spec.group === "do" ? "can dodge with power=1\n  stop\nend\n\n" : "";
-      const script = `name "T"\nchassis tank\nvar seen = 0\n\n${routine}${header}\n${body}\nend\n`;
+      /*
+       * The declarations are not instructions and may only appear at the top
+       * of the file, so they are compiled where they belong rather than
+       * wrapped in a handler like the rest.
+       */
+      const script =
+        spec.group === "robot"
+          ? `name "T"\nchassis tank\n${newCard(spec).text.trim()}\n\non start\n  stop\nend\n`
+          : `name "T"\nchassis tank\nvar seen = 0\n\n${routine}${header}\n${body}\nend\n`;
       for (const theme of ["mechanical", "biological"] as const) {
         const result = checkScript(translate(script, theme));
         expect(result.ok ? null : `${spec.id} in ${theme}: ${result.error?.message}`).toBe(null);
@@ -307,11 +328,14 @@ describe("what the cards produce", () => {
     // of taps.
     let s = fromSource('name "Tapped"\nchassis tank\ncolor #ff8800\n');
     s = addBlock(s, "start");
-    s = addCard(s, s.blocks[0]!.id, cardSpec("turret-sweep")!);
-    s = addCard(s, s.blocks[0]!.id, cardSpec("drive-forward")!);
+    s = addCard(s, handlerOf(s).id, cardSpec("turret-sweep")!);
+    s = addCard(s, handlerOf(s).id, cardSpec("drive-forward")!);
     s = addBlock(s, "sense robot");
-    s = addCard(s, s.blocks[1]!.id, cardSpec("turret-aim")!);
-    s = addCard(s, s.blocks[1]!.id, cardSpec("fire")!);
+    // The sensing handler, by its event — indices shift now that the
+    // declarations are a block of their own.
+    const sensing = s.blocks.find((b) => b.event === "sense robot")!.id;
+    s = addCard(s, sensing, cardSpec("turret-aim")!);
+    s = addCard(s, sensing, cardSpec("fire")!);
 
     const result = checkScript(toSource(s));
     expect(result.ok ? null : result.error?.message).toBe(null);
@@ -387,7 +411,7 @@ describe("the catalogue", () => {
     for (const spec of CARDS) {
       const card = newCard(spec);
       const script = `name "T"\nchassis tank\n\non sense robot\n${card.text}\nend`;
-      const read = fromSource(script).blocks[0]!.cards[0]!;
+      const read = handlerOf(fromSource(script)).cards[0]!;
       /*
        * A plain-value twin whose default happens to be a value its named
        * sibling can hold reads back as the sibling, and that is right: the
@@ -420,8 +444,8 @@ describe("the catalogue", () => {
     ];
     for (const [line, expected, value] of cases) {
       const s = fromSource(`name "T"\nchassis tank\n\non sense robot\n  ${line}\nend`);
-      expect(s.blocks[0]!.cards[0]!.spec, line).toBe(expected);
-      expect(s.blocks[0]!.cards[0]!.holes[0]?.value, line).toBe(value);
+      expect(handlerOf(s).cards[0]!.spec, line).toBe(expected);
+      expect(handlerOf(s).cards[0]!.holes[0]?.value, line).toBe(value);
     }
   });
 
@@ -433,7 +457,7 @@ describe("the catalogue", () => {
       ["turret.aim at event.bearing", "turret-aim"],
     ] as [string, string][]) {
       const s = fromSource(`name "T"\nchassis tank\n\non sense robot\n  ${line}\nend`);
-      expect(s.blocks[0]!.cards[0]!.spec, line).toBe(expected);
+      expect(handlerOf(s).cards[0]!.spec, line).toBe(expected);
     }
   });
 });

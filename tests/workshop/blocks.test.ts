@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COMMENT_BLOCK,
+  CAN_BLOCK,
   COMPARE_BLOCK,
   EXPR_BLOCK,
   NUM_BLOCK,
@@ -21,6 +22,18 @@ import { SAMPLE_BOTS, TOUR_ROBOT, TOUR_SEED } from "../../src/bots/index.js";
 import { compile } from "../../src/lang/compiler.js";
 import { parse } from "../../src/lang/parser.js";
 import { translate } from "../../src/learn/translate.js";
+
+
+/**
+ * The first *handler* in a workspace.
+ *
+ * Not `blocks[0]`, which is the robot's declarations now — name, chassis,
+ * colour and the globals became a block of their own so they could be seen and
+ * changed rather than merely carried.
+ */
+function hatOf(ws: { blocks?: { blocks: BlockJson[] } }): BlockJson | undefined {
+  return ws.blocks?.blocks.find((b) => b.type === WHEN_BLOCK || b.type === CAN_BLOCK);
+}
 
 const ALL = [
   ...SAMPLE_BOTS.map((b) => ({ id: b.id, source: b.source })),
@@ -104,7 +117,7 @@ describe("comments", () => {
 
   it("keeps a comment attached to the statement it was written above", () => {
     const ws = sketchToWorkspace(fromSource(commented));
-    const first = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    const first = hatOf(ws)!.inputs!["DO"]!.block;
     expect(first.type).toBe(COMMENT_BLOCK);
     // The field is the readable body; the line as written rides in extraState.
     expect(first.fields!["TEXT"]).toBe("look around first");
@@ -123,7 +136,7 @@ describe("editing a note", () => {
 
   it("becomes one tidy comment when it is edited", () => {
     const ws = sketchToWorkspace(fromSource(src));
-    const note = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    const note = hatOf(ws)!.inputs!["DO"]!.block;
     expect(note.type).toBe(COMMENT_BLOCK);
     note.fields!["TEXT"] = "changed my mind";
     expect(toSource(workspaceToSketch(ws))).toContain("-- changed my mind");
@@ -131,7 +144,7 @@ describe("editing a note", () => {
 
   it("drops a note whose text is cleared", () => {
     const ws = sketchToWorkspace(fromSource(src));
-    ws.blocks!.blocks[0]!.inputs!["DO"]!.block.fields!["TEXT"] = "";
+    hatOf(ws)!.inputs!["DO"]!.block.fields!["TEXT"] = "";
     const out = toSource(workspaceToSketch(ws));
     expect(out).not.toContain("--");
     expect(out).toContain("stop");
@@ -144,7 +157,7 @@ describe("deciding and repeating", () => {
 
   it("is a real block with a real statement input", () => {
     const ws = sketchToWorkspace(fromSource(nested));
-    const first = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    const first = hatOf(ws)!.inputs!["DO"]!.block;
     expect(first.type).toBe(blockTypeFor("if"));
     expect(first.fields!["V0"]).toBe("event.distance < 100");
     expect(first.inputs!["THEN"]!.block.type).toBe(blockTypeFor("fire"));
@@ -160,7 +173,7 @@ describe("deciding and repeating", () => {
     const src =
       'name "E"\nchassis tank\n\non start\n  if 1 is 1 then\n    stop\n  else\n    fire 1\n  end\nend';
     const ws = sketchToWorkspace(fromSource(src));
-    const iff = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    const iff = hatOf(ws)!.inputs!["DO"]!.block;
     delete iff.inputs!["ELSE"];
     const out = toSource(workspaceToSketch(ws));
     expect(out).toContain("else");
@@ -187,7 +200,7 @@ describe("deciding and repeating", () => {
 
   it("holds the condition as blocks, not as a text box", () => {
     const ws = sketchToWorkspace(fromSource(nested));
-    const iff = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    const iff = hatOf(ws)!.inputs!["DO"]!.block;
     const cond = iff.inputs!["COND"]!.block;
     expect(cond.type).toBe(COMPARE_BLOCK);
     expect(cond.fields!["OP"]).toBe("<");
@@ -197,7 +210,7 @@ describe("deciding and repeating", () => {
 
   it("rewrites the header only when the condition changes", () => {
     const ws = sketchToWorkspace(fromSource(nested));
-    const cond = ws.blocks!.blocks[0]!.inputs!["DO"]!.block.inputs!["COND"]!.block;
+    const cond = hatOf(ws)!.inputs!["DO"]!.block.inputs!["COND"]!.block;
     expect(toSource(workspaceToSketch(ws))).toContain("if event.distance < 100 then");
     cond.inputs!["A"]!.block.fields!["PROP"] = "me.health";
     cond.inputs!["B"]!.block.fields!["NUM"] = "50";
@@ -210,7 +223,7 @@ describe("deciding and repeating", () => {
     const src =
       'name "X"\nchassis tank\n\non tick\n  if arena.time mod 60 is 0 and me.fuel > 10 then\n    stop\n  end\nend';
     const ws = sketchToWorkspace(fromSource(src));
-    const cond = ws.blocks!.blocks[0]!.inputs!["DO"]!.block.inputs!["COND"]!.block;
+    const cond = hatOf(ws)!.inputs!["DO"]!.block.inputs!["COND"]!.block;
     expect(cond.type).toBe(EXPR_BLOCK);
     expect(through(src)).toBe(src);
   });
@@ -247,7 +260,7 @@ describe("what happens to a line nobody touched", () => {
 
   it("is rewritten only when its value changes", () => {
     const ws = sketchToWorkspace(fromSource(bio));
-    const stmt = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    const stmt = hatOf(ws)!.inputs!["DO"]!.block;
     // Same value: the original line survives, biological words and all.
     expect(toSource(workspaceToSketch(ws))).toContain("sting 3");
 
@@ -298,10 +311,10 @@ describe("block identity", () => {
 
   it("names a block by where it sits", () => {
     const ws = sketchToWorkspace(fromSource(TOUR_ROBOT));
-    const hat = ws.blocks!.blocks[0]!;
-    expect(hat.id).toBe("h0");
-    // First statement of the first handler.
-    expect(hat.inputs!["DO"]!.block.id).toMatch(/^h0\.0\./);
+    const hat = hatOf(ws)!;
+    // `h0` is the declarations; the first handler is the block after them.
+    expect(hat.id).toBe("h1");
+    expect(hat.inputs!["DO"]!.block.id).toMatch(/^h1\.0\./);
   });
 
   it("gives every block a distinct id", () => {
@@ -357,7 +370,7 @@ describe("remembering", () => {
 
   it("is a named variable and a value socket, not a line of text", () => {
     const ws = sketchToWorkspace(fromSource(src));
-    const set = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    const set = hatOf(ws)!.inputs!["DO"]!.block;
     expect(set.type).toBe(blockTypeFor("set"));
     // The name is a field on the statement; the value is a block in a socket.
     expect(set.fields!["V0"]).toBe("seen");
@@ -367,7 +380,7 @@ describe("remembering", () => {
 
   it("accepts a property or another variable in the socket", () => {
     const ws = sketchToWorkspace(fromSource(src));
-    const set = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    const set = hatOf(ws)!.inputs!["DO"]!.block;
     set.inputs!["V1"] = { block: valueBlock("me.health") };
     expect(toSource(workspaceToSketch(ws))).toContain("set seen = me.health");
     set.inputs!["V1"] = { block: valueBlock("other") };
@@ -377,7 +390,7 @@ describe("remembering", () => {
   it("reads a declaration the same way", () => {
     const decl = 'name "M"\nchassis tank\n\non start\n  var mine = 3\nend';
     const ws = sketchToWorkspace(fromSource(decl));
-    const v = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    const v = hatOf(ws)!.inputs!["DO"]!.block;
     expect(v.type).toBe(blockTypeFor("var"));
     expect(v.fields!["V0"]).toBe("mine");
     expect(through(decl)).toBe(decl);
@@ -408,7 +421,7 @@ describe("values nothing has a name for", () => {
      * anything, which is the real fix and the reason every action has one.
      */
     const ws = sketchToWorkspace(fromSource(odd));
-    const turn = ws.blocks!.blocks[0]!.inputs!["DO"]!.block;
+    const turn = hatOf(ws)!.inputs!["DO"]!.block;
     expect(turn.type).toBe(blockTypeFor("turn-body-by-value"));
     expect(turn.inputs!["V0"]!.block.fields!["NUM"]).toBe("150");
   });
@@ -416,7 +429,9 @@ describe("values nothing has a name for", () => {
   it("is not confused with one that does have a name", () => {
     const named = 'name "O"\nchassis tank\n\non sense robot\n  turn body by event.bearing\nend';
     const ws = sketchToWorkspace(fromSource(named));
-    expect(ws.blocks!.blocks[0]!.inputs!["DO"]!.block.fields!["V0"]).toBe("event.bearing");
+    // The named angle keeps the friendly block, whose value is a field.
+    expect(hatOf(ws)!.inputs!["DO"]!.block.type).toBe(blockTypeFor("turn-body-by"));
+    expect(hatOf(ws)!.inputs!["DO"]!.block.fields!["V0"]).toBe("event.bearing");
     expect(through(named)).toBe(named);
   });
 });

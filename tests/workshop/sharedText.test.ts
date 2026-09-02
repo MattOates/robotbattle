@@ -43,7 +43,7 @@ describe("turning a regenerated script back into the edit it was", () => {
     const before = TOUR_ROBOT;
     const ws = sketchToWorkspace(fromSource(before));
     // Reach into one statement, the way moving a slider would.
-    const hat = ws.blocks!.blocks[0]!;
+    const hat = ws.blocks!.blocks.find((b) => b.type === "rb_when")!;
     hat.inputs!["DO"]!.block.next!.block.fields!["V0"] = "10";
     const after = toSource(workspaceToSketch(ws));
 

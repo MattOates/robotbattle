@@ -1,11 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { CARDS, fromSource, toSource, type Card } from "../../src/workshop/compose.js";
 import { fillVocab } from "../../src/learn/markdown.js";
-import { sketchToWorkspace, workspaceToSketch } from "../../src/ui/blocks/bridge.js";
+import {
+  CAN_BLOCK,
+  WHEN_BLOCK,
+  sketchToWorkspace,
+  workspaceToSketch,
+  type BlockJson,
+} from "../../src/ui/blocks/bridge.js";
 import { SAMPLE_BOTS, TOUR_ROBOT, TOUR_SEED } from "../../src/bots/index.js";
 import { compile } from "../../src/lang/compiler.js";
 import { parse } from "../../src/lang/parser.js";
 import { translate } from "../../src/learn/translate.js";
+
+
+/**
+ * The first *handler* in a workspace.
+ *
+ * Not `blocks[0]`, which is the robot's declarations now — name, chassis,
+ * colour and the globals became a block of their own so they could be seen and
+ * changed rather than merely carried.
+ */
+function hatOf(ws: { blocks?: { blocks: BlockJson[] } }): BlockJson | undefined {
+  return ws.blocks?.blocks.find((b) => b.type === WHEN_BLOCK || b.type === CAN_BLOCK);
+}
 
 const HOUSE = [
   ...SAMPLE_BOTS.map((b) => ({ id: b.id, source: b.source })),
@@ -13,7 +31,16 @@ const HOUSE = [
   { id: "tour-robot", source: TOUR_ROBOT },
 ];
 
-/** Every statement in a script, flattened through the nesting. */
+/**
+ * Every statement in a script, flattened through the nesting.
+ *
+ * Including the declarations. This used to walk only the handlers, which meant
+ * the test claimed full parity while `name`, `chassis`, `color` and every
+ * global `var` were outside it entirely — carried through the workspace as
+ * untouched text, round-tripping perfectly, and invisible in the block view. A
+ * hole in the measurement is worse than a hole in the thing measured, because
+ * it is the reason nobody looks.
+ */
 function statements(source: string): Card[] {
   const out: Card[] = [];
   const walk = (cards: readonly Card[]) => {
@@ -47,6 +74,37 @@ describe("the house robots, as blocks", () => {
       }
     }
     expect(orphans).toEqual([]);
+  });
+
+  it("shows the declarations rather than merely carrying them", () => {
+    /*
+     * `name`, `chassis`, `color` and the globals. Every robot has them, they
+     * are a third of a short script, and they were invisible in the block
+     * view — so this asserts both halves: that they are a block at all, and
+     * that nothing in `head` is left over except a leading comment.
+     */
+    for (const { id, source } of HOUSE) {
+      const sketch = fromSource(source);
+      const declarations = sketch.blocks.find((b) => b.kind === "robot");
+      expect(declarations, id).toBeDefined();
+      expect(declarations!.cards.some((c) => c.spec === "robot-name"), id).toBe(true);
+      expect(declarations!.cards.some((c) => c.spec === "robot-chassis"), id).toBe(true);
+      for (const line of sketch.head) {
+        expect(line.trim() === "" || line.trim().startsWith("--"), `${id}: ${line}`).toBe(true);
+      }
+    }
+  });
+
+  it("keeps a global where a global has to be", () => {
+    // Inside the declarations, not in a handler: a global is the only kind
+    // that survives between events, and where it is declared is the whole
+    // difference.
+    const src = 'name "G"\nchassis tank\nvar seen = 0\n\non start\n  var local = 1\nend';
+    const sketch = fromSource(src);
+    const declarations = sketch.blocks.find((b) => b.kind === "robot")!;
+    expect(declarations.cards.map((c) => c.spec)).toContain("var");
+    expect(declarations.cards.find((c) => c.spec === "var")!.holes[0]!.value).toBe("seen");
+    expect(toSource(workspaceToSketch(sketchToWorkspace(sketch)))).toBe(src);
   });
 
   it("has no block header that cannot be a hat", () => {
@@ -92,7 +150,7 @@ describe("named behaviours", () => {
   it("keeps a `can` block's parameters and contract", () => {
     const src =
       'name "R"\nchassis tank\n\ncan engage with power=3 given sense robot\n  fire power\nend';
-    const block = fromSource(src).blocks[0]!;
+    const block = fromSource(src).blocks.find((b) => b.kind === "can")!;
     expect(block.kind).toBe("can");
     expect(block.name).toBe("engage");
     expect(block.params).toEqual(["power=3"]);
@@ -137,7 +195,7 @@ describe("controls that must not lie", () => {
     // built from. `on ping robot` is not one of them and was drawn as "start".
     const src = 'name "R"\nchassis tank\n\non ping robot\n  ping\nend';
     const ws = sketchToWorkspace(fromSource(src));
-    expect(ws.blocks!.blocks[0]!.fields!["EVENT"]).toBe("ping robot");
+    expect(hatOf(ws)!.fields!["EVENT"]).toBe("ping robot");
     expect(toSource(workspaceToSketch(ws))).toBe(src);
   });
 
@@ -146,7 +204,7 @@ describe("controls that must not lie", () => {
     // field said, so the control did nothing at all.
     const src = 'name "R"\nchassis tank\n\non start\n  ping\nend';
     const ws = sketchToWorkspace(fromSource(src));
-    ws.blocks!.blocks[0]!.fields!["EVENT"] = "hit wall";
+    hatOf(ws)!.fields!["EVENT"] = "hit wall";
     expect(toSource(workspaceToSketch(ws))).toContain("on hit wall");
   });
 
@@ -158,7 +216,7 @@ describe("controls that must not lie", () => {
   it("reads an event written in the other vocabulary", () => {
     const src = 'name "R"\nbody ciliate\n\non stung\n  stop\nend';
     const ws = sketchToWorkspace(fromSource(src));
-    expect(ws.blocks!.blocks[0]!.fields!["EVENT"]).toBe("hit by bullet");
+    expect(hatOf(ws)!.fields!["EVENT"]).toBe("hit by bullet");
     expect(toSource(workspaceToSketch(ws))).toBe(src);
   });
 });

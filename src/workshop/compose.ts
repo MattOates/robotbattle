@@ -82,7 +82,11 @@ export type HoleKind =
    * and a spec has a fixed shape. The block layer splits it into one socket
    * per argument — see `splitArgs`, which has to respect nesting.
    */
-  | "args";
+  | "args"
+  /** One of the two locomotion kinds. */
+  | "chassis"
+  /** A `#rrggbb`. */
+  | "colour";
 
 export interface Hole {
   kind: HoleKind;
@@ -132,7 +136,7 @@ export interface CardSpec {
    */
   needsLoop?: boolean;
   /** How the palette is grouped. */
-  group: "move" | "look" | "shoot" | "wait" | "remember" | "repeat" | "do";
+  group: "move" | "look" | "shoot" | "wait" | "remember" | "repeat" | "do" | "robot";
 }
 
 /**
@@ -484,6 +488,39 @@ export const CARDS: readonly CardSpec[] = [
   },
   {
     /*
+     * The declarations. Not instructions — they are what the {robot} *is*, and
+     * they may only appear at the top of the file, which is why they live in
+     * the `robot` block and nowhere else.
+     */
+    id: "robot-name",
+    icon: "🏷",
+    say: { full: "Called {0}", simple: "Called {0}" },
+    template: "name {0}",
+    holes: [{ kind: "text", default: '"My Robot"' }],
+    group: "robot",
+  },
+  {
+    id: "robot-chassis",
+    icon: "⚙️",
+    say: { full: "Built as a {0}", simple: "Built as a {0}" },
+    template: "chassis {0}",
+    holes: [{ kind: "chassis", default: "tank" }],
+    // The canonical names, because the comparison is canonical: `tank` and
+    // `ciliate` are both `skid`, which is the whole point of the two worlds
+    // compiling to the same bytecode.
+    choices: ["skid", "steered"],
+    group: "robot",
+  },
+  {
+    id: "robot-color",
+    icon: "🎨",
+    say: { full: "Coloured {0}", simple: "Coloured {0}" },
+    template: "color {0}",
+    holes: [{ kind: "colour", default: "#7fd1e0" }],
+    group: "robot",
+  },
+  {
+    /*
      * `do NAME` and `do NAME with a, b, c` — running a named behaviour.
      *
      * The arguments are kept as one string here and split into sockets by the
@@ -609,8 +646,16 @@ export interface Block {
    * thing worth passing to somebody else — it says which event it works on
    * through `given`, may take parameters, and becomes the handler itself when
    * no `on` block claims that event.
+   *
+   * `robot` is the declarations at the top of the file: the name, the chassis,
+   * the colour and the globals. It was carried as a list of untouched lines,
+   * which round-tripped perfectly and was invisible in the block view — so
+   * `name`, `chassis` and every global `var` could be read in code and not
+   * seen, let alone changed, in blocks. Making it a block means it inherits
+   * everything the others have: verbatim text, comments kept with their
+   * statement, a raw fallback for anything unrecognised.
    */
-  kind: "on" | "can";
+  kind: "on" | "can" | "robot";
   /** The event handled, or the `given` of a `can`. Null when there is none. */
   event: EventName | null;
   /** A `can` block's name. */
@@ -635,7 +680,11 @@ export interface Block {
 }
 
 export interface Sketch {
-  /** Everything before the first block: name, chassis, color, globals, comments. */
+  /**
+   * Kept only for anything before the declarations that is not a statement —
+   * in practice a leading comment block. The declarations themselves are the
+   * first entry in `blocks`, with `kind: "robot"`.
+   */
   head: string[];
   blocks: Block[];
   /** Anything after the last block's `end`. Usually nothing. */
@@ -794,9 +843,28 @@ function matchCard(line: string): { spec: CardSpec; holes: Hole[] } | null {
     // that `event.bearing + 90` survives as written.
     const value = valueBetween(line, before.length, after.length);
     if (value === null) continue;
-    // A spec whose control cannot hold this value does not get to claim the
-    // line — its plain-value twin further down the list will.
-    if (spec.choices && !spec.choices.includes(value)) continue;
+    /*
+     * A spec whose control cannot hold this value does not get to claim the
+     * line — its plain-value twin further down the list will.
+     *
+     * Compared canonically, because the value is read back raw so the player
+     * keeps their own words: `body ciliate` reads as `ciliate`, and the
+     * chassis choices are the canonical `tank` and `car`. Compared literally
+     * it matched nothing, and every biological {robot} lost its chassis line
+     * to a raw block.
+     */
+    if (
+      spec.choices &&
+      !spec.choices.includes(value) &&
+      // Canonically as well as literally: `body ciliate` reads back as
+      // `ciliate` and the chassis choices are the canonical `skid` and
+      // `steered`. Both forms are tried because the canonical pass splits a
+      // dotted value — `event.bearing` scans as three tokens — and would
+      // otherwise reject the very angles it is meant to accept.
+      !spec.choices.includes(canonicalWords(value).join(" "))
+    ) {
+      continue;
+    }
     return { spec, holes: [{ kind: spec.holes[0]!.kind, value }] };
   }
   return null;
@@ -983,23 +1051,53 @@ export function fromSource(source: string): Sketch {
   let lead: string[] = [];
   let i = 0;
 
-  // Everything up to the first block header belongs to the head.
+  // Everything up to the first block header is the declarations.
+  const headLines: string[] = [];
   while (i < lines.length) {
     const line = lines[i]!;
     const words = canonicalWords(line);
     if (words[0] === "on" || words[0] === "can") break;
-    head.push(line);
+    headLines.push(line);
     i++;
   }
 
   // Comments immediately above the first block belong to it, not to the head.
-  while (head.length > 0 && (isComment(head[head.length - 1]!) || isBlank(head[head.length - 1]!))) {
-    const popped = head.pop()!;
+  while (
+    headLines.length > 0 &&
+    (isComment(headLines[headLines.length - 1]!) || isBlank(headLines[headLines.length - 1]!))
+  ) {
+    const popped = headLines.pop()!;
     if (isBlank(popped) && lead.length === 0) {
-      head.push(popped);
+      headLines.push(popped);
       break;
     }
     lead.unshift(popped);
+  }
+
+  /*
+   * The declarations, read as statements rather than kept as lines.
+   *
+   * They become the first block, so `name`, `chassis` and the globals are
+   * things you can see and change in the block view — which they were not
+   * while the head was an opaque run of text that merely round-tripped.
+   * Everything before the first *statement* (a file-leading comment) stays in
+   * `head`, because it belongs to the file rather than to the robot.
+   */
+  const firstStatement = headLines.findIndex((l) => !isBlank(l) && !isComment(l));
+  if (firstStatement === -1) {
+    head.push(...headLines);
+  } else {
+    head.push(...headLines.slice(0, firstStatement));
+    const read = readStatements(headLines.slice(firstStatement), 0, []);
+    blocks.push({
+      id: nextId("b"),
+      header: "",
+      kind: "robot",
+      event: null,
+      cards: read.cards,
+      lead: [],
+      close: null,
+    });
   }
 
   while (i < lines.length) {
@@ -1078,7 +1176,9 @@ export function toSource(sketch: Sketch): string {
 
   for (const block of sketch.blocks) {
     out.push(...block.lead);
-    out.push(block.header);
+    // The declarations have no header and no `end` — they are the top of the
+    // file, not a thing that opens and closes.
+    if (block.kind !== "robot") out.push(block.header);
     for (const card of block.cards) emit(card, out);
     if (block.close !== null) out.push(block.close);
   }

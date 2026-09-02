@@ -35,6 +35,7 @@ import {
   PROP_BLOCK,
   VAR_BLOCK,
   RAW_BLOCK,
+  ROBOT_BLOCK,
   WHEN_BLOCK,
   blockTypeFor,
 } from "./bridge.js";
@@ -66,6 +67,7 @@ const GROUP_HUE: Record<CardSpec["group"], number> = {
   remember: 330,
   repeat: 120,
   do: 260,
+  robot: 30,
 };
 
 /**
@@ -311,6 +313,30 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
       this.setNextStatement(true, null);
       this.setColour(0);
       this.setTooltip("A note. It does not do anything — it explains.");
+    },
+  };
+
+  /**
+   * The declarations at the top of the file.
+   *
+   * A hat with the name, the chassis and the colour on it, and the globals
+   * stacked inside — because a global is the only kind of variable that
+   * survives between events, and where it is declared is the difference. They
+   * were carried as untouched lines before: they round-tripped perfectly and
+   * were invisible, so a third of every script could be read in code and
+   * neither seen nor changed in blocks.
+   */
+  Blockly.Blocks[ROBOT_BLOCK] = {
+    init(this: Blockly.Block) {
+      this.appendDummyInput().appendField(`🤖 ${fillVocab("This {robot}", theme)}`);
+      this.appendStatementInput("SETUP");
+      this.setColour(GROUP_HUE.robot);
+      this.setTooltip(
+        "What this {robot} is, and the things it remembers for the whole match.",
+      );
+      // There is exactly one, and it is not a thing you delete or duplicate.
+      this.setDeletable(false);
+      this.setMovable(true);
     },
   };
 
@@ -645,6 +671,15 @@ export function toolboxFor(register: "simple" | "full"): Blockly.utils.toolbox.T
           })),
         ],
       })),
+      {
+        kind: "category",
+        name: register === "simple" ? "This robot" : "Robot",
+        colour: String(GROUP_HUE.robot),
+        contents: CARDS.filter((c) => c.group === "robot").map((c) => ({
+          kind: "block",
+          type: blockTypeFor(c.id),
+        })),
+      },
       {
         kind: "category",
         name: register === "simple" ? "Your bits" : "Behaviours",
