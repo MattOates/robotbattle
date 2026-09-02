@@ -421,11 +421,13 @@
   display: flex;
   align-items: center;
   /*
-   * Wrap rather than scroll. Laid out in a row without this, a panel with more
-   * in it than fits — Work together, which carries two transport buttons, a
-   * start button, a code and a Join — grew a horizontal scrollbar and put its
-   * last control off the edge. A control you cannot see is a control you do
-   * not have.
+   * Wrap rather than scroll, so a panel with more in it than fits — Work
+   * together, with two transport buttons, a start, a code and a Join — does
+   * not put its last control off the edge. A control you cannot see is a
+   * control you do not have.
+   *
+   * The heading is exempt below: wrapping put it on a line of its own and cost
+   * a whole row to the words "Your robots".
    */
   flex-wrap: wrap;
   gap: var(--sp-3);
@@ -562,4 +564,216 @@
 
 :root[data-skin="playground"] .workshop.compact .sidebar .roster-select {
   flex: 0 1 auto;
+}
+
+/* ---------- the arena stops being a panel ---------- */
+
+/*
+ * The radical bit, and the numbers that forced it.
+ *
+ * Every part of this Workshop is a *panel*: a bordered box with a heading bar,
+ * a body and a footer bar. Panels nest, so the trial arena is a head, a canvas,
+ * a status line and a readout. At the instrument's 11px each of those bars is
+ * about thirty pixels and the arithmetic works. At this skin's type each is
+ * sixty-five, and four of them is two hundred pixels of furniture before any
+ * content — which is how the arena ended up as a 109x75 window inside a 1456px
+ * panel. The frame got twice as wide and nobody made the picture bigger.
+ *
+ * So at this register the arena is not a panel with a picture in it. It is the
+ * picture, and the controls float on top of it — which is what a video player,
+ * a map or a game does, and none of them puts a titled bar above and below the
+ * thing you came to look at.
+ */
+:root[data-skin="playground"] .workshop.compact .arena-panel {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+/*
+ * Head and readout float over the canvas rather than taking rows from it.
+ * Both keep a scrim so they stay readable over whatever the match is doing
+ * underneath them.
+ */
+:root[data-skin="playground"] .workshop.compact .arena-panel > .panel-head,
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  border: 0;
+  /*
+   * A dark scrim, not the skin's `--veil`.
+   *
+   * `--veil` is white here, because everywhere else in this skin it floats
+   * over paper. These float over the arena, which is dark in both skins, and
+   * taking the page's veil put near-white text on a near-white bar over a
+   * black ground — invisible, and the one bar that has to be readable while a
+   * match is running.
+   */
+  background: rgb(12 15 20 / 72%);
+  backdrop-filter: blur(6px);
+  padding: var(--sp-2) var(--sp-4);
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel > .panel-head {
+  top: 0;
+  /* The word "arena" over the arena is a caption on a photograph of itself. */
+  background: transparent;
+  backdrop-filter: none;
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel > .panel-head .silkscreen {
+  display: none;
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout {
+  bottom: 0;
+}
+
+/*
+ * Which leaves the whole panel for the canvas — and the panel takes the
+ * arena's own colour rather than the page's.
+ *
+ * The canvas keeps a fixed 900x620 shape, so unless the panel happens to match
+ * it there is letterboxing either side. Pale, that read as a dark hole punched
+ * in a light card; dark, the whole panel is the arena and the letterbox is
+ * simply where the arena ends.
+ */
+:root[data-skin="playground"] .workshop.compact .arena-panel > .match-canvas {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  background: var(--map-ground);
+}
+
+/* Which means the controls floating on it are now over a dark ground. */
+:root[data-skin="playground"] .workshop.compact .arena-panel > .panel-head,
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout {
+  color: #e8e6df;
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout .field-label,
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout .lamp,
+:root[data-skin="playground"] .workshop.compact .arena-panel > .panel-head .check {
+  color: #c8c5bb;
+}
+
+/* The transport keeps its shape but has to read against the arena. */
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout .btn:not(.primary) {
+  background: rgb(255 255 255 / 12%);
+  border-color: rgb(255 255 255 / 28%);
+  color: #e8e6df;
+  box-shadow: none;
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout .btn:disabled {
+  opacity: 0.45;
+}
+
+/* A broken script still has to be said, and it sits above the transport it is
+   explaining rather than floating over the match. */
+:root[data-skin="playground"] .workshop.compact .arena-panel > .diagnostic {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--control-h) + var(--sp-4) * 2);
+  z-index: 3;
+  border: 0;
+  background: var(--veil);
+  backdrop-filter: blur(6px);
+}
+
+/* ---------- the shelves become a toolbar ---------- */
+
+/*
+ * 135px for "Your robots", one name and four buttons — because it is a panel,
+ * and a panel has a heading bar, a border, a body and its own padding. Lying
+ * on its side it kept all of that. A row of controls is a toolbar; it does not
+ * need to announce itself.
+ */
+:root[data-skin="playground"] .workshop.compact .sidebar .panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--panel);
+  border: var(--stroke) solid var(--bezel);
+  border-radius: var(--radius-lg);
+}
+
+/* The shelf headings are the panel's name, and the panel is gone. The ones
+   that open something keep their control; the label goes. */
+:root[data-skin="playground"] .workshop.compact .sidebar .accordion-head .silkscreen {
+  font-size: var(--t-6);
+  color: var(--ink-muted);
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-name {
+  font-size: var(--t-9);
+}
+
+/* ---------- the helper, on one line ---------- */
+
+/*
+ * It folded its explanation away already and was still 102px, because the
+ * avatar is 32px inside padding inside a column that stacks the instruction
+ * over the actions. One row: face, instruction, How?, pips.
+ */
+:root[data-skin="playground"] .workshop.compact .helper {
+  padding: var(--sp-1) var(--sp-3);
+}
+
+:root[data-skin="playground"] .workshop.compact .helper-body {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+:root[data-skin="playground"] .workshop.compact .helper-say {
+  font-size: var(--t-9);
+  flex: 1;
+  min-width: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .helper-actions {
+  flex: 0 0 auto;
+}
+
+/* The shelf heading sits *beside* what it heads, not above it. Left to wrap it
+   took a 52px row of its own to say "Your robots". */
+:root[data-skin="playground"] .workshop.compact .sidebar .panel > .panel-head {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .panel > .panel-head button {
+  min-height: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .panel > .panel-body {
+  flex: 1 1 auto;
+}
+
+/*
+ * And the arena takes what is left, rather than its own minimum.
+ *
+ * `minmax(300px, 1fr)` resolved to `300px 0px`: the row sat at its floor while
+ * a hundred and fifty pixels of column went unused, because the grid was only
+ * as tall as its content and `1fr` of nothing is nothing.
+ *
+ * The floor is in viewport units rather than pixels, and that is the point of
+ * it: the arena should be about half the screen whatever the screen is, and
+ * every pixel figure in this file has already been wrong once on a window it
+ * was not measured on. It also has to be *stated*, because the panel's own
+ * children are absolutely positioned now — it has no content to be as tall as,
+ * so left to itself it collapses to nothing.
+ */
+:root[data-skin="playground"] .workshop.compact .trial-body {
+  grid-template-rows: minmax(46vh, 1fr) auto;
 }

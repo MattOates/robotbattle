@@ -46,6 +46,15 @@ export function ScriptStatus({ source, register, onShow, showLabel, suffix, chil
   const simple = register === "simple";
 
   if (check.ok) {
+    /*
+     * Nothing to say, so nothing said.
+     *
+     * "Ready to fight" is worth a line in the editor, where it is the answer to
+     * "did that last keystroke break anything" and sits beside the suggestions
+     * hint. Everywhere else it is a sixty-five pixel bar reporting the absence
+     * of news, and it was taking that from the arena.
+     */
+    if (!children && !suffix) return null;
     return (
       <div className="diagnostic ok" role="status">
         {simple ? "Your robot is ready to fight." : "Ready to fight."}
