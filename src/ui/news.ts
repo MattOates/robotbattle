@@ -2,6 +2,13 @@
  * What has changed lately, for the person playing rather than the person who
  * wrote it.
  *
+ * Four people read this and the entry has to work for all of them at once: a
+ * child who wants to know what is new to play with, a parent working out
+ * whether this grows with them, a teacher deciding if it survives a classroom,
+ * and an engineer who wants the actual guarantee. That is one entry with a
+ * line apiece, not four registers \u2014 say what you can now do, then the one
+ * concrete fact behind it, and each of them takes what they came for.
+ *
  * Kept by hand rather than generated from the git log. The commit subjects in
  * this repository are decent prose, but they are addressed to whoever maintains
  * the simulation — they name files, they justify tuning, and there are a dozen
@@ -28,18 +35,18 @@ export interface NewsEntry {
 export const NEWS: readonly NewsEntry[] = [
   {
     date: "2026-09-03",
-    title: "A button that tidies up",
-    body: "The block canvas remembers where you put things, and a Tidy up button lays them out the same way every time: the {robot} itself pinned top left as a heading, the starting work on the line beside it, then the behaviours other blocks call, then a row for each thing that can happen. Where the blocks sit is kept with the {robot} rather than written into the script, so it survives being put away and travels with a copy you give somebody \u2014 which means two people who changed different parts of the same {robot} can see at a glance which parts those were.",
+    title: "One button and your blocks line up",
+    body: "Drag your blocks wherever you want them and they stay put \u2014 even in a copy you hand to a friend. Lost track of them? Hit Tidy up and the whole thing snaps into shape: your {robot} top left, what it does at the start on the line beside it, then a row for everything that can happen to it. Where the blocks sit is kept alongside the {robot} rather than buried in the script, so two people who changed the same one can see which parts at a glance.",
   },
   {
     date: "2026-09-02",
-    title: "Why the fight went that way, and blocks you can read in the dark",
-    body: "After a trial there is now a reading of what happened rather than a table of numbers: four moments from the fight, drawn, with a line under each \u2014 and two or three things worth fixing, each with a button that adds the missing piece for you. If your {robot} never fired a shot, it says so, and it says which part was missing. The blocks themselves also stopped being a bright slab on a dark page: they take their colours from whichever skin you are in, they pick a colour with a colour picker instead of a number, and every {robot} that came with the game is now checked, on every build, to survive the trip from writing to blocks and back without a character changing.",
+    title: "Lost? Now you can see exactly why",
+    body: "Every trial ends with four drawings of the fight and a short list of what went wrong. \u201cYou never fired a shot\u201d \u2014 and a button that adds the missing part for you. It is read from what your {robot} actually ran rather than guessed at, so it can point at the part that was never reached. Useful if you are teaching a room of them and cannot read thirty scripts at once.",
   },
   {
     date: "2026-08-31",
-    title: "Three ways to build, and quests to walk you through them",
-    body: "The biggest change since the game was written. It asks how old you are when you first arrive and how much is on screen follows from the answer \u2014 bigger, brighter and plainer for the youngest, the full instrument for everybody else, changeable in Settings whenever you like \u2014 and instead of six equal cards there is a run of quests that walk you from a sleepy {robot} to winning a fight, opening one part of the game at a time and saying why it was worth having. There are now three ways to build one and they are all the same script: a shelf of cards you tap together, with a dial for how fast and a compass for which way; a block canvas built on Blockly, the same thing Scratch is made of, where everything the language can say has a block \u2014 choosing, repeating, remembering, and behaviours of your own with names and things passed into them; and the text itself. So what a seven-year-old taps out opens in the code editor unchanged. Open a session and two of you can drag blocks around together, each cursor named and each held block outlined in the colour of whoever is holding it. And the {arena} got its screen back: watching a fight is no longer done through a letterbox.",
+    title: "Tap it, drag it, or type it \u2014 same {robot}",
+    body: "Cards you tap together, blocks you drag, or text you write: three ways in, one {robot} underneath. The blocks are Blockly \u2014 yes, the Scratch ones \u2014 and they are not a cut-down version of the language: every last thing it can say has a block, and a script survives the trip out to blocks and back character for character. So a seven-year-old on cards and a teenager on code can work on the same {robot}, and nothing built on the way up gets left behind. Tell it your age when you arrive and it sets itself up to suit.",
   },
   {
     date: "2026-08-23",
