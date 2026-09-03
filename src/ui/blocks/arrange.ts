@@ -67,8 +67,8 @@ export function applyLayout(ws: Blockly.Workspace, sketch: Sketch, layout: Layou
  *
  * Rows from `tidyBands`; within a row, blocks laid left to right; each row
  * starts below the tallest block of the one above. The declarations are lifted
- * out into the top-left corner and the rows form a column to their right, so
- * the first row — `start` — shares the heading's line. Heights come from Blockly
+ * out into the top-left corner and the rows form a column to their right, with
+ * the heading's own line kept for `on start` — occupied or not. Heights come from Blockly
  * because a hat with nine statements in it is not the same height as an empty
  * one, and a layout computed from guesses would overlap exactly where a robot
  * is most worth reading.
@@ -92,14 +92,15 @@ export function tidy(ws: Blockly.WorkspaceSvg, sketch: Sketch): Layout {
   if (header) layout["robot"] = { x: 0, y: 0 };
 
   const columnX = header ? headerSize.width + GAP_X : 0;
-  let y = 0;
-  let first = true;
 
-  for (const band of bands) {
-    // The declarations are placed above and are not a row of their own here.
-    const keys = band.keys.filter((key) => key !== "robot");
-    if (keys.length === 0) continue;
-
+  /**
+   * Lay one row out left to right, and say how tall it turned out.
+   *
+   * Blocks answering the same event go side by side: a handler and the
+   * behaviours declared `given` it are one idea, and reading them as a row
+   * says so.
+   */
+  const placeRow = (keys: readonly string[], y: number): number => {
     let x = columnX;
     let tallest = 0;
     for (const key of keys) {
@@ -107,22 +108,35 @@ export function tidy(ws: Blockly.WorkspaceSvg, sketch: Sketch): Layout {
       if (!block) continue;
       layout[key] = { x, y };
       const size = block.getHeightWidth();
-      // Same event, so side by side: a handler and the behaviours declared
-      // `given` it are one idea, and reading them as a row says so.
       x += size.width + GAP_X;
       tallest = Math.max(tallest, size.height);
     }
+    return tallest;
+  };
+
+  /*
+   * The line beside the heading belongs to `on start`, and stays its own
+   * whether or not there is any.
+   *
+   * A {robot} with nothing to do at the start is worth noticing, and an empty
+   * space where the starting work goes says it at a glance — where sliding the
+   * next handler up into the gap would say nothing at all, and would put a
+   * `sense robot` block exactly where a reader has learnt to find `start`.
+   *
+   * Nothing else reserves anything. Every other event is absent from most
+   * {robotPlural} and a row held open for each would be a page of gaps.
+   */
+  const startBand = bands.find((band) => band.event === "start");
+  const startHeight = startBand ? placeRow(startBand.keys, 0) : 0;
+
+  let y = header ? Math.max(headerSize.height, startHeight) + GAP_Y : 0;
+
+  for (const band of bands) {
+    if (band === startBand) continue;
+    const keys = band.keys.filter((key) => key !== "robot");
+    if (keys.length === 0) continue;
+    const tallest = placeRow(keys, y);
     if (tallest > 0) y += tallest + GAP_Y;
-    /*
-     * The first row shares the heading's line. If the heading is the taller of
-     * the two — and it usually is, carrying a name, a chassis, a colour and
-     * every global — the row after it clears the heading rather than starting
-     * beside its lower half.
-     */
-    if (first && header) {
-      y = Math.max(y, headerSize.height + GAP_Y);
-      first = false;
-    }
   }
 
   applyLayout(ws, sketch, layout);

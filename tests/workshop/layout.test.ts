@@ -353,3 +353,41 @@ describe("the shape of a tidy", () => {
     expect(bands[bands.length - 1]!.keys).toEqual(["can:helper"]);
   });
 });
+
+/**
+ * The line beside the heading is `on start`'s, whether or not there is any.
+ *
+ * A robot with nothing to do at the start is worth noticing, and an empty
+ * space where the starting work goes says it at a glance. Sliding the next
+ * handler up into the gap would say nothing at all — and would put a
+ * `sense robot` block exactly where a reader has learnt to find `start`.
+ *
+ * `tidy` needs a rendered canvas, so what is checked here is the part that
+ * decides it: that `start` is always its own band and always the first, so the
+ * geometry has one row to hold open and knows which.
+ */
+describe("the reserved line", () => {
+  const withStart = 'name "R"\nchassis tank\n\non start\n  stop\nend\n\non hit wall\n  stop\nend';
+  const without = 'name "R"\nchassis tank\n\non hit wall\n  stop\nend\n\non sense robot\n  stop\nend';
+
+  it("gives `start` a band of its own, first after the heading", () => {
+    const bands = tidyBands(fromSource(withStart));
+    expect(bands[0]!.keys).toEqual(["robot"]);
+    expect(bands[1]).toEqual({ event: "start", keys: ["on:start"] });
+  });
+
+  it("has no start band at all when there is no start code", () => {
+    // Which is what leaves the row empty rather than filled by the next one.
+    expect(tidyBands(fromSource(without)).some((b) => b.event === "start")).toBe(false);
+  });
+
+  it("reserves nothing for any other event", () => {
+    /*
+     * Every other event is absent from most robots, and a row held open for
+     * each would be a page of gaps. Only the events a robot actually handles
+     * get a band.
+     */
+    const bands = tidyBands(fromSource(without));
+    expect(bands.map((b) => b.event)).toEqual([null, "sense robot", "hit wall"]);
+  });
+});
