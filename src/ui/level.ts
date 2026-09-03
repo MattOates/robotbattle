@@ -42,7 +42,16 @@ export interface LevelSpec {
   register: Register;
   /** Authoring views offered, most approachable first. The first is the default. */
   authoring: readonly Authoring[];
-  /** Read everything aloud unless they turn it off. */
+  /**
+   * Whether this level would read its own copy aloud.
+   *
+   * False everywhere, and the field is kept because the decision is worth
+   * recording rather than because it is undecided. The voices are a 63MB
+   * download and a British text-to-speech read of "Point the turret at them",
+   * which is not an improvement on the sentence being there to look at — so
+   * nothing narrates, and nothing offers to. Explorer's blurb used to promise
+   * it and there was no narrator behind the promise at all.
+   */
   voiceDefault: boolean;
   /** Which Workshop tabs exist. Intersected with what the thing being edited has. */
   panes: readonly Pane[];
@@ -71,7 +80,7 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
     id: "explorer",
     label: "Explorer",
     blurb:
-      "Big buttons and picture cards, with everything read out loud. Build a robot by tapping, and watch it fight.",
+      "Big buttons and picture cards. Build a {robot} by tapping, and watch it fight.",
     ageHint: "About 6 to 8",
     skin: "playground",
     register: "simple",
@@ -85,7 +94,7 @@ export const LEVEL_SPECS: Readonly<Record<Level, LevelSpec>> = {
      * At six to eight that is the wrong order.
      */
     authoring: ["cards"],
-    voiceDefault: true,
+    voiceDefault: false,
     /*
      * One tab. Not two.
      *
@@ -244,4 +253,10 @@ export function showsMode(
   unlocked: readonly ScreenName[] = [],
 ): boolean {
   return LEVEL_SPECS[level].modes.includes(mode) || unlocked.includes(mode);
+}
+
+/** Keep a mounted Workshop on a view the newly selected level actually has. */
+export function authoringFor(level: Level, current: Authoring): Authoring {
+  const offered = LEVEL_SPECS[level].authoring;
+  return offered.includes(current) ? current : (offered[0] ?? "text");
 }

@@ -63,12 +63,12 @@ export class Quests {
    * settings control. A celebration that reappears every time you finish
    * something stops being a celebration.
    */
-  declinedLevelUp(): boolean {
-    return this.store.get(DECLINED_KEY) === "yes";
+  declinedLevelUp(level: string): boolean {
+    return this.store.get(DECLINED_KEY) === level;
   }
 
-  declineLevelUp(): void {
-    this.store.set(DECLINED_KEY, "yes");
+  declineLevelUp(level: string): void {
+    this.store.set(DECLINED_KEY, level);
   }
 
   /** Cleared when they do move up, so the next level's offer is fresh. */

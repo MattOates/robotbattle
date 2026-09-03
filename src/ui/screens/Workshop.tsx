@@ -84,7 +84,7 @@ const BlockEditor = lazy(() =>
 );
 import { AUTHORING_LABELS, type Authoring } from "../panes.js";
 import type { Quest, Step } from "../../workshop/quests.js";
-import { levelSpec, panesFor, showsPanel, type Level } from "../level.js";
+import { authoringFor, levelSpec, panesFor, showsPanel, type Level } from "../level.js";
 import { TrialPrefs } from "../../store/trial.js";
 import { WorkshopPrefs } from "../../store/workshop.js";
 import { useAssistantUsable } from "../../assistant/useAssistant.js";
@@ -127,6 +127,9 @@ interface Props {
   questsDone: ReadonlySet<string>;
   say: (both: { full: string; simple: string }) => string;
   fill: (text: string) => string;
+  /** A quest-log deep link into one of this screen's panes. */
+  requestedPane: Pane | null;
+  onRequestedPaneHandled: () => void;
 }
 
 
@@ -163,6 +166,8 @@ export function Workshop({
   questsDone,
   say,
   fill,
+  requestedPane,
+  onRequestedPaneHandled,
 }: Props) {
   const { library, robots, refresh, chat } = lib;
   const workshopPrefs = useMemo(() => new WorkshopPrefs(), []);
@@ -303,6 +308,13 @@ export function Workshop({
   const ways = levelSpec(level).authoring;
   const [way, setWay] = useState<Authoring>(() => ways[0] ?? "text");
 
+  // A level can be changed while this screen remains mounted. Never leave the
+  // player in a view the new level does not offer (and may provide no tab for).
+  useEffect(() => {
+    const next = authoringFor(level, way);
+    if (next !== way) setWay(next);
+  }, [level, way]);
+
   useEffect(() => workshopPrefs.setSelectedRobotId(selectedId), [selectedId, workshopPrefs]);
   useEffect(() => workshopPrefs.setSelectedArenaId(selectedArenaId), [selectedArenaId, workshopPrefs]);
   useEffect(() => workshopPrefs.setPane(pane), [pane, workshopPrefs]);
@@ -320,6 +332,33 @@ export function Workshop({
   useEffect(() => {
     if (!panes.includes(pane)) setPane(panes[0]!);
   }, [panes, pane]);
+
+  /*
+   * Honour the pane carried by a quest's "Take me there" action. Editor links
+   * leave an arena, while map links select an existing arena or make the first
+   * one; those panes do not exist for the other kind of selection.
+   */
+  useEffect(() => {
+    if (!requestedPane) return;
+    if (requestedPane === "editor") setSelectedArenaId(null);
+    if (requestedPane === "map" && !selectedArena) {
+      const arena =
+        lib.arenas[0] ??
+        lib.arenaLib.create(`New ${THEMES[theme].arena}`, blankArena());
+      if (lib.arenas.length === 0) refresh();
+      setSelectedArenaId(arena.id);
+    }
+    setPane(requestedPane);
+    onRequestedPaneHandled();
+  }, [
+    lib.arenaLib,
+    lib.arenas,
+    onRequestedPaneHandled,
+    refresh,
+    requestedPane,
+    selectedArena,
+    theme,
+  ]);
 
   useEffect(() => {
     if (!selected && robots.length > 0) setSelectedId(robots[0]!.id);
@@ -1106,7 +1145,12 @@ export function Workshop({
           ) : null}
 
           {pane === "map" && selectedArena ? (
-            <MapPane arena={selectedArena} lib={lib} theme={theme} />
+            <MapPane
+              arena={selectedArena}
+              lib={lib}
+              theme={theme}
+              onDraw={() => tour.signal({ kind: "mapDrawn" })}
+            />
           ) : null}
 
           {pane === "trial" ? (
@@ -1145,6 +1189,7 @@ export function Workshop({
                 setPane("editor");
                 setWay("text");
               }}
+              onInspectorOpened={() => tour.signal({ kind: "inspectorOpened" })}
             />
           ) : null}
           {pane === "bench" ? (
@@ -1778,10 +1823,12 @@ function MapPane({
   arena,
   lib,
   theme,
+  onDraw,
 }: {
   arena: StoredArena;
   lib: LibraryApi;
   theme: Theme;
+  onDraw: () => void;
 }) {
   const { arenaLib, refresh } = lib;
   const words = THEMES[theme];
@@ -1789,6 +1836,7 @@ function MapPane({
   const commit = (spec: ArenaSpec) => {
     arenaLib.update(arena.id, spec);
     refresh();
+    onDraw();
   };
 
   const grid = drivableMazeGrid(ARENA_SIZE.width, ARENA_SIZE.height);
@@ -2243,6 +2291,7 @@ function TrialPane({
   fill,
   onApplyFix,
   onFixThere,
+  onInspectorOpened,
 }: {
   robot: StoredRobot | null;
   theme: Theme;
@@ -2282,6 +2331,8 @@ function TrialPane({
   onApplyFix?: ((cardId: string) => void) | undefined;
   /** Go to where a broken script can be fixed. */
   onFixThere: () => void;
+  /** The behaviour inspector was opened after a fight. */
+  onInspectorOpened: () => void;
 }) {
   // Remembered between sessions: tuning a robot means running the same fight
   // over and over, and having the panel put its own two back each time is a
@@ -2331,6 +2382,10 @@ function TrialPane({
   const [expanded, setExpanded] = useState(false);
   const [lastOutcome, setLastOutcome] = useState<MatchOutcome | null>(null);
   const [inspecting, setInspecting] = useState(false);
+  const openInspector = () => {
+    setInspecting(true);
+    onInspectorOpened();
+  };
 
   // Escape leaves the expanded view. A view that fills the screen and can only
   // be dismissed by finding one small button again is a trap.
@@ -2604,7 +2659,7 @@ function TrialPane({
             say={say}
             fill={fill}
             {...(onApplyFix ? { onFix: onApplyFix } : {})}
-            {...(lastOutcome.inspection ? { onDetail: () => setInspecting(true) } : {})}
+            {...(lastOutcome.inspection ? { onDetail: openInspector } : {})}
           />
         ) : lastOutcome ? (
           <BattleDebrief
@@ -2612,7 +2667,7 @@ function TrialPane({
             field={lastOutcome.telemetry}
             winnerId={lastOutcome.result.winnerId}
             onHistory={onHistory}
-            {...(lastOutcome.inspection ? { onInspect: () => setInspecting(true) } : {})}
+            {...(lastOutcome.inspection ? { onInspect: openInspector } : {})}
           />
         ) : null}
 

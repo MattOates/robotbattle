@@ -16,6 +16,7 @@ import { Quests } from "../../store/quests.js";
 import {
   advance,
   currentQuest,
+  levelUpQuest,
   settle,
   nextStep,
   questsFor,
@@ -63,6 +64,7 @@ export interface QuestApi {
   /** True when the level's last quest is done and they have not said no yet. */
   offeringLevelUp: boolean;
   declineLevelUp: () => void;
+  acceptLevelUp: () => void;
   isMet: (quest: Quest, step: Step) => boolean;
 }
 
@@ -79,7 +81,7 @@ export function useQuests(
   const store = useMemo(() => new Quests(), []);
   const [done, setDone] = useState<ReadonlySet<string>>(() => store.done());
   const [celebrations, setCelebrations] = useState<Celebration[]>([]);
-  const [declined, setDeclined] = useState(() => store.declinedLevelUp());
+  const [declined, setDeclined] = useState(() => store.declinedLevelUp(level));
   const nextId = useRef(1);
 
   // Read back whatever another tab did. The library hook already listens for
@@ -89,6 +91,10 @@ export function useQuests(
     window.addEventListener("focus", reread);
     return () => window.removeEventListener("focus", reread);
   }, [store]);
+
+  // A refusal belongs to the level where it was made, not to every level the
+  // player may later choose in Settings.
+  useEffect(() => setDeclined(store.declinedLevelUp(level)), [level, store]);
 
   /**
    * Turn an `Advance` into stored progress and cards to show.
@@ -162,11 +168,38 @@ export function useQuests(
   }, []);
 
   const declineLevelUp = useCallback(() => {
-    store.declineLevelUp();
+    store.declineLevelUp(level);
     setDeclined(true);
+  }, [level, store]);
+
+  const acceptLevelUp = useCallback(() => {
+    store.clearDecline();
+    setDeclined(false);
   }, [store]);
 
   const current = currentQuest(level, done);
+  const levelUp = levelUpQuest(level, done, declined);
+
+  /*
+   * Step progress is durable but toast queues are deliberately not. Recreate
+   * the actionable level-up offer when a completed level is reopened, so a
+   * reload cannot strand somebody at "all done" with no way forward.
+   */
+  useEffect(() => {
+    if (!levelUp || levelUp.reward.kind !== "levelUp") return;
+    setCelebrations((queue) => {
+      if (queue.some((item) => item.kind === "levelUp")) return queue;
+      return [
+        ...queue,
+        {
+          id: nextId.current++,
+          kind: "levelUp",
+          icon: levelUp.icon,
+          text: fill(levelUp.reward.say),
+        },
+      ];
+    });
+  }, [fill, levelUp]);
 
   return {
     signal,
@@ -179,8 +212,9 @@ export function useQuests(
     celebrations,
     dismiss,
     // Nothing left to do at this level, and they have not turned it down.
-    offeringLevelUp: current === null && !declined,
+    offeringLevelUp: levelUp !== null,
     declineLevelUp,
+    acceptLevelUp,
     isMet: (quest, step) => done.has(stepKey(quest, step)),
   };
 }

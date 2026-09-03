@@ -33,7 +33,7 @@
  *     from cold start to level-up without a browser.
  */
 
-import type { Level } from "../ui/level.js";
+import { nextLevel, type Level } from "../ui/level.js";
 import type { Pane, PanelName } from "../ui/panes.js";
 import type { ScreenName } from "../ui/router.js";
 import { AIM_AND_CHASE, PICK_YOUR_RANGE, SEE_AND_CHASE, type TourSignal } from "../ui/tour/steps.js";
@@ -75,7 +75,8 @@ export type SimpleSignal =
   | "arenaPlayed"
   | "tradeGiven"
   | "cardAdded"
-  | "fixApplied";
+  | "fixApplied"
+  | "inspectorOpened";
 
 export interface Step {
   id: string;
@@ -427,7 +428,7 @@ const ENGINEER: Quest[] = [
           full: "Open the Behaviour Inspector after a fight",
           simple: "Look at what your {robot} was thinking",
         },
-        gate: { kind: "did", what: "fixApplied" },
+        gate: { kind: "did", what: "inspectorOpened" },
         goTo: { screen: "workshop", pane: "trial" },
       },
     ],
@@ -465,7 +466,9 @@ const ENGINEER: Quest[] = [
       },
     ],
     reward: {
-      kind: "levelUp",
+      // Engineer is the top level: this is a completion card, not an offer to
+      // move to a level that does not exist.
+      kind: "unlock",
       say: "A block with a `given` clause is the only thing here worth posting to a stranger.",
     },
   },
@@ -695,6 +698,17 @@ export function unlocks(done: ReadonlySet<string>): {
  */
 export function currentQuest(level: Level, done: ReadonlySet<string>): Quest | null {
   return questsFor(level).find((q) => !isQuestDone(q, done)) ?? null;
+}
+
+/** The durable level-up offer implied by stored progress, if there is one. */
+export function levelUpQuest(
+  level: Level,
+  done: ReadonlySet<string>,
+  declined: boolean,
+): Quest | null {
+  if (declined || nextLevel(level) === null) return null;
+  const last = questsFor(level).at(-1);
+  return last && last.reward.kind === "levelUp" && isQuestDone(last, done) ? last : null;
 }
 
 /** The next thing to actually do — the first unmet step of the current quest. */

@@ -677,4 +677,3 @@ export function workspaceToSketch(json: WorkspaceJson): Sketch {
 
   return { head: json.rb?.head ?? [], blocks, tail: json.rb?.tail ?? [] };
 }
-

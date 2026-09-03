@@ -180,6 +180,16 @@ describe("Tours storage", () => {
     expect(new Tours(store).muted()).toBe(true);
   });
 
+  it("distinguishes an explicit quiet choice from a level default", () => {
+    const store = new MemoryStore();
+    const tours = new Tours(store);
+    expect(tours.commentaryPreference()).toBeNull();
+    tours.setCommentary(false);
+    expect(new Tours(store).commentaryPreference()).toBe(false);
+    tours.reset();
+    expect(new Tours(store).commentaryPreference()).toBe(false);
+  });
+
   it("offers the tours again on reset but keeps the mute preference", () => {
     const tours = new Tours(new MemoryStore());
     tours.finish("workshop");

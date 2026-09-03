@@ -168,7 +168,9 @@ export function Welcome({ invitedTo, onDone }: Props) {
             placeholder="Your name"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && name.trim()) submit(!invitedTo);
+              if (e.key === "Enter" && name.trim()) {
+                submit(!invitedTo && level !== "explorer");
+              }
             }}
           />
           <span className="roster-meta">
@@ -190,27 +192,49 @@ export function Welcome({ invitedTo, onDone }: Props) {
         ) : (
           <>
             <div className="join-actions">
-              <button
-                type="button"
-                className="btn primary"
-                disabled={name.trim() === ""}
-                onClick={() => submit(true)}
-              >
-                Show me how it works
-              </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={name.trim() === ""}
-                onClick={() => submit(false)}
-              >
-                I'll find my own way
-              </button>
+              {level === "explorer" ? (
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={name.trim() === ""}
+                  onClick={() => submit(false)}
+                >
+                  Start exploring
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={name.trim() === ""}
+                    onClick={() => submit(true)}
+                  >
+                    Show me how it works
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={name.trim() === ""}
+                    onClick={() => submit(false)}
+                  >
+                    I'll find my own way
+                  </button>
+                </>
+              )}
             </div>
             <p className="welcome-note">
-              {chosen.character.name} will walk you through building a {words.robot} that
-              wins a fight — about five minutes. Skip it and you still get the finished{" "}
-              {words.robot}; you just get to take it apart yourself.
+              {level === "explorer" ? (
+                <>
+                  You will start with a sleepy {words.robot}. {chosen.character.name} and the
+                  quest bar will help you wake it up and build the part that wins a fight.
+                </>
+              ) : (
+                <>
+                  {chosen.character.name} will walk you through building a {words.robot} that
+                  wins a fight — about five minutes. Skip it and you still get the finished{" "}
+                  {words.robot}; you just get to take it apart yourself.
+                </>
+              )}
             </p>
           </>
         )}

@@ -47,7 +47,6 @@ interface Props {
   script: { source: string; onChange: (next: string) => void; editable: boolean } | null;
   /** How far through the quest, for the pips. */
   done: ReadonlySet<string>;
-  speak?: (text: string) => void;
 }
 
 /*
@@ -60,7 +59,7 @@ interface Props {
  * than permanently in the way.
  */
 
-export function HelperPanel({ quest, step, theme, say, fill, script, done, speak }: Props) {
+export function HelperPanel({ quest, step, theme, say, fill, script, done }: Props) {
   const met = quest.steps.filter((s) => done.has(stepKey(quest, s))).length;
   const help = step.help ? fill(say(step.help)) : null;
   // Reopened per step rather than remembered, so the explanation for a step
@@ -113,20 +112,6 @@ export function HelperPanel({ quest, step, theme, say, fill, script, done, speak
             </button>
           ) : null}
 
-          {/* Reading it out is offered rather than automatic here. The toasts
-              announce themselves; this panel is always on screen, and a voice
-              that started every time the step changed would talk over the
-              player working. */}
-          {speak && help ? (
-            <button
-              type="button"
-              className="btn small"
-              onClick={() => speak(`${fill(say(step.say))}. ${help}`)}
-              aria-label="Read this out"
-            >
-              🔊
-            </button>
-          ) : null}
 
           <span className="spacer" />
           <span className="quest-pips" aria-label={`${met} of ${quest.steps.length} done`}>

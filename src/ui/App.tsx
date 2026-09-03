@@ -6,7 +6,7 @@
  * of the bundle.
  */
 
-import { Suspense, lazy, useCallback, useMemo, useState, useEffect } from "react";
+import { Suspense, lazy, useCallback, useState, useEffect } from "react";
 import { useRoute, type ScreenName } from "./router.js";
 import { useLibrary, useProfile, starterRobot } from "./useLibrary.js";
 import { navigate } from "./router.js";
@@ -19,7 +19,7 @@ import { QuestToasts } from "./quest/QuestToast.js";
 import { useQuests } from "./quest/useQuests.js";
 import { levelSpec, nextLevel } from "./level.js";
 import { fillVocab } from "../learn/markdown.js";
-import { Tours } from "../store/tour.js";
+import type { Pane } from "./panes.js";
 
 const Menu = lazy(() => import("./screens/Menu.js").then((m) => ({ default: m.Menu })));
 const Workshop = lazy(() =>
@@ -123,9 +123,14 @@ function AppShell({
 
   const quests = useQuests(profile.level, say, fill);
   const [logOpen, setLogOpen] = useState(false);
+  const [requestedPane, setRequestedPane] = useState<Pane | null>(null);
 
-  const tours = useMemo(() => new Tours(), []);
-  const [narrating, setNarrating] = useState(() => tours.commentary() || spec.voiceDefault);
+
+  const goToQuest = useCallback((target: { screen: ScreenName; pane?: Pane }) => {
+    setRequestedPane(target.screen === "workshop" ? (target.pane ?? null) : null);
+    navigate(target.screen);
+  }, []);
+  const clearRequestedPane = useCallback(() => setRequestedPane(null), []);
 
   // The journey bar is for somebody finding their way. An Engineer has been
   // using the menu perfectly well and does not need a game telling them where
@@ -171,6 +176,8 @@ function AppShell({
           questsDone={quests.done}
           say={say}
           fill={fill}
+          requestedPane={requestedPane}
+          onRequestedPaneHandled={clearRequestedPane}
         />
       ) : null}
 
@@ -181,6 +188,7 @@ function AppShell({
           playerName={profile.name}
           onPlayerName={setName}
           initialRoom={route.room}
+          onQuestSignal={quests.signal}
         />
       ) : null}
 
@@ -201,6 +209,7 @@ function AppShell({
           playerName={profile.name}
           onPlayerName={setName}
           initialRoom={route.room}
+          onQuestSignal={quests.signal}
         />
       ) : null}
 
@@ -232,16 +241,6 @@ function AppShell({
             say={say}
             fill={fill}
             onOpenLog={() => setLogOpen(true)}
-            narration={{
-              on: narrating,
-              toggle: () =>
-                setNarrating((on) => {
-                  // One mute for the lot. Somebody who turned the noise off
-                  // turned the noise off.
-                  new Tours().setCommentary(!on);
-                  return !on;
-                }),
-            }}
           />
           <QuestLog
             quests={quests}
@@ -249,6 +248,7 @@ function AppShell({
             onClose={() => setLogOpen(false)}
             say={say}
             fill={fill}
+            onGoTo={goToQuest}
           />
         </>
       ) : null}
@@ -259,10 +259,9 @@ function AppShell({
         theme={profile.theme}
         onLevelUp={() => {
           const up = nextLevel(profile.level);
-          if (up) setLevel(up);
-          // Cleared so the next level's own offer arrives fresh rather than
-          // arriving already declined.
-          new Tours();
+          if (!up) return;
+          quests.acceptLevelUp();
+          setLevel(up);
           quests.celebrations.forEach((c) => quests.dismiss(c.id));
         }}
         onDeclineLevelUp={quests.declineLevelUp}

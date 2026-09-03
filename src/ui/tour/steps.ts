@@ -83,7 +83,9 @@ export type TourSignal =
   /** A card was added in the composer, rather than a line typed. */
   | { kind: "cardAdded" }
   /** They took the picture debrief up on one of its suggested fixes. */
-  | { kind: "fixApplied" };
+  | { kind: "fixApplied" }
+  /** They opened the post-fight behaviour inspector. */
+  | { kind: "inspectorOpened" };
 
 export type Gate =
   /** Narration: the reader presses Next when they have read it. */

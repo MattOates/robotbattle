@@ -107,6 +107,12 @@ export class Tours {
     return this.all().commentary === true;
   }
 
+  /** The stored choice, or null when this level's default should decide. */
+  commentaryPreference(): boolean | null {
+    const value = this.all().commentary;
+    return typeof value === "boolean" ? value : null;
+  }
+
   setCommentary(on: boolean): void {
     this.write({ ...this.all(), commentary: on });
   }
@@ -118,6 +124,9 @@ export class Tours {
   /** Offer every tour again. Keeps the preferences, which are not progress. */
   reset(): void {
     const current = this.all();
-    this.write({ muted: current.muted === true, commentary: current.commentary === true });
+    this.write({
+      muted: current.muted === true,
+      ...(typeof current.commentary === "boolean" ? { commentary: current.commentary } : {}),
+    });
   }
 }

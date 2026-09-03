@@ -2,8 +2,7 @@
  * The little card that says you just did something.
  *
  * This is the part of the quest system a player actually feels. The log tells
- * you what to do; the toast tells you it worked, and it is the only moment in
- * the game where the helper speaks unprompted about your own progress.
+ * you what to do; the toast tells you it worked.
  *
  * Three rules, all of them about not becoming wallpaper:
  *
@@ -12,9 +11,10 @@
  *  - **Never over a fight.** A countdown or a fullscreen match holds the queue
  *    until it is over. Congratulating somebody for adding a `fire` line while
  *    they are watching that line miss is the worst possible timing.
- *  - **Quiet when asked.** The same mute that silences the commentator and the
- *    tour silences these, because a child who has turned the noise off has
- *    turned the noise off.
+ *  - **Silent.** These are read, not heard. Narration was offered and taken
+ *    back out: the voices are a 63MB download and a text-to-speech read of a
+ *    sentence that is already on screen, which is not an improvement on the
+ *    sentence.
  */
 
 import { useEffect, useState } from "react";
@@ -41,8 +41,6 @@ interface Props {
    * is usually the reason the fight is happening.
    */
   paused?: boolean;
-  /** Read the line aloud. Omitted when narration is off. */
-  speak?: (text: string) => void;
   /** Answering a level-up offer. */
   onLevelUp?: () => void;
   onDeclineLevelUp?: () => void;
@@ -53,18 +51,12 @@ export function QuestToasts({
   onDismiss,
   theme,
   paused = false,
-  speak,
   onLevelUp,
   onDeclineLevelUp,
 }: Props) {
   const showing = paused ? undefined : queue[0];
   const id = showing?.id;
   const [leaving, setLeaving] = useState(false);
-
-  // Say it once, when it appears — not on every re-render of the parent.
-  useEffect(() => {
-    if (showing && speak) speak(showing.text);
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setLeaving(false);

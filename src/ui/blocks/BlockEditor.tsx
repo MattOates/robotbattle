@@ -90,6 +90,19 @@ export function BlockEditor({
    * every field edit.
    */
   const ours = useRef<string | null>(null);
+  /*
+   * The workspace listener lives for the lifetime of the canvas, while both
+   * destinations can change underneath it: selecting another robot replaces
+   * `onSource`, and joining or leaving a room replaces `collab`. Keep the
+   * listener pointed at the current render without rebuilding Blockly (and
+   * losing its drag/scroll state) for either transition.
+   */
+  const sourceRef = useRef(source);
+  const onSourceRef = useRef(onSource);
+  const collabRef = useRef(collab);
+  sourceRef.current = source;
+  onSourceRef.current = onSource;
+  collabRef.current = collab;
 
   useEffect(() => {
     if (!host.current) return;
@@ -143,8 +156,9 @@ export function BlockEditor({
       ours.current = next;
       // In a session the shared document is the truth, and it is written as
       // the small edit this really was — see `sharedText.ts`.
-      if (collab) writeShared(collab.text, next);
-      else onSource(next);
+      const shared = collabRef.current;
+      if (shared) writeShared(shared.text, next);
+      else onSourceRef.current(next);
     };
     ws.addChangeListener(onChange);
 
@@ -156,11 +170,6 @@ export function BlockEditor({
     // Rebuilt only when the shape or the dress of the editor changes. The
     // script is pushed in by the effect below rather than by re-injecting.
   }, [editable, register, theme, skinKey]);
-
-  // Kept in a ref so the change listener above reads the current script
-  // without being torn down and rebuilt on every keystroke elsewhere.
-  const sourceRef = useRef(source);
-  sourceRef.current = source;
 
   useEffect(() => {
     const ws = workspace.current;

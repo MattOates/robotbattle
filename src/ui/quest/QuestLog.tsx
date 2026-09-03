@@ -11,7 +11,6 @@
  */
 
 import { isQuestDone, stepKey, type Quest, type Step } from "../../workshop/quests.js";
-import { navigate } from "../router.js";
 import type { QuestApi } from "./useQuests.js";
 
 interface Props {
@@ -20,9 +19,10 @@ interface Props {
   onClose: () => void;
   say: (both: { full: string; simple: string }) => string;
   fill: (text: string) => string;
+  onGoTo: (target: NonNullable<Step["goTo"]>) => void;
 }
 
-export function QuestLog({ quests, open, onClose, say, fill }: Props) {
+export function QuestLog({ quests, open, onClose, say, fill, onGoTo }: Props) {
   if (!open) return null;
 
   const todo = quests.quests.filter((q) => !isQuestDone(q, quests.done));
@@ -52,6 +52,7 @@ export function QuestLog({ quests, open, onClose, say, fill }: Props) {
             quests={quests}
             say={say}
             fill={fill}
+            onGoTo={onGoTo}
             /* Only the first is opened. The rest are a promise that there is
                more, not a list to plan against. */
             current={index === 0}
@@ -83,6 +84,7 @@ function QuestCard({
   fill,
   current,
   onGo,
+  onGoTo,
 }: {
   quest: Quest;
   quests: QuestApi;
@@ -90,6 +92,7 @@ function QuestCard({
   fill: (text: string) => string;
   current: boolean;
   onGo: () => void;
+  onGoTo: (target: NonNullable<Step["goTo"]>) => void;
 }) {
   const firstUnmet: Step | undefined = quest.steps.find(
     (s) => !quests.done.has(stepKey(quest, s)),
@@ -125,7 +128,7 @@ function QuestCard({
           type="button"
           className="btn primary"
           onClick={() => {
-            navigate(firstUnmet.goTo!.screen);
+            onGoTo(firstUnmet.goTo!);
             onGo();
           }}
         >

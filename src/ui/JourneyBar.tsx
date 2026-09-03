@@ -75,10 +75,9 @@ interface Props {
   say: (both: { full: string; simple: string }) => string;
   fill: (text: string) => string;
   onOpenLog: () => void;
-  narration: { on: boolean; toggle: () => void };
 }
 
-export function JourneyBar({ level, screen, quests, say, fill, onOpenLog, narration }: Props) {
+export function JourneyBar({ level, screen, quests, say, fill, onOpenLog }: Props) {
   const next = quests.next;
   const doneCount = quests.quests.filter((q) =>
     q.steps.every((s) => quests.done.has(`${q.id}/${s.id}`)),
@@ -150,15 +149,6 @@ export function JourneyBar({ level, screen, quests, say, fill, onOpenLog, narrat
           aria-label={`Your quests — ${doneCount} of ${quests.quests.length} done`}
         >
           Quests {doneCount}/{quests.quests.length}
-        </button>
-        <button
-          type="button"
-          className="btn small"
-          aria-pressed={narration.on}
-          onClick={narration.toggle}
-          title={narration.on ? "Stop reading things out" : "Read things out to me"}
-        >
-          {narration.on ? "🔊" : "🔇"}
         </button>
       </div>
     </nav>

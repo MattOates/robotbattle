@@ -4,6 +4,7 @@ import {
   advance,
   currentQuest,
   isQuestDone,
+  levelUpQuest,
   nextStep,
   questsFor,
   satisfies,
@@ -65,13 +66,17 @@ describe("the quest table", () => {
     }
   });
 
-  it("gives every level exactly one way out, and puts it last", () => {
+  it("gives every non-final level exactly one way out, and puts it last", () => {
     for (const level of LEVELS) {
       const quests = questsFor(level);
       expect(quests.length).toBeGreaterThan(0);
       const ups = quests.filter((q) => q.reward.kind === "levelUp");
-      expect(ups).toHaveLength(1);
-      expect(quests[quests.length - 1]!.reward.kind).toBe("levelUp");
+      if (nextLevel(level)) {
+        expect(ups).toHaveLength(1);
+        expect(quests[quests.length - 1]!.reward.kind).toBe("levelUp");
+      } else {
+        expect(ups).toHaveLength(0);
+      }
     }
   });
 
@@ -167,6 +172,9 @@ describe("gates", () => {
   it("matches a bare signal by kind", () => {
     expect(satisfies({ kind: "did", what: "benchRun" }, { kind: "benchRun" })).toBe(true);
     expect(satisfies({ kind: "did", what: "benchRun" }, { kind: "blockTaken" })).toBe(false);
+    expect(
+      satisfies({ kind: "did", what: "inspectorOpened" }, { kind: "inspectorOpened" }),
+    ).toBe(true);
   });
 });
 
@@ -228,6 +236,32 @@ describe("advancing", () => {
       questsFor("explorer").flatMap((q) => q.steps.map((st) => `${q.id}/${st.id}`)),
     );
     expect(advance("explorer", all, { kind: "saved" }).steps).toEqual([]);
+  });
+
+  it("recognises the cross-screen actions that finish the later quest arcs", () => {
+    const beforeBuilderFinal = new Set(
+      questsFor("builder")
+        .slice(0, -1)
+        .flatMap((q) => q.steps.map((step) => `${q.id}/${step.id}`)),
+    );
+    expect(advance("builder", beforeBuilderFinal, { kind: "arenaPlayed" }).steps).toEqual([
+      "fight-a-person/arena",
+    ]);
+
+    expect(advance("engineer", new Set(), { kind: "inspectorOpened" }).steps).toEqual([
+      "read-the-machine/inspect",
+    ]);
+    expect(advance("engineer", new Set(), { kind: "fixApplied" }).steps).toEqual([]);
+
+    const beforeMap = new Set(["read-the-machine/inspect"]);
+    expect(advance("engineer", beforeMap, { kind: "mapDrawn" }).steps).toEqual([
+      "draw-a-place/map",
+    ]);
+
+    const beforeTrade = new Set(["read-the-machine/inspect", "draw-a-place/map"]);
+    expect(advance("engineer", beforeTrade, { kind: "tradeGiven" }).steps).toEqual([
+      "hand-it-over/trade",
+    ]);
   });
 
   function src2(text: string): QuestSignal {
@@ -361,6 +395,23 @@ describe("unlocks", () => {
   });
 });
 
+describe("level-up recovery", () => {
+  it("derives an offer from stored completion after the in-memory toast is gone", () => {
+    const complete = new Set(
+      questsFor("explorer").flatMap((q) => q.steps.map((step) => `${q.id}/${step.id}`)),
+    );
+    expect(levelUpQuest("explorer", complete, false)?.id).toBe("beat-the-hunter");
+    expect(levelUpQuest("explorer", complete, true)).toBeNull();
+  });
+
+  it("does not invent a level above Engineer", () => {
+    const complete = new Set(
+      questsFor("engineer").flatMap((q) => q.steps.map((step) => `${q.id}/${step.id}`)),
+    );
+    expect(levelUpQuest("engineer", complete, false)).toBeNull();
+  });
+});
+
 describe("the store", () => {
   it("records once, survives a reload, and clears", () => {
     const store = new MemoryStore();
@@ -374,11 +425,12 @@ describe("the store", () => {
 
   it("remembers a declined level-up until they move up", () => {
     const store = new MemoryStore();
-    expect(new Quests(store).declinedLevelUp()).toBe(false);
-    new Quests(store).declineLevelUp();
-    expect(new Quests(store).declinedLevelUp()).toBe(true);
+    expect(new Quests(store).declinedLevelUp("explorer")).toBe(false);
+    new Quests(store).declineLevelUp("explorer");
+    expect(new Quests(store).declinedLevelUp("explorer")).toBe(true);
+    expect(new Quests(store).declinedLevelUp("builder")).toBe(false);
     new Quests(store).clearDecline();
-    expect(new Quests(store).declinedLevelUp()).toBe(false);
+    expect(new Quests(store).declinedLevelUp("explorer")).toBe(false);
   });
 });
 

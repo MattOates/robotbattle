@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AGE_BANDS,
+  authoringFor,
   DEFAULT_LEVEL,
   LEVELS,
   LEVEL_SPECS,
@@ -18,6 +19,7 @@ import { FIRE_SETTINGS, FUEL_SETTINGS, TERRAIN_SETTINGS } from "../../src/ui/mat
 import { starterRobot } from "../../src/ui/useLibrary.js";
 import { TOUR_ROBOT, TOUR_SEED } from "../../src/bots/index.js";
 import { Tours } from "../../src/store/tour.js";
+import { fillVocab } from "../../src/learn/markdown.js";
 import { MemoryStore } from "../../src/store/storage.js";
 
 const ALL_PANES: Pane[] = ["editor", "map", "trial", "bench", "history"];
@@ -86,6 +88,12 @@ describe("the level table", () => {
   it("gives the oldest players code and blocks, and not cards", () => {
     expect(LEVEL_SPECS.engineer.authoring).toEqual(["text", "blocks"]);
     expect(LEVEL_SPECS.explorer.authoring).toEqual(["cards"]);
+  });
+
+  it("moves a mounted Workshop off an authoring view the new level does not offer", () => {
+    expect(authoringFor("explorer", "text")).toBe("cards");
+    expect(authoringFor("engineer", "cards")).toBe("text");
+    expect(authoringFor("builder", "cards")).toBe("cards");
   });
 
   it("tops out at Engineer with the whole game", () => {
@@ -161,7 +169,7 @@ describe("filtering", () => {
 });
 
 describe("what a new player is handed", () => {
-  it("gives an Explorer the robot that cannot fight, tour or no tour", () => {
+  it("always gives an Explorer the robot that cannot fight", () => {
     /*
      * The Explorer quests are the tour told in five steps, and the third of
      * them turns on discovering that your robot never fired. `TOUR_ROBOT` —
@@ -193,4 +201,31 @@ describe("what a new player is handed", () => {
     tours.skip("workshop");
     return tours;
   }
+});
+
+/**
+ * Nothing may promise narration while nothing narrates.
+ *
+ * Explorer's blurb said "with everything read out loud" and `voiceDefault` was
+ * true, and there was no narrator behind either — a level description is a
+ * promise to a parent choosing on a child's behalf, and this one could not be
+ * kept. The field stays because the decision is worth recording; the promise
+ * does not.
+ */
+describe("what the levels claim", () => {
+  it("does not offer to read anything aloud", () => {
+    for (const level of LEVELS) {
+      expect(LEVEL_SPECS[level].voiceDefault, level).toBe(false);
+      expect(LEVEL_SPECS[level].blurb.toLowerCase(), level).not.toContain("aloud");
+      expect(LEVEL_SPECS[level].blurb.toLowerCase(), level).not.toContain("read out loud");
+    }
+  });
+
+  it("writes every blurb in words that resolve", () => {
+    for (const level of LEVELS) {
+      for (const theme of ["mechanical", "biological"] as const) {
+        expect(fillVocab(LEVEL_SPECS[level].blurb, theme), level).not.toMatch(/[{}]/);
+      }
+    }
+  });
 });
