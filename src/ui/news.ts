@@ -27,6 +27,36 @@ export interface NewsEntry {
 /** Newest first, which is the order they are shown in. */
 export const NEWS: readonly NewsEntry[] = [
   {
+    date: "2026-09-03",
+    title: "A button that tidies up",
+    body: "The block canvas remembers where you put things, and a Tidy up button lays them out the same way every time: the {robot} itself pinned top left as a heading, the starting work on the line beside it, then the behaviours other blocks call, then a row for each thing that can happen. Where the blocks sit is kept with the {robot} rather than written into the script, so it survives being put away and travels with a copy you give somebody \u2014 which means two people who changed different parts of the same {robot} can see at a glance which parts those were.",
+  },
+  {
+    date: "2026-09-02",
+    title: "Why the fight went that way, in pictures",
+    body: "After a trial there is a reading of what happened rather than a table of numbers: four moments from the fight, drawn, with a line under each \u2014 and two or three things worth fixing, each with a button that adds the missing piece for you. If your {robot} never fired a shot, it says so, and it says which part was missing.",
+  },
+  {
+    date: "2026-08-31",
+    title: "Two people in one canvas",
+    body: "Open a session and you can drag blocks around together. Everybody's cursor is on the canvas with their name on it, and the block somebody else is holding is outlined in their colour, so you can see what they are in the middle of instead of finding out afterwards.",
+  },
+  {
+    date: "2026-08-31",
+    title: "The whole language, as blocks",
+    body: "There is a block editor between Code and Cards, built on Blockly \u2014 the same thing Scratch is made of. It is not a simplified version: everything the language can say has a block, including choosing, repeating, remembering, and behaviours of your own with names and things passed into them. Blocks and text are the same script seen two ways, so you can drag a {robot} together, read it as writing, and every {robot} that came with the game opens in either.",
+  },
+  {
+    date: "2026-08-31",
+    title: "Build a {robot} by tapping",
+    body: "The youngest way in: a shelf of cards saying when something happens and what to do about it, assembled by tapping, with pickers instead of typing \u2014 a dial for how fast, a compass for which way. It writes the same script everybody else writes, so what a seven-year-old makes opens in the code editor unchanged.",
+  },
+  {
+    date: "2026-08-31",
+    title: "Quests, and how much to show",
+    body: "It asks how old you are when you first arrive, and how much is on screen follows from the answer \u2014 bigger, brighter and plainer for the youngest, the full instrument for everybody else, and changeable in Settings whenever you like. Instead of six equal cards there is a run of quests that walk you from a sleepy {robot} to winning a fight, opening one part of the game at a time and saying why it was worth having.",
+  },
+  {
     date: "2026-08-23",
     title: "Sides, and something to say to them",
     body: "The Arena can be fought in sides now, not just everyone against everyone. On a side you can tell who is with you \u2014 every event that reports another {robot} says whether it is one of yours \u2014 and the host decides whether your shots pass through your own or not. The last side standing wins.",

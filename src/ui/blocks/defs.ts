@@ -408,7 +408,9 @@ export function defineBlocks(theme: Theme, register: "simple" | "full"): void {
         .appendField("when")
         .appendField(
           openDropdown([
-            ["anything", ""],
+            // Not "anything": an empty `given` does not mean every event fires
+            // this, it means none does and another block reaches it by `do`.
+            ["called", ""],
             ...OFFERED_EVENTS.map((e) => [phraseFor(e, theme), e] as [string, string]),
           ]),
           "GIVEN",

@@ -31,6 +31,11 @@ const BUILT_WITH: Credit[] = [
   { name: "PixiJS", url: "https://pixijs.com", what: "the arena renderer" },
   { name: "CodeMirror", url: "https://codemirror.net", what: "the editor" },
   {
+    name: "Blockly",
+    url: "https://developers.google.com/blockly",
+    what: "the block canvas \u2014 the same thing Scratch is built on",
+  },
+  {
     name: "Chevrotain",
     url: "https://chevrotain.io",
     what: "the grammar the language is parsed by, and the reference generated from",
@@ -85,6 +90,13 @@ export function About({ theme, robotCount, storageBytes }: Props) {
             machine whose whole world is a fixed table of properties and actions, which is what
             makes it safe to run a script somebody handed you. A robot that loops forever becomes
             sluggish rather than freezing the match.
+          </p>
+          <p>
+            There are three ways to write one and they are all the same script: cards you tap
+            together, blocks you drag, and the text itself. The blocks are Blockly, which is what
+            Scratch is built on, and they are not a cut-down version of the language —
+            everything it can say has a block. So a {words.robot} built by tapping opens in the
+            code editor unchanged, and one written by hand opens as blocks.
           </p>
         </section>
 
