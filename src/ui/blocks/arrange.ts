@@ -98,3 +98,27 @@ export function tidy(ws: Blockly.WorkspaceSvg, sketch: Sketch): Layout {
   applyLayout(ws, sketch, layout);
   return layout;
 }
+
+/** A little air between the title bar and the corner. */
+const MARGIN = 16;
+
+/**
+ * Put the {robot}'s own block at the top left of what can be seen.
+ *
+ * Not `scrollCenter`, which centres the *bounding box of everything* — with a
+ * tall script that puts the middle of the canvas on screen and the heading
+ * somewhere above it, so the first thing you look at is a handler and the
+ * thing that says what this {robot} is has to be hunted for. A page starts at
+ * its title.
+ *
+ * It follows the block rather than the origin, so it still works for somebody
+ * who has dragged their heading somewhere else: what is anchored is the
+ * heading, not the coordinate it usually has.
+ */
+export function focusHeader(ws: Blockly.WorkspaceSvg, sketch: Sketch): void {
+  const header = topBlocks(ws, sketch).get("robot");
+  if (!header) return;
+  const at = header.getRelativeToSurfaceXY();
+  const scale = ws.getScale();
+  ws.scroll(MARGIN - at.x * scale, MARGIN - at.y * scale);
+}

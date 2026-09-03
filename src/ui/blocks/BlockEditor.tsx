@@ -31,7 +31,7 @@ import {
   variableFlyout,
 } from "./defs.js";
 import { themeFor, themeKey } from "./theme.js";
-import { applyLayout, readLayout, tidy } from "./arrange.js";
+import { applyLayout, focusHeader, readLayout, tidy } from "./arrange.js";
 import { isComplete, pruneLayout, type Layout } from "../../workshop/layout.js";
 import { PRESENCE_FIELD, byBlock, remoteCursors } from "./presence.js";
 import { writeShared, type SharedText } from "./sharedText.js";
@@ -240,18 +240,17 @@ export function BlockEditor({
       if (isComplete(layout, sketch)) applyLayout(ws, sketch, layout!);
       else onLayout?.(tidy(ws, sketch));
       /*
-       * Frame the whole {robot}, then stop zooming out.
+       * Pick a scale that frames the {robot}, then start at the top left.
        *
-       * `scrollCenter` centres the *canvas* rather than the blocks, which on a
-       * short pane put the first hat below the fold — the one thing that must
-       * be visible when the tab opens. `zoomToFit` frames the content instead,
-       * capped so a two-block script is not blown up to fill the pane and a
-       * long one is not shrunk past reading.
+       * `zoomToFit` chooses the scale, capped so a two-block script is not
+       * blown up to fill the pane and a long one is not shrunk past reading.
+       * Where it leaves the view is no use though: it centres everything, so a
+       * tall script opens on a handler somewhere in the middle. The heading
+       * goes in the corner instead, and reading starts where it should.
        */
       ws.zoomToFit();
-      const scale = Math.min(Math.max(ws.getScale(), 0.6), 1);
-      ws.setScale(scale);
-      ws.scrollCenter();
+      ws.setScale(Math.min(Math.max(ws.getScale(), 0.6), 1));
+      focusHeader(ws, sketch);
     } finally {
       Blockly.Events.enable();
     }
@@ -353,7 +352,11 @@ export function BlockEditor({
   const onTidy = () => {
     const ws = workspace.current;
     if (!ws) return;
-    onLayoutRef.current?.(tidy(ws, fromSource(sourceRef.current)));
+    const sketch = fromSource(sourceRef.current);
+    onLayoutRef.current?.(tidy(ws, sketch));
+    // Tidying that left you looking at the middle of the script would be half
+    // a tidy.
+    focusHeader(ws, sketch);
   };
 
   return (

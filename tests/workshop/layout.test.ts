@@ -96,8 +96,20 @@ describe("the canonical arrangement", () => {
     "end",
   ].join("\n");
 
-  it("puts the robot top left with the starting work beside it", () => {
-    expect(tidyBands(fromSource(src))[0]!.keys).toEqual(["robot", "on:start"]);
+  it("gives the declarations a row of their own, as a title bar", () => {
+    /*
+     * Alone, because they are not behaviour: they are what the {robot} is, and
+     * there is exactly one of them. Sharing the row with `on start` made the
+     * heading read as the first of several handlers.
+     */
+    expect(tidyBands(fromSource(src))[0]!.keys).toEqual(["robot"]);
+  });
+
+  it("puts `start` at the same left margin as every other handler", () => {
+    // It is behaviour — the first thing that happens — so it lines up with
+    // the things that happen next rather than with the declarations.
+    const bands = tidyBands(fromSource(src));
+    expect(bands[1]).toEqual({ event: "start", keys: ["on:start"] });
   });
 
   it("bands the rest by event, in the language's order not the file's", () => {
@@ -109,7 +121,12 @@ describe("the canonical arrangement", () => {
      * alphabetical. `hit wall` before `hit by bullet` because that is where
      * the language puts them.
      */
-    expect(events.filter(Boolean)).toEqual(["sense robot", "hit wall", "hit by bullet"]);
+    expect(events.filter(Boolean)).toEqual([
+      "start",
+      "sense robot",
+      "hit wall",
+      "hit by bullet",
+    ]);
   });
 
   it("keeps a behaviour beside the event it is declared `given`", () => {

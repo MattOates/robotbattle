@@ -83,9 +83,14 @@ export interface Band {
 /**
  * The canonical arrangement, as rows of keys.
  *
- * - The {robot} itself, pinned top left, with anything that runs at the start
- *   laid out to its right. That row is the header: what this thing is, and
- *   what it does before anything happens to it.
+ * - The {robot} itself, alone, pinned top left. It is the title bar: not
+ *   behaviour at all but what this thing *is* — its name, its chassis, its
+ *   colour, the things it remembers — and there is exactly one of it. Sharing
+ *   its row with `on start` made it read as the first of several handlers
+ *   rather than as the heading over all of them.
+ * - Then `on start`, at the same left margin as everything below it, because
+ *   it *is* behaviour: the first thing that happens rather than part of the
+ *   declaration.
  * - Then one row per event, in the order the language lists them, holding the
  *   handler for that event and any named behaviour declared `given` it —
  *   because those run together, and with no `on` block the behaviours *are*
@@ -109,17 +114,15 @@ export function tidyBands(sketch: Sketch): Band[] {
 
   const bands: Band[] = [];
 
-  // The header row.
-  const header = [
-    ...take((p) => p.block.kind === "robot"),
-    ...order(take((p) => p.block.event === "start")),
-  ];
+  // The title bar: the declarations, on their own.
+  const header = take((p) => p.block.kind === "robot");
   if (header.length > 0) bands.push({ event: null, keys: header.map((p) => p.key) });
 
   // A row per event, in the language's own order rather than the script's, so
-  // the same event lands in the same band whoever wrote the {robot}.
+  // the same event lands in the same band whoever wrote the {robot}. `start`
+  // is first because the language lists it first, and sits at the same left
+  // margin as the rest.
   for (const event of EVENT_NAMES) {
-    if (event === "start") continue;
     const band = order(take((p) => p.block.event === event));
     if (band.length > 0) bands.push({ event, keys: band.map((p) => p.key) });
   }
