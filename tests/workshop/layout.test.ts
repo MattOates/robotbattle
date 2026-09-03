@@ -136,22 +136,22 @@ describe("the canonical arrangement", () => {
     expect(band).toContain("can:dodge");
   });
 
-  it("puts the library before the things that use it", () => {
+  it("puts a called behaviour above the blocks that call it", () => {
     /*
-     * A behaviour that names no event is a *part* — something a handler
-     * `do`es — and it is read before the handler, not after. Boid is written
-     * entirely this way: `fold`, `remember`, `fly` and `forget` are the
-     * vocabulary and everything else is a sentence built out of it. Put last,
-     * the reader meets every call before the thing it calls.
+     * A behaviour naming no event is not started by the world; it is started
+     * by another block saying `do`. It is read before its caller, not after.
+     * Boid is written entirely this way: `fold`, `remember`, `fly` and
+     * `forget` are the vocabulary and everything else is a sentence built out
+     * of it. Put last, the reader meets every call before the thing it calls.
      */
     const bands = tidyBands(fromSource(src));
-    const library = bands.findIndex((b) => b.keys.includes("can:helper"));
-    const firstHandler = bands.findIndex((b) => b.event !== null && b.event !== "start");
-    expect(library).toBeGreaterThan(0);
-    expect(library).toBeLessThan(firstHandler);
+    const called = bands.findIndex((b) => b.keys.includes("can:helper"));
+    const firstTriggered = bands.findIndex((b) => b.event !== null && b.event !== "start");
+    expect(called).toBeGreaterThan(0);
+    expect(called).toBeLessThan(firstTriggered);
   });
 
-  it("keeps the library after the starting work, not before it", () => {
+  it("keeps the called behaviours after the starting work, not before it", () => {
     const bands = tidyBands(fromSource(src));
     expect(bands.map((b) => b.keys)).toEqual([
       ["robot"],
@@ -370,12 +370,12 @@ describe("the shape of a tidy", () => {
     expect(bands[1]!.event).toBe("start");
   });
 
-  it("reads the behaviours that answer to nothing before their callers", () => {
+  it("reads the called behaviours before their callers", () => {
     const bands = tidyBands(fromSource(src));
-    const library = bands.findIndex((b) => b.keys.includes("can:helper"));
-    const handlers = bands.findIndex((b) => b.event !== null && b.event !== "start");
-    expect(library).toBeGreaterThan(0);
-    expect(library).toBeLessThan(handlers);
+    const called = bands.findIndex((b) => b.keys.includes("can:helper"));
+    const triggered = bands.findIndex((b) => b.event !== null && b.event !== "start");
+    expect(called).toBeGreaterThan(0);
+    expect(called).toBeLessThan(triggered);
   });
 });
 

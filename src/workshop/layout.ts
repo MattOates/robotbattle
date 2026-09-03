@@ -75,7 +75,7 @@ interface Placed {
  * handler — and there would be no `on:` key in it to read.
  */
 export interface Band {
-  /** The event this row answers to, or null for the header and the library. */
+  /** The event this row is triggered by; null for the heading and the called. */
   event: EventName | null;
   keys: string[];
 }
@@ -91,22 +91,24 @@ export interface Band {
  * - Then `on start`, at the same left margin as everything below it, because
  *   it *is* behaviour: the first thing that happens rather than part of the
  *   declaration.
- * - Then the library: every named behaviour that answers to no event. These
- *   are the parts — the things a handler `do`es — and they come *before* the
- *   handlers because that is the order they are read in. Boid is written
- *   entirely this way: `fold`, `remember`, `fly` and `forget` are the
- *   vocabulary, and `listen`, `spot` and `flock_together` are sentences built
- *   out of it. Put last, the reader meets every call before the thing it
- *   calls.
+ * - Then the called behaviours: the ones another block reaches by `do`. They
+ *   come *before* their callers because that is the order they are read in.
+ *   Boid is written entirely this way: `fold`, `remember`, `fly` and `forget`
+ *   are the vocabulary, and `listen`, `spot` and `flock_together` are
+ *   sentences built out of it. Put last, the reader meets every call before
+ *   the thing it calls.
  * - Then one row per event, in the order the language lists them, holding the
  *   handler for that event and any named behaviour declared `given` it —
  *   because those run together, and with no `on` block the behaviours *are*
  *   the handler. Boid has no `on` blocks at all, so for it this is the whole
  *   of its behaviour.
  *
- * The split that matters here is not `on` against `can`: it is whether a
- * block names an event. One that does is behaviour and belongs with its
- * event; one that does not is a part, and belongs with the other parts.
+ * So the split that decides a row is what starts the block, and there are two
+ * answers: the world starts it, or your own code does. A block naming an
+ * event is *triggered* and bands with that event. A block naming none is
+ * *called*, and bands with the others that are. Which is why this is not the
+ * `on`-against-`can` split it looks like: `can dodge given hit by bullet` is
+ * triggered, and lives with the collisions.
  */
 export function tidyBands(sketch: Sketch): Band[] {
   const placed: Placed[] = [];
@@ -131,9 +133,9 @@ export function tidyBands(sketch: Sketch): Band[] {
   const starting = order(take((p) => p.block.event === "start"));
   if (starting.length > 0) bands.push({ event: "start", keys: starting.map((p) => p.key) });
 
-  // Then the library, before any of the behaviour that uses it.
-  const library = order(take((p) => p.block.event === null));
-  if (library.length > 0) bands.push({ event: null, keys: library.map((p) => p.key) });
+  // Then the called behaviours, before the blocks that call them.
+  const called = order(take((p) => p.block.event === null));
+  if (called.length > 0) bands.push({ event: null, keys: called.map((p) => p.key) });
 
   // Then a row per event, in the language's own order rather than the
   // script's, so the same event lands in the same band whoever wrote the
