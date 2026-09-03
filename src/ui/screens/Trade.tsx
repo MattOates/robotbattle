@@ -235,7 +235,7 @@ export function Trade({
   const keep = useCallback(
     (goods: TradeGoods, fromName: string): boolean => {
       if (goods.kind === "robot") {
-        const added = library.importTraded(goods.source, fromName);
+        const added = library.importTraded(goods.source, fromName, Date.now(), goods.layout);
         refresh();
         setSelectedId(added.id);
         setNotice(`${added.name} is in your library, from ${fromName}.`);

@@ -5645,7 +5645,9 @@ select.hole {
  * the card composer have, and for the same reason: this is the pane that gives
  * way when anything above it grows.
  */
+/* The canvas fills the pane; the tidy control floats on it. */
 .block-editor {
+  position: relative;
   flex: 1;
   min-height: 18em;
   background: var(--well);
@@ -5801,4 +5803,24 @@ select.hole {
   font-size: var(--t-4);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/* The block canvas itself, inside the positioned shell. */
+.block-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/*
+ * Tidy, over the canvas rather than in a bar above it.
+ *
+ * The pane has no room for another strip — that argument is made at length in
+ * the skin — and this belongs to the canvas anyway: it is the one control that
+ * does nothing to the robot and everything to the view of it.
+ */
+.tidy-blocks {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  z-index: 2;
 }

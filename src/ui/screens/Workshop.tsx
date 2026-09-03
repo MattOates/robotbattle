@@ -1099,6 +1099,8 @@ export function Workshop({
                      */
                     editable={editable}
                     {...(blockCollab ? { collab: blockCollab } : {})}
+                    {...(selected.layout ? { layout: selected.layout } : {})}
+                    onLayout={(next) => library.setLayout(selected.id, next)}
                   />
                 </Suspense>
               ) : way === "cards" && selected ? (

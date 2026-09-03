@@ -31,6 +31,8 @@ import {
   variableFlyout,
 } from "./defs.js";
 import { themeFor, themeKey } from "./theme.js";
+import { applyLayout, readLayout, tidy } from "./arrange.js";
+import { isComplete, pruneLayout, type Layout } from "../../workshop/layout.js";
 import { PRESENCE_FIELD, byBlock, remoteCursors } from "./presence.js";
 import { writeShared, type SharedText } from "./sharedText.js";
 import type { Theme } from "../../lang/vocab.js";
@@ -59,6 +61,15 @@ interface Props {
    * is sitting on which block.
    */
   collab?: { text: SharedText; awareness: AwarenessLike } | undefined;
+  /**
+   * Where the blocks were left, and how to remember where they are put.
+   *
+   * Kept beside the {robot} rather than in the script — see
+   * `store/types.ts` — so it travels when one is traded and never becomes
+   * something the compiler has to carry.
+   */
+  layout?: Layout | undefined;
+  onLayout?: ((layout: Layout) => void) | undefined;
 }
 
 export function BlockEditor({
@@ -68,6 +79,8 @@ export function BlockEditor({
   register,
   editable,
   collab,
+  layout,
+  onLayout,
 }: Props) {
   /*
    * Which skin and arena the canvas is dressed for.
@@ -100,9 +113,11 @@ export function BlockEditor({
   const sourceRef = useRef(source);
   const onSourceRef = useRef(onSource);
   const collabRef = useRef(collab);
+  const onLayoutRef = useRef(onLayout);
   sourceRef.current = source;
   onSourceRef.current = onSource;
   collabRef.current = collab;
+  onLayoutRef.current = onLayout;
 
   useEffect(() => {
     if (!host.current) return;
@@ -138,6 +153,28 @@ export function BlockEditor({
     ws.registerToolboxCategoryCallback(VARIABLE_CATEGORY, () => variableFlyout());
     ws.registerToolboxCategoryCallback(ROUTINE_CATEGORY, () => routineFlyout());
 
+    /*
+     * Where a block was put is remembered, and separately from what it says.
+     *
+     * A move is not an edit: it does not change the {robot}, it must not touch
+     * `updatedAt`, and it must not be written into the shared document during
+     * a session — two people tidying the same canvas would fight over the
+     * script itself rather than over a preference each of them holds.
+     */
+    const onMove = (event: Blockly.Events.Abstract) => {
+      if (event.type !== Blockly.Events.BLOCK_MOVE || ws.isDragging()) return;
+      const moved = event as Blockly.Events.BlockMove;
+      // Only a top-level move is a position; dropping a statement into a hat
+      // is a change to the script and is handled as one below.
+      if (moved.newParentId !== undefined || moved.oldParentId !== undefined) return;
+      const sketch = fromSource(sourceRef.current);
+      // Pruned on the way out, so a behaviour that has been renamed does not
+      // leave its old position in storage to be handed back to whatever takes
+      // the name next.
+      onLayoutRef.current?.(pruneLayout(readLayout(ws, sketch), sketch));
+    };
+    ws.addChangeListener(onMove);
+
     const onChange = (event: Blockly.Events.Abstract) => {
       if (ws.isDragging()) return;
       if (!Blockly.Events.BUMP_EVENTS.includes(event.type) && !isMeaningful(event)) return;
@@ -163,6 +200,7 @@ export function BlockEditor({
     ws.addChangeListener(onChange);
 
     return () => {
+      ws.removeChangeListener(onMove);
       ws.removeChangeListener(onChange);
       ws.dispose();
       workspace.current = null;
@@ -188,15 +226,19 @@ export function BlockEditor({
         ws,
       );
       /*
-       * Lay the hats out in a column.
+       * Put the blocks where they belong.
        *
        * Nothing in the serialised form carries a position — a script is an
        * order, not a canvas — so every top block loads at the origin and they
-       * pile on top of one another. `cleanUp` is Blockly's own tidy, and here
-       * it is not a convenience but the only thing that makes the workspace
-       * readable at all.
+       * pile on one another. Where they go is either what was remembered, or,
+       * the first time a script is opened as blocks, the canonical
+       * arrangement: the same one the tidy button applies, so a {robot} looks
+       * the way it will keep looking rather than being shuffled the first time
+       * anybody presses anything.
        */
-      ws.cleanUp();
+      const sketch = fromSource(source);
+      if (isComplete(layout, sketch)) applyLayout(ws, sketch, layout!);
+      else onLayout?.(tidy(ws, sketch));
       /*
        * Frame the whole {robot}, then stop zooming out.
        *
@@ -299,7 +341,31 @@ export function BlockEditor({
     };
   }, [collab, source]);
 
-  return <div className="block-editor" ref={host} />;
+  /**
+   * Tidy.
+   *
+   * The same arrangement a script gets the first time it is opened, applied
+   * again on request. Its value is not neatness: it is that two people who
+   * started from one {robot} and changed different parts of it can lay both
+   * out and see what differs, which a canvas anybody has dragged around
+   * cannot show.
+   */
+  const onTidy = () => {
+    const ws = workspace.current;
+    if (!ws) return;
+    onLayoutRef.current?.(tidy(ws, fromSource(sourceRef.current)));
+  };
+
+  return (
+    <div className="block-editor">
+      <div className="block-canvas" ref={host} />
+      {editable ? (
+        <button type="button" className="btn small tidy-blocks" onClick={onTidy}>
+          Tidy up
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 /**

@@ -150,7 +150,12 @@ export class Library {
    * is the only record of where the robot came from: the working copy will have
    * moved on within minutes, and nobody labels their own history honestly.
    */
-  importTraded(source: string, from: string, at = Date.now()): StoredRobot {
+  importTraded(
+    source: string,
+    from: string,
+    at = Date.now(),
+    layout?: Record<string, { x: number; y: number }>,
+  ): StoredRobot {
     const robot = this.create(source);
     const who = from.trim().slice(0, 24) || "someone";
     const snapshot: Snapshot = {
@@ -161,7 +166,9 @@ export class Library {
       pinned: false,
       origin: { kind: "trade", from: who, at, robotName: robot.name },
     };
-    const traded = { ...robot, snapshots: [snapshot] };
+    // The layout comes across with it, because a {robot} somebody has laid out
+    // well is easier to read than the same {robot} in a heap.
+    const traded = { ...robot, snapshots: [snapshot], ...(layout ? { layout } : {}) };
     this.save(this.list().map((r) => (r.id === robot.id ? traded : r)));
     return traded;
   }
@@ -199,6 +206,22 @@ export class Library {
       ),
     );
     return this.updateSource(robotId, source);
+  }
+
+  /**
+   * Remember where the blocks sit.
+   *
+   * Not folded into `updateSource`, because moving a block is not editing the
+   * {robot}: it does not touch `updatedAt`, it does not make a version worth
+   * saving, and a session spent tidying should not read as a session spent
+   * changing something.
+   */
+  setLayout(id: string, layout: Record<string, { x: number; y: number }>): void {
+    writeJson(
+      this.store,
+      KEY,
+      this.list().map((robot) => (robot.id === id ? { ...robot, layout } : robot)),
+    );
   }
 
   // ---- snapshots --------------------------------------------------------

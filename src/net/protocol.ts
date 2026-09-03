@@ -364,9 +364,53 @@ export interface ShelfItem {
  * a block, and sometimes not there at all.
  */
 export type TradeGoods =
-  | { kind: "robot"; name: string; color: string; source: string }
+  /**
+   * A {robot}, and where its blocks sit.
+   *
+   * The layout travels because a {robot} somebody has laid out well is easier
+   * to read than the same {robot} in a heap, and being easy to read is most of
+   * what makes one worth being given. It is not part of the program — the
+   * script alone decides what the {robot} does — so a peer that sends none, or
+   * sends nonsense, costs the receiver nothing but a tidy-up.
+   */
+  | { kind: "robot"; name: string; color: string; source: string; layout?: BlockLayout }
   | { kind: "arena"; name: string; spec: ArenaSpec }
   | { kind: "block"; name: string; text: string; from: string };
+
+/** Where the blocks of a traded {robot} sit, by the key `workshop/layout.ts` gives them. */
+export type BlockLayout = Record<string, { x: number; y: number }>;
+
+/** How many blocks a layout may name. A script cannot have more hats than events. */
+const MAX_LAYOUT_ENTRIES = 64;
+/** Far outside any canvas anybody will use, and small enough to stay finite. */
+const MAX_COORD = 100_000;
+
+/**
+ * A layout from somebody else's browser.
+ *
+ * Untrusted like everything else on the wire, and unusually easy to make
+ * harmful by accident: a coordinate of `Infinity` or a hundred thousand
+ * entries would be dutifully applied and the receiver's canvas would be empty
+ * with their {robot} somewhere off in the dark. Anything that is not a finite
+ * pair of numbers is dropped, and dropping one costs only its position.
+ */
+export function sanitiseLayout(value: unknown): BlockLayout | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const out: BlockLayout = {};
+  let taken = 0;
+  for (const [key, spot] of Object.entries(value as Record<string, unknown>)) {
+    if (taken >= MAX_LAYOUT_ENTRIES) break;
+    if (typeof key !== "string" || key.length > 64) continue;
+    if (typeof spot !== "object" || spot === null) continue;
+    const { x, y } = spot as { x?: unknown; y?: unknown };
+    if (typeof x !== "number" || typeof y !== "number") continue;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (Math.abs(x) > MAX_COORD || Math.abs(y) > MAX_COORD) continue;
+    out[key] = { x: Math.round(x), y: Math.round(y) };
+    taken++;
+  }
+  return taken > 0 ? out : undefined;
+}
 
 /** Cap on a shelf, so nobody can push a thousand rows into someone's screen. */
 export const MAX_SHELF = 60;
@@ -436,8 +480,10 @@ export function sanitiseGoods(value: unknown): TradeGoods | null {
   const source = sanitiseText(g["source"], MAX_SOURCE_LENGTH);
   if (!source.trim()) return null;
   const color = g["color"];
+  const layout = sanitiseLayout(g["layout"]);
   return {
     kind: "robot",
+    ...(layout ? { layout } : {}),
     name,
     color: typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color) ? color : "#8a8f98",
     source,
