@@ -42,6 +42,7 @@ export function renderDoc(text: string, theme: Theme = "mechanical"): string {
     .replace(/\{broadcast\}/g, words.broadcastVerb)
     .replace(/\{radio\}/g, words.radio)
     .replace(/\{ally\}/g, words.ally)
+    .replace(/\{teams\}/g, words.teamPlural)
     .replace(/\{team\}/g, words.team)
     .replace(/\{arena\}/g, words.arena);
 }

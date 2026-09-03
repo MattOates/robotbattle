@@ -246,7 +246,7 @@ name "Flocker"
 chassis tank
 color #6ad98a
 
--- Four copies of THIS script take the field, all on one side. Change anything
+-- Four copies of THIS script take the field, all on one {team}. Change anything
 -- below and all four change together -- which is the only way to see whether a
 -- flocking rule works, because a flock of one is just a robot.
 

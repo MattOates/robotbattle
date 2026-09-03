@@ -100,5 +100,5 @@ how often each actually connects.
 
 One more thing, for later. In a team match `on sense robot` also tells you
 `event.friend`, and a {robot} that fires without looking at it will happily
-destroy its own side. Shooting is the one place where checking first is not
+destroy its own {team}. Shooting is the one place where checking first is not
 optional.

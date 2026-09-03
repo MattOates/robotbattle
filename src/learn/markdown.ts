@@ -138,6 +138,12 @@ export function fillVocab(body: string, theme: Theme): string {
     broadcast: w.broadcastVerb,
     Broadcast: w.broadcastVerb[0]!.toUpperCase() + w.broadcastVerb.slice(1),
     health: w.health,
+    // A colony pluralises to colonies, so the plural is carried rather than
+    // built from the singular.
+    team: w.team,
+    teams: w.teamPlural,
+    Team: w.team[0]!.toUpperCase() + w.team.slice(1),
+    Teams: w.teamPlural[0]!.toUpperCase() + w.teamPlural.slice(1),
     fire: w.fireVerb,
     // The two verbs were the only capitalisable entries in this table with no
     // capital form, so a sentence could not start with either — which is what
