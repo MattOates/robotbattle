@@ -33,28 +33,13 @@ export const NEWS: readonly NewsEntry[] = [
   },
   {
     date: "2026-09-02",
-    title: "Why the fight went that way, in pictures",
-    body: "After a trial there is a reading of what happened rather than a table of numbers: four moments from the fight, drawn, with a line under each \u2014 and two or three things worth fixing, each with a button that adds the missing piece for you. If your {robot} never fired a shot, it says so, and it says which part was missing.",
+    title: "Why the fight went that way, and blocks you can read in the dark",
+    body: "After a trial there is now a reading of what happened rather than a table of numbers: four moments from the fight, drawn, with a line under each \u2014 and two or three things worth fixing, each with a button that adds the missing piece for you. If your {robot} never fired a shot, it says so, and it says which part was missing. The blocks themselves also stopped being a bright slab on a dark page: they take their colours from whichever skin you are in, they pick a colour with a colour picker instead of a number, and every {robot} that came with the game is now checked, on every build, to survive the trip from writing to blocks and back without a character changing.",
   },
   {
     date: "2026-08-31",
-    title: "Two people in one canvas",
-    body: "Open a session and you can drag blocks around together. Everybody's cursor is on the canvas with their name on it, and the block somebody else is holding is outlined in their colour, so you can see what they are in the middle of instead of finding out afterwards.",
-  },
-  {
-    date: "2026-08-31",
-    title: "The whole language, as blocks",
-    body: "There is a block editor between Code and Cards, built on Blockly \u2014 the same thing Scratch is made of. It is not a simplified version: everything the language can say has a block, including choosing, repeating, remembering, and behaviours of your own with names and things passed into them. Blocks and text are the same script seen two ways, so you can drag a {robot} together, read it as writing, and every {robot} that came with the game opens in either.",
-  },
-  {
-    date: "2026-08-31",
-    title: "Build a {robot} by tapping",
-    body: "The youngest way in: a shelf of cards saying when something happens and what to do about it, assembled by tapping, with pickers instead of typing \u2014 a dial for how fast, a compass for which way. It writes the same script everybody else writes, so what a seven-year-old makes opens in the code editor unchanged.",
-  },
-  {
-    date: "2026-08-31",
-    title: "Quests, and how much to show",
-    body: "It asks how old you are when you first arrive, and how much is on screen follows from the answer \u2014 bigger, brighter and plainer for the youngest, the full instrument for everybody else, and changeable in Settings whenever you like. Instead of six equal cards there is a run of quests that walk you from a sleepy {robot} to winning a fight, opening one part of the game at a time and saying why it was worth having.",
+    title: "Three ways to build, and quests to walk you through them",
+    body: "The biggest change since the game was written. It asks how old you are when you first arrive and how much is on screen follows from the answer \u2014 bigger, brighter and plainer for the youngest, the full instrument for everybody else, changeable in Settings whenever you like \u2014 and instead of six equal cards there is a run of quests that walk you from a sleepy {robot} to winning a fight, opening one part of the game at a time and saying why it was worth having. There are now three ways to build one and they are all the same script: a shelf of cards you tap together, with a dial for how fast and a compass for which way; a block canvas built on Blockly, the same thing Scratch is made of, where everything the language can say has a block \u2014 choosing, repeating, remembering, and behaviours of your own with names and things passed into them; and the text itself. So what a seven-year-old taps out opens in the code editor unchanged. Open a session and two of you can drag blocks around together, each cursor named and each held block outlined in the colour of whoever is holding it. And the {arena} got its screen back: watching a fight is no longer done through a letterbox.",
   },
   {
     date: "2026-08-23",
