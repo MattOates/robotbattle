@@ -7,7 +7,6 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
 import { NEWS, formatNewsDate, newsBody, newsTitle } from "../../src/ui/news.js";
 import type { Theme } from "../../src/lang/vocab.js";
 
@@ -58,33 +57,25 @@ describe("the news reads in both worlds", () => {
   });
 });
 
-describe("the news matches the history", () => {
-  const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8" }).trim();
-
-  /**
-   * Whether this checkout can actually see the past.
-   *
-   * A shallow clone has one commit in it, which makes every entry older than
-   * that commit look invented — so the check below would fail loudly while
-   * proving nothing. It is skipped rather than fudged, because a test that
-   * cannot answer its question should say so instead of guessing.
-   *
-   * CI asks for the full history (`fetch-depth: 0`), so there it always runs.
-   * This guard is for whoever clones with `--depth`.
-   */
-  const shallow = git("rev-parse", "--is-shallow-repository") === "true";
-
-  const days = new Set(
-    git("log", "--date=short", "--pretty=format:%ad").split("\n").filter(Boolean),
-  );
-
-  it.skipIf(shallow)("only claims days that something actually landed on", () => {
-    // A changelog whose dates are invented is worse than no changelog.
-    for (const entry of NEWS) {
-      expect(days.has(entry.date), `${entry.date} — ${entry.title}`).toBe(true);
-    }
-  });
-
+/*
+ * There was a check here that every date matched a day in the git log.
+ *
+ * It has been removed, and the reason is worth keeping. A News date is
+ * editorial — roughly when a thing happened, for a reader deciding whether
+ * they have seen it before — and no reader is any better off for it agreeing
+ * with commit metadata. Nothing about the changelog is wrong if it does not.
+ *
+ * What it did instead was make merge strategy load-bearing. This repository
+ * squash merges, so a branch's own days do not survive the merge: a fortnight
+ * of afternoons arrives as one commit dated the day the button was pressed.
+ * The check therefore passed on every branch and could only fail after
+ * merging, which is how it took the Pages deploy down over prose that was
+ * perfectly accurate.
+ *
+ * The checks below are the ones with a reader behind them: the copy has to
+ * read correctly in both worlds, resolve its placeholders, and be in order.
+ */
+describe("the news is in a sensible order", () => {
   it("is ordered newest first", () => {
     const dates = NEWS.map((e) => e.date);
     expect([...dates].sort().reverse()).toEqual(dates);
