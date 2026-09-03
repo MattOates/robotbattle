@@ -1,27 +1,41 @@
 /**
- * First visit: pick a world, pick a name.
+ * First visit: how old you are, which world, and what to call you.
  *
  * Asked once, and only once, because the answers are needed everywhere —
  * which words the editor suggests, what the arena looks like, and what other
  * people see you called in chat, trades and shared editing. Getting them here
  * is what lets someone follow a shared link straight into a room instead of
  * filling in a form first.
+ *
+ * Age comes first and is the only one of the three that changes the shape of
+ * what follows, so asking it after the others would mean rebuilding the screen
+ * underneath somebody mid-form. It is asked in bands, the answer is thrown away
+ * the moment it has chosen a level, and the card says plainly what the level
+ * does — so it reads as picking how you want to play rather than as a test.
+ * "Show me everything" is there for the adult who resents being asked at all.
  */
 
 import { useEffect, useState } from "react";
 import { BRANDING } from "../branding.js";
+import { AGE_BANDS, LEVEL_SPECS, levelForAge, type AgeBand, type Level } from "../level.js";
 import { THEMES, type Theme } from "../../lang/vocab.js";
 
 interface Props {
   /** Where they were heading, if they arrived on a shared link. */
   invitedTo: string | null;
   /** `tour` is false when they would rather just get on with it. */
-  onDone: (name: string, theme: Theme, tour: boolean) => void;
+  onDone: (name: string, theme: Theme, level: Level, tour: boolean) => void;
 }
 
 export function Welcome({ invitedTo, onDone }: Props) {
   const [theme, setTheme] = useState<Theme>("mechanical");
   const [name, setName] = useState("");
+  // Null until answered. An invitation skips the question — somebody arriving
+  // on a friend's link is mid-conversation with that friend, and three
+  // questions before the door is two too many — and lands on Builder, which
+  // has the rooms in it.
+  const [band, setBand] = useState<AgeBand | null>(null);
+  const level: Level = band ? levelForAge(band) : "builder";
   const chosen = BRANDING[theme];
   const words = THEMES[theme];
 
@@ -31,7 +45,26 @@ export function Welcome({ invitedTo, onDone }: Props) {
     document.documentElement.dataset["arena"] = theme;
   }, [theme]);
 
-  const submit = (tour: boolean) => onDone(name, theme, tour);
+  // And preview the level the same way, for a stronger reason. The Explorer
+  // card promises big buttons and plain words; leaving the screen small and
+  // dark underneath that promise makes the card a claim to be taken on trust
+  // rather than a choice you can see. Nothing is committed until `onDone` —
+  // this only dresses the welcome screen — but a seven-year-old picking their
+  // own band should watch the game become theirs while they do it.
+  useEffect(() => {
+    if (!band) return;
+    const root = document.documentElement;
+    const chosenLevel = levelForAge(band);
+    root.dataset["level"] = chosenLevel;
+    root.dataset["skin"] = LEVEL_SPECS[chosenLevel].skin;
+  }, [band]);
+
+  const submit = (tour: boolean) => onDone(name, theme, level, tour);
+
+  // Nothing below the age question until it is answered: the world cards and
+  // the name field are written in one register, and which register depends on
+  // this answer.
+  const asked = band !== null || invitedTo !== null;
 
   return (
     <div className="welcome">
@@ -49,6 +82,52 @@ export function Welcome({ invitedTo, onDone }: Props) {
           </div>
         ) : null}
 
+        {invitedTo ? null : (
+          <>
+            <fieldset className="age-choice">
+              <legend className="silkscreen">How old are you?</legend>
+              {AGE_BANDS.map((option) => {
+                const spec = LEVEL_SPECS[option.level];
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className="age-card"
+                    aria-pressed={band === option.id}
+                    onClick={() => setBand(option.id)}
+                  >
+                    <span className="age-range">{option.label}</span>
+                    <span className="age-level">{spec.label}</span>
+                  </button>
+                );
+              })}
+            </fieldset>
+            {/* What the answer actually did, in the answer's own words. An age
+                question with an invisible consequence is the kind a child
+                learns to lie to. */}
+            <p className="welcome-note">
+              {band ? (
+                LEVEL_SPECS[level].blurb
+              ) : (
+                <>It decides how much is on screen at once. You can change it whenever you like.</>
+              )}
+            </p>
+            {band === null ? (
+              <div className="join-actions">
+                <button
+                  type="button"
+                  className="menu-link"
+                  onClick={() => setBand("15+")}
+                >
+                  Just show me everything
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
+
+        {asked ? (
+        <>
         <fieldset className="world-choice">
           <legend className="silkscreen">Which world?</legend>
           {(["mechanical", "biological"] as Theme[]).map((option) => {
@@ -89,7 +168,9 @@ export function Welcome({ invitedTo, onDone }: Props) {
             placeholder="Your name"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && name.trim()) submit(!invitedTo);
+              if (e.key === "Enter" && name.trim()) {
+                submit(!invitedTo && level !== "explorer");
+              }
             }}
           />
           <span className="roster-meta">
@@ -111,30 +192,54 @@ export function Welcome({ invitedTo, onDone }: Props) {
         ) : (
           <>
             <div className="join-actions">
-              <button
-                type="button"
-                className="btn primary"
-                disabled={name.trim() === ""}
-                onClick={() => submit(true)}
-              >
-                Show me how it works
-              </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={name.trim() === ""}
-                onClick={() => submit(false)}
-              >
-                I'll find my own way
-              </button>
+              {level === "explorer" ? (
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={name.trim() === ""}
+                  onClick={() => submit(false)}
+                >
+                  Start exploring
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={name.trim() === ""}
+                    onClick={() => submit(true)}
+                  >
+                    Show me how it works
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={name.trim() === ""}
+                    onClick={() => submit(false)}
+                  >
+                    I'll find my own way
+                  </button>
+                </>
+              )}
             </div>
             <p className="welcome-note">
-              {chosen.character.name} will walk you through building a {words.robot} that
-              wins a fight — about five minutes. Skip it and you still get the finished{" "}
-              {words.robot}; you just get to take it apart yourself.
+              {level === "explorer" ? (
+                <>
+                  You will start with a sleepy {words.robot}. {chosen.character.name} and the
+                  quest bar will help you wake it up and build the part that wins a fight.
+                </>
+              ) : (
+                <>
+                  {chosen.character.name} will walk you through building a {words.robot} that
+                  wins a fight — about five minutes. Skip it and you still get the finished{" "}
+                  {words.robot}; you just get to take it apart yourself.
+                </>
+              )}
             </p>
           </>
         )}
+        </>
+        ) : null}
       </div>
     </div>
   );

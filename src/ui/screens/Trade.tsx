@@ -53,6 +53,7 @@ import {
   type TradeGoods,
   type TradeKind,
 } from "../../net/protocol.js";
+import type { QuestSignal } from "../../workshop/quests.js";
 
 /**
  * The editor is the biggest thing in the bundle, and most of a trade never
@@ -66,6 +67,7 @@ interface Props {
   playerName: string;
   onPlayerName: (name: string) => void;
   initialRoom: string | null;
+  onQuestSignal: (signal: QuestSignal) => void;
 }
 
 /** Something somebody is holding out to us, waiting to hear back. */
@@ -99,7 +101,14 @@ function kindWord(kind: TradeKind, words: { robot: string; arena: string }): str
   return kind === "robot" ? words.robot : kind === "arena" ? words.arena : "block";
 }
 
-export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Props) {
+export function Trade({
+  theme,
+  lib,
+  playerName,
+  onPlayerName,
+  initialRoom,
+  onQuestSignal,
+}: Props) {
   const { library, robots, refresh } = lib;
   const words = THEMES[theme];
 
@@ -226,7 +235,7 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
   const keep = useCallback(
     (goods: TradeGoods, fromName: string): boolean => {
       if (goods.kind === "robot") {
-        const added = library.importTraded(goods.source, fromName);
+        const added = library.importTraded(goods.source, fromName, Date.now(), goods.layout);
         refresh();
         setSelectedId(added.id);
         setNotice(`${added.name} is in your library, from ${fromName}.`);
@@ -369,13 +378,14 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
             setNotice(
               message.accepted ? `${nameOf(from)} took it.` : `${nameOf(from)} passed on it.`,
             );
+            if (message.accepted) onQuestSignal({ kind: "tradeGiven" });
             return;
 
           default:
             return;
         }
       }),
-    [keep, nameOf, offered, room, tradeables],
+    [keep, nameOf, offered, onQuestSignal, room, tradeables],
   );
 
   // --- outgoing ------------------------------------------------------------
@@ -436,6 +446,9 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
   const answer = useCallback(
     (request: IncomingRequest, agreed: boolean) => {
       setRequests((prev) => prev.filter((r) => r !== request));
+      const goods = agreed
+        ? offeredGoods(tradeables, offered, request.kind, request.id)
+        : null;
       room.session?.send(request.from, {
         t: "copyResponse",
         kind: request.kind,
@@ -443,11 +456,12 @@ export function Trade({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
         // Read from the table again rather than from the copy taken when they
         // asked: it may have been taken back in between, and the table is
         // always the authority on what may leave.
-        goods: agreed ? offeredGoods(tradeables, offered, request.kind, request.id) : null,
+        goods,
         reason: agreed ? null : "Not this one, sorry.",
       });
+      if (goods) onQuestSignal({ kind: "tradeGiven" });
     },
-    [offered, room.session, tradeables],
+    [offered, onQuestSignal, room.session, tradeables],
   );
 
   /**

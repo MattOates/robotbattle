@@ -115,7 +115,13 @@ export function offeredGoods(
   if (kind === "robot") {
     const robot = lib.robots.find((r) => r.id === id);
     return robot
-      ? { kind: "robot", name: robot.name, color: robot.color, source: robot.source }
+      ? {
+          kind: "robot",
+          name: robot.name,
+          color: robot.color,
+          source: robot.source,
+          ...(robot.layout ? { layout: robot.layout } : {}),
+        }
       : null;
   }
   if (kind === "arena") {

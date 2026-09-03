@@ -62,7 +62,30 @@ export type TourSignal =
   | { kind: "trial"; opponents: readonly string[]; won: boolean }
   | { kind: "saved" }
   /** The Next button. Only ever satisfies a `next` gate. */
-  | { kind: "next" };
+  | { kind: "next" }
+  /*
+   * Everything below is emitted for the quest system (`workshop/quests.ts`)
+   * rather than for the tour, and no tour gate reads any of it.
+   *
+   * They live in this union anyway, and that is the point: the tour and the
+   * quests are one system seen twice, so the Workshop emits each event once,
+   * to one `signal()`, and the two consumers decide independently whether they
+   * care. A second parallel union would have meant a second set of emitters to
+   * keep in step with the first, and they would have drifted the first time
+   * somebody added a button.
+   */
+  | { kind: "benchRun" }
+  | { kind: "blockTaken" }
+  | { kind: "mapDrawn" }
+  | { kind: "lessonDone"; lesson: string }
+  | { kind: "arenaPlayed" }
+  | { kind: "tradeGiven" }
+  /** A card was added in the composer, rather than a line typed. */
+  | { kind: "cardAdded" }
+  /** They took the picture debrief up on one of its suggested fixes. */
+  | { kind: "fixApplied" }
+  /** They opened the post-fight behaviour inspector. */
+  | { kind: "inspectorOpened" };
 
 export type Gate =
   /** Narration: the reader presses Next when they have read it. */
@@ -293,8 +316,13 @@ export function applySnippet(source: string, insert: NonNullable<TourStep["inser
 // Real RoboScript in canonical words, translated into the reader's vocabulary
 // on the way into the editor. `tests/bots/tourRobot.test.ts` compiles every one
 // of them, so a snippet that does not parse cannot be shipped.
+//
+// Exported because the quest helper offers the same ones. Being handed a
+// working handler and then told what it does is the one thing the tour did
+// that a checklist cannot, and it was worth keeping when the rest of the
+// overlay was not.
 
-const AIM_AND_CHASE = `
+export const AIM_AND_CHASE = `
 on sense robot
   -- Something came into view. event.bearing is which way it is.
   turret.aim at event.bearing
@@ -303,7 +331,7 @@ on sense robot
 end
 `;
 
-const SEE_AND_CHASE = `
+export const SEE_AND_CHASE = `
 on sense robot
   turret.aim at event.bearing
   fire 2
@@ -312,7 +340,7 @@ on sense robot
 end
 `;
 
-const PICK_YOUR_RANGE = `
+export const PICK_YOUR_RANGE = `
 on sense robot
   turret.aim at event.bearing
   turn body by event.bearing

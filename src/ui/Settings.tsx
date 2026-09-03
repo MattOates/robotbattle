@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { BRANDING } from "./branding.js";
+import { LEVELS, LEVEL_SPECS, type Level } from "./level.js";
 import { openBugReport } from "./bugReport.js";
 import { THEMES, type Theme } from "../lang/vocab.js";
 import { assistantRuntime, downloadSizeGB, type AssistantModel } from "../assistant/runtime.js";
@@ -22,11 +23,12 @@ interface Props {
   profile: Profile;
   onName: (name: string) => void;
   onTheme: (theme: Theme) => void;
+  onLevel: (level: Level) => void;
   onAssistantModel: (id: string) => void;
   lib: LibraryApi;
 }
 
-export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Props) {
+export function Settings({ profile, onName, onTheme, onLevel, onAssistantModel, lib }: Props) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -141,6 +143,29 @@ export function Settings({ profile, onName, onTheme, onAssistantModel, lib }: Pr
                 Words and artwork only — both worlds play identically. Right now a robot is
                 a {words.robot}, and it fights in {words.arena}.
               </span>
+            </div>
+
+            {/* Under World rather than above it, because the world is the
+                choice people came to settings to change and this one is
+                usually made once. Worded as what you get, never as an age:
+                nobody should have to declare a birthday to make the text
+                bigger, and a nine-year-old who wants the whole instrument is
+                entitled to it. */}
+            <div className="field">
+              <span className="silkscreen">How much to show</span>
+              <div className="toggle" role="group" aria-label="How much to show">
+                {LEVELS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-pressed={profile.level === option}
+                    onClick={() => onLevel(option)}
+                  >
+                    {LEVEL_SPECS[option].label}
+                  </button>
+                ))}
+              </div>
+              <span className="roster-meta">{LEVEL_SPECS[profile.level].blurb}</span>
             </div>
 
             {/* Only worth showing to a machine that could run one, and only

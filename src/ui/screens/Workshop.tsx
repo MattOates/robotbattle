@@ -16,7 +16,7 @@
  *    conversation onto a robot nobody is working on.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { yCollab } from "y-codemirror.next";
 import type { EditorView } from "@codemirror/view";
 import { BLOCK_MIME, CodeEditor } from "../CodeEditor.js";
@@ -71,7 +71,20 @@ import { ARENA_SIZE } from "../../net/matchsetup.js";
 import { AssistantPanel } from "../../assistant/AssistantPanel.js";
 import { Tour } from "../tour/Tour.js";
 import { useTour } from "../tour/useTour.js";
-import { applySnippet, findLines } from "../tour/steps.js";
+import { applySnippet, findLines, type TourSignal } from "../tour/steps.js";
+import { PANE_LABELS, PANE_LABELS_SIMPLE, type Pane, type PanelName } from "../panes.js";
+import { HelperPanel } from "../quest/HelperPanel.js";
+import { CardComposer } from "../compose/CardComposer.js";
+import { PictureDebrief, whereFixGoes } from "../fight/PictureDebrief.js";
+import { ScriptStatus } from "../ScriptStatus.js";
+import { addCard, cardSpec, fromSource, toSource } from "../../workshop/compose.js";
+// A megabyte of Blockly, fetched only when somebody opens the tab that needs it.
+const BlockEditor = lazy(() =>
+  import("../blocks/BlockEditor.js").then((m) => ({ default: m.BlockEditor })),
+);
+import { AUTHORING_LABELS, type Authoring } from "../panes.js";
+import type { Quest, Step } from "../../workshop/quests.js";
+import { authoringFor, levelSpec, panesFor, showsPanel, type Level } from "../level.js";
 import { TrialPrefs } from "../../store/trial.js";
 import { WorkshopPrefs } from "../../store/workshop.js";
 import { useAssistantUsable } from "../../assistant/useAssistant.js";
@@ -96,28 +109,29 @@ interface Props {
   initialRoom: string | null;
   /** Which model the assistant downloads when it is first asked to. */
   assistantModel: string;
+  level: Level;
+  /** What quests have handed over, unioned with what the level starts with. */
+  unlocked: { panes: Pane[]; panels: PanelName[]; opponents: string[] };
+  /**
+   * The same events the tour is told about, forwarded to the quest system.
+   *
+   * Two consumers, one set of emitters — see the note on `TourSignal`. This is
+   * a prop rather than a hook call because the quests live in the shell: a step
+   * met here has to still be true after navigating away from this screen.
+   */
+  onQuestSignal: (signal: TourSignal) => void;
+  /** The script as it stands, whenever it changes. See `settle`. */
+  onQuestObserve: (world: { source: string | null }) => void;
+  /** The quest step being worked on, for the helper panel. Null when done. */
+  helperStep: { quest: Quest; step: Step } | null;
+  questsDone: ReadonlySet<string>;
+  say: (both: { full: string; simple: string }) => string;
+  fill: (text: string) => string;
+  /** A quest-log deep link into one of this screen's panes. */
+  requestedPane: Pane | null;
+  onRequestedPaneHandled: () => void;
 }
 
-type Pane = "editor" | "map" | "trial" | "bench" | "history";
-
-const PANE_LABELS: Record<Pane, string> = {
-  editor: "Editor",
-  map: "Map",
-  trial: "Trial",
-  bench: "Test bench",
-  history: "History",
-};
-
-/**
- * Which tabs each kind of thing gets.
- *
- * An arena has no Editor because there is no script, and no History because a
- * map does not accumulate one: battle records are filed against a robot, and
- * "this wall layout used to win" is not a sentence. What it keeps is Trial and
- * Test bench, which is the point of editing a map inside the Workshop at all —
- * you draw a labyrinth and immediately find out whether anything can solve it.
- */
-const ROBOT_PANES: Pane[] = ["editor", "trial", "bench", "history"];
 
 /**
  * Spread an `ArenaSpec` into the two flat fields a manifest carries.
@@ -129,7 +143,6 @@ const ROBOT_PANES: Pane[] = ["editor", "trial", "bench", "history"];
 function specToManifest(spec: ArenaSpec) {
   return { terrain: spec.terrain, walls: spec.walls };
 }
-const ARENA_PANES: Pane[] = ["map", "trial", "bench"];
 
 /** What is on screen — for a guest, whatever the host is showing. */
 interface ViewedRobot {
@@ -139,7 +152,23 @@ interface ViewedRobot {
   source: string;
 }
 
-export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }: Props) {
+export function Workshop({
+  theme,
+  lib,
+  playerName,
+  initialRoom,
+  assistantModel,
+  level,
+  unlocked,
+  onQuestSignal,
+  onQuestObserve,
+  helperStep,
+  questsDone,
+  say,
+  fill,
+  requestedPane,
+  onRequestedPaneHandled,
+}: Props) {
   const { library, robots, refresh, chat } = lib;
   const workshopPrefs = useMemo(() => new WorkshopPrefs(), []);
   const [selectedId, setSelectedId] = useState<string | null>(() => {
@@ -165,7 +194,38 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
    * Off in a shared session: a coach mark telling somebody to press Start when
    * only the host can is worse than no help at all.
    */
-  const tour = useTour("workshop", theme, !initialRoom, playerName);
+  /*
+   * The coach-mark tour runs for the instrument skin only.
+   *
+   * Not a preference — see `quest/HelperPanel.tsx`. `Tour.tsx` places its card
+   * from a hard-coded `CARD = { width: 340, height: 260 }`, which is true at
+   * 11px type and roughly half the real height at this skin's, so every
+   * placement decision built on it is wrong. And the Explorer quest arc is
+   * this tour, in five beats instead of twenty, so running both taught the
+   * same lesson twice with two disagreeing progress counters on screen.
+   */
+  const guided = levelSpec(level).skin === "instrument";
+  const rawTour = useTour("workshop", theme, guided && !initialRoom, playerName);
+
+  /*
+   * One emitter, two listeners.
+   *
+   * Every `signal()` in this file was written for the tour. The quest system
+   * wants the same events, so rather than sprinkling a second call beside each
+   * of the six existing ones — which would have drifted apart the first time
+   * somebody added a button — the tour's own `signal` is wrapped once here and
+   * both are told. Neither knows the other exists.
+   */
+  const tour = useMemo(
+    () => ({
+      ...rawTour,
+      signal: (signal: TourSignal) => {
+        rawTour.signal(signal);
+        onQuestSignal(signal);
+      },
+    }),
+    [onQuestSignal, rawTour],
+  );
   const [showCones, setShowCones] = useState(true);
   /**
    * Whether the assistant tray is out.
@@ -226,7 +286,34 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
   const selected = robots.find((r) => r.id === selectedId) ?? robots[0] ?? null;
   const selectedArena = lib.arenas.find((a) => a.id === selectedArenaId) ?? null;
   const editingArena = selectedArena !== null;
-  const panes = editingArena ? ARENA_PANES : ROBOT_PANES;
+  // Two filters, both of which have to pass: what the thing being edited has,
+  // and what this player's level shows plus whatever their quests have opened.
+  const panes = panesFor(level, editingArena ? "arena" : "robot", unlocked.panes);
+  // "Test bench" is a machine-shop word. At the simple register the tabs are
+  // named for what you would go there to do instead — see `ui/panes.ts`.
+  const paneLabels = levelSpec(level).register === "simple" ? PANE_LABELS_SIMPLE : PANE_LABELS;
+  /*
+   * The authoring views on offer, most approachable first — the level decides.
+   * The default is the first, which for an Explorer is cards and for an
+   * Engineer is text, so nobody is moved off what they came for.
+   */
+  /*
+   * A beginner's Workshop has one {robot}, one opponent and one thing worth
+   * looking at. The instrument's three-column layout spends 380px on a column
+   * holding that one {robot} and 320px on a column holding that one opponent,
+   * and takes 305px of height in banners before the arena gets any. `compact`
+   * is what collapses all of that.
+   */
+  const compact = levelSpec(level).register === "simple";
+  const ways = levelSpec(level).authoring;
+  const [way, setWay] = useState<Authoring>(() => ways[0] ?? "text");
+
+  // A level can be changed while this screen remains mounted. Never leave the
+  // player in a view the new level does not offer (and may provide no tab for).
+  useEffect(() => {
+    const next = authoringFor(level, way);
+    if (next !== way) setWay(next);
+  }, [level, way]);
 
   useEffect(() => workshopPrefs.setSelectedRobotId(selectedId), [selectedId, workshopPrefs]);
   useEffect(() => workshopPrefs.setSelectedArenaId(selectedArenaId), [selectedArenaId, workshopPrefs]);
@@ -245,6 +332,33 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
   useEffect(() => {
     if (!panes.includes(pane)) setPane(panes[0]!);
   }, [panes, pane]);
+
+  /*
+   * Honour the pane carried by a quest's "Take me there" action. Editor links
+   * leave an arena, while map links select an existing arena or make the first
+   * one; those panes do not exist for the other kind of selection.
+   */
+  useEffect(() => {
+    if (!requestedPane) return;
+    if (requestedPane === "editor") setSelectedArenaId(null);
+    if (requestedPane === "map" && !selectedArena) {
+      const arena =
+        lib.arenas[0] ??
+        lib.arenaLib.create(`New ${THEMES[theme].arena}`, blankArena());
+      if (lib.arenas.length === 0) refresh();
+      setSelectedArenaId(arena.id);
+    }
+    setPane(requestedPane);
+    onRequestedPaneHandled();
+  }, [
+    lib.arenaLib,
+    lib.arenas,
+    onRequestedPaneHandled,
+    refresh,
+    requestedPane,
+    selectedArena,
+    theme,
+  ]);
 
   useEffect(() => {
     if (!selected && robots.length > 0) setSelectedId(robots[0]!.id);
@@ -500,6 +614,20 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
     announceArrival({ kind: "screen", screen: "workshop" });
   }, [announceArrival]);
 
+  /*
+   * Show the quests the script as it stands, not only as it changes.
+   *
+   * `updateSource` below signals on every edit, which is all the tour ever
+   * needed — it is choreographing what somebody is doing right now. A quest
+   * asks a different question, about the world rather than the moment, so this
+   * is an observation rather than an event: it credits whatever the *current*
+   * quest already asks for, and stops there. That is the difference between
+   * "you have already done this one" and "here is the end of the story".
+   */
+  useEffect(() => {
+    onQuestObserve({ source: selected?.source ?? null });
+  }, [onQuestObserve, selected?.id, selected?.source]);
+
   const updateSource = useCallback(
     (source: string) => {
       if (!selected) return;
@@ -509,6 +637,32 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
     },
     [library, refresh, selected, tour],
   );
+
+  /**
+   * Take the picture debrief up on one of its suggestions.
+   *
+   * The card goes where it would actually run — a `fire` inside the handler
+   * that saw something, a sweep inside `on start` — rather than on the end of
+   * the script, where it would be legal, silent and baffling. When that
+   * handler does not exist yet the button is not offered at all: the finding's
+   * own words already say to add it, and adding a handler on somebody's behalf
+   * is a bigger move than adding a line to one.
+   */
+  const applyFix = useCallback(
+    (cardId: string) => {
+      if (!selected || !editable || inSession) return;
+      const spec = cardSpec(cardId);
+      if (!spec) return;
+      const sketch = fromSource(selected.source);
+      const blockId = whereFixGoes(sketch, cardId);
+      if (!blockId) return;
+      updateSource(toSource(addCard(sketch, blockId, spec)));
+      setPane("editor");
+      tour.signal({ kind: "fixApplied" });
+    },
+    [editable, inSession, selected, tour, updateSource],
+  );
+
 
   // In a session the shared document is the working copy, so the owner's
   // library is written as everyone types. Snapshots are the undo.
@@ -526,6 +680,18 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
   const collab = useMemo(() => {
     if (!provider || !sessionRobotId || !editable) return undefined;
     return yCollab(provider.textFor(sessionRobotId), provider.awareness);
+  }, [provider, sessionRobotId, editable]);
+
+  /*
+   * The same shared document, for the block editor.
+   *
+   * `yCollab` above is a CodeMirror extension and means nothing to a block
+   * canvas, so the block editor is handed the two things it actually needs —
+   * the text to write into, and the awareness to say where it is.
+   */
+  const blockCollab = useMemo(() => {
+    if (!provider || !sessionRobotId || !editable) return undefined;
+    return { text: provider.textFor(sessionRobotId), awareness: provider.awareness };
   }, [provider, sessionRobotId, editable]);
 
   const words = THEMES[theme];
@@ -552,7 +718,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
    * from one week to the next.
    */
   const assistantOpponents = useMemo(
-    () => buildContenders([], selected?.id ?? null),
+    () => buildContenders([], selected?.id ?? null, null),
     [selected?.id],
   );
 
@@ -609,8 +775,17 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
   }, [applyBlock, pane, pendingBlock]);
 
   return (
-    <div className="workshop">
-      <header className="screen-head">
+    <div className={`workshop${compact ? " compact" : ""}`}>
+      {/*
+        * Hidden below the instrument.
+        *
+        * "← Menu" and the word "Workshop" cost 55px of height and say what the
+        * journey bar already says with the Build station lit — and the arena
+        * was the thing paying for it, since the trial canvas is height-bound
+        * and was down to 320×220 in a 1512×827 window. A room code still has
+        * to appear, so the header stays when there is one.
+        */}
+      <header className={`screen-head${compact && !inSession ? " hidden" : ""}`}>
         <button type="button" className="btn small" onClick={() => navigate("menu")}>
           ← Menu
         </button>
@@ -705,6 +880,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
             />
           )}
 
+          {showsPanel(level, "behaviours", unlocked.panels) ? (
           <BlockShelf
             groups={shelfGroups}
             theme={theme}
@@ -723,13 +899,15 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
             onTake={(block) => {
               setPane("editor");
               setPendingBlock(block);
+              tour.signal({ kind: "blockTaken" });
             }}
           />
+          ) : null}
 
           {/* Last of the three shelves. Places are the thing you reach for
               least often, and the one whose selection changes the most. Hidden
               for a guest, who is here to look at somebody else's robot. */}
-          {!inSession || isHost ? (
+          {(!inSession || isHost) && showsPanel(level, "arenas", unlocked.panels) ? (
             <ArenaShelf
               lib={lib}
               theme={theme}
@@ -738,6 +916,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
             />
           ) : null}
 
+          {showsPanel(level, "room", unlocked.panels) ? (
           <SessionPanel
             room={room}
             inSession={inSession}
@@ -745,7 +924,9 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
             canStart={selected !== null}
             onStart={startSession}
           />
+          ) : null}
 
+          {showsPanel(level, "chat", unlocked.panels) ? (
           <ChatPanel
             inSession={inSession}
             robotId={inSession ? sessionRobotId : (selected?.id ?? null)}
@@ -773,9 +954,27 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               });
             }}
           />
+          ) : null}
         </aside>
 
         <div className="column">
+          {/* Above the tabs and in the flow, so it can never cover them. */}
+          {!guided && helperStep ? (
+            <HelperPanel
+              quest={helperStep.quest}
+              step={helperStep.step}
+              theme={theme}
+              say={say}
+              fill={fill}
+              done={questsDone}
+              script={
+                pane === "editor" && selected
+                  ? { source: selected.source, onChange: updateSource, editable }
+                  : null
+              }
+            />
+          ) : null}
+
           <div className="pane-tabs" role="tablist">
             {panes.map((name) => (
               <button
@@ -790,7 +989,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                   tour.signal({ kind: "pane", pane: name });
                 }}
               >
-                {PANE_LABELS[name]}
+                {paneLabels[name]}
               </button>
             ))}
             <span className="spacer" />
@@ -816,9 +1015,37 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
               ) : null}
 
               <div className="panel-head">
-                <span className="silkscreen">RoboScript</span>
+                {/*
+                  * Which way the {robot} is being written.
+                  *
+                  * Only shown when the level offers more than one, so an
+                  * Engineer sees the panel it has always had. The views are
+                  * over the same text — see `workshop/compose.ts` — so this
+                  * switches how it is displayed and nothing else. Flipping
+                  * back and forth cannot change the {robot}.
+                  */}
+                {ways.length > 1 ? (
+                  <div className="way-tabs" role="tablist" aria-label="How to write it">
+                    {ways.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        role="tab"
+                        aria-selected={way === option}
+                        className="way-tab"
+                        onClick={() => setWay(option)}
+                      >
+                        {AUTHORING_LABELS[option]}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="silkscreen">
+                    {way === "text" ? "RoboScript" : AUTHORING_LABELS[way]}
+                  </span>
+                )}
                 <span className="spacer" />
-                {!inSession ? (
+                {!inSession && levelSpec(level).register === "full" ? (
                   <select
                     className="btn small"
                     value=""
@@ -839,7 +1066,54 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                 ) : null}
               </div>
 
-              {selected || (inSession && !isHost) ? (
+              {/*
+                * The status belongs to the pane, not to the editor.
+                *
+                * A script that will not compile disables Start, and at this
+                * register there is no editor tab — so without this a child got
+                * a button that would not press and no way to find out why. The
+                * escape is the Code view, which is the only place the problem
+                * can actually be fixed when it lives in a raw block.
+                */}
+              {way !== "text" && selected ? (
+                <ScriptStatus
+                  source={editorSource}
+                  register={levelSpec(level).register}
+                  showLabel="Show me the writing"
+                  onShow={() => setWay("text")}
+                />
+              ) : null}
+
+              {way === "blocks" && selected ? (
+                <Suspense fallback={<div className="empty">Loading blocks…</div>}>
+                  <BlockEditor
+                    source={editorSource}
+                    onSource={updateSource}
+                    theme={theme}
+                    register={levelSpec(level).register}
+                    /*
+                     * Editable in a session too, unlike before. The block
+                     * editor writes into the shared document as a small diff
+                     * rather than replacing it, so two people can be in it at
+                     * once — which is the whole point of a session.
+                     */
+                    editable={editable}
+                    {...(blockCollab ? { collab: blockCollab } : {})}
+                    {...(selected.layout ? { layout: selected.layout } : {})}
+                    onLayout={(next) => library.setLayout(selected.id, next)}
+                  />
+                </Suspense>
+              ) : way === "cards" && selected ? (
+                <CardComposer
+                  source={editorSource}
+                  onSource={inSession ? () => undefined : updateSource}
+                  theme={theme}
+                  editable={editable && !inSession}
+                  say={say}
+                  fill={fill}
+                  onCardAdded={() => tour.signal({ kind: "cardAdded" })}
+                />
+              ) : selected || (inSession && !isHost) ? (
                 <CodeEditor
                   key={`${viewingId ?? "none"}-${editable ? "live" : "read"}`}
                   source={editorSource}
@@ -849,6 +1123,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                   readOnly={inSession && !editable}
                   onChange={inSession ? () => undefined : updateSource}
                   guide={editable || !inSession}
+                  register={levelSpec(level).register}
                   viewRef={editorViewRef}
                   onDrop={onEditorDrop}
                 />
@@ -872,7 +1147,12 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
           ) : null}
 
           {pane === "map" && selectedArena ? (
-            <MapPane arena={selectedArena} lib={lib} theme={theme} />
+            <MapPane
+              arena={selectedArena}
+              lib={lib}
+              theme={theme}
+              onDraw={() => tour.signal({ kind: "mapDrawn" })}
+            />
           ) : null}
 
           {pane === "trial" ? (
@@ -902,6 +1182,16 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                 tour.signal({ kind: "trial", opponents: ids, won })
               }
               onHistory={() => setPane("history")}
+              level={level}
+              unlockedOpponents={unlocked.opponents}
+              say={say}
+              fill={fill}
+              {...(applyFix ? { onApplyFix: applyFix } : {})}
+              onFixThere={() => {
+                setPane("editor");
+                setWay("text");
+              }}
+              onInspectorOpened={() => tour.signal({ kind: "inspectorOpened" })}
             />
           ) : null}
           {pane === "bench" ? (
@@ -918,6 +1208,7 @@ export function Workshop({ theme, lib, playerName, initialRoom, assistantModel }
                   report,
                 })
               }
+              onRan={() => tour.signal({ kind: "benchRun" })}
               inSession={inSession}
               arenaOverride={benchArena}
               arenaName={selectedArena?.name ?? null}
@@ -1534,10 +1825,12 @@ function MapPane({
   arena,
   lib,
   theme,
+  onDraw,
 }: {
   arena: StoredArena;
   lib: LibraryApi;
   theme: Theme;
+  onDraw: () => void;
 }) {
   const { arenaLib, refresh } = lib;
   const words = THEMES[theme];
@@ -1545,6 +1838,7 @@ function MapPane({
   const commit = (spec: ArenaSpec) => {
     arenaLib.update(arena.id, spec);
     refresh();
+    onDraw();
   };
 
   const grid = drivableMazeGrid(ARENA_SIZE.width, ARENA_SIZE.height);
@@ -1923,8 +2217,23 @@ function SnapshotList({
  * yesterday's?" is the question the Workshop exists to answer, and it needs
  * the same list of answers in the Trial as in the Test bench.
  */
-function buildContenders(robots: StoredRobot[], currentId: string | null): Contender[] {
-  const out: Contender[] = SAMPLE_BOTS.map((b) => ({
+/**
+ * Everything that can be fought.
+ *
+ * `sampleIds` is the filter on the built-in {robotPlural}, and it is the one
+ * place a quest reward becomes visible as an actual thing rather than a
+ * sentence. An Explorer starts with the Sitting Duck and nothing else — a
+ * shelf of fourteen strangers with names like "Toolkit" and "Boid" is not a
+ * choice, it is a wall — and Hunter appears in it the moment they finish the
+ * quest that says he will. Null means the lot, which is every level above.
+ */
+function buildContenders(
+  robots: StoredRobot[],
+  currentId: string | null,
+  sampleIds: readonly string[] | null,
+): Contender[] {
+  const samples = sampleIds ? SAMPLE_BOTS.filter((b) => sampleIds.includes(b.id)) : SAMPLE_BOTS;
+  const out: Contender[] = samples.map((b) => ({
     id: b.id,
     label: b.title,
     source: b.source,
@@ -1978,6 +2287,13 @@ function TrialPane({
   onTrialStarted,
   onTrialFinished,
   onHistory,
+  level,
+  unlockedOpponents,
+  say,
+  fill,
+  onApplyFix,
+  onFixThere,
+  onInspectorOpened,
 }: {
   robot: StoredRobot | null;
   theme: Theme;
@@ -2008,6 +2324,17 @@ function TrialPane({
   onTrialFinished?: (ids: readonly string[], won: boolean) => void;
   /** Open the durable record after reading the immediate debrief. */
   onHistory: () => void;
+  level: Level;
+  /** Built-in {robotPlural} this player's quests have handed over. */
+  unlockedOpponents: readonly string[];
+  say: (both: { full: string; simple: string }) => string;
+  fill: (text: string) => string;
+  /** Take the debrief up on one of its suggestions. */
+  onApplyFix?: ((cardId: string) => void) | undefined;
+  /** Go to where a broken script can be fixed. */
+  onFixThere: () => void;
+  /** The behaviour inspector was opened after a fight. */
+  onInspectorOpened: () => void;
 }) {
   // Remembered between sessions: tuning a robot means running the same fight
   // over and over, and having the panel put its own two back each time is a
@@ -2030,12 +2357,37 @@ function TrialPane({
    * at once. Above 1 it becomes sides: your copies against theirs, which is the
    * only way to watch a robot that works with its own team actually do it.
    */
+  /*
+   * How the fight is set up before anybody touches it.
+   *
+   * Taken from the level rather than from one fixed preset. An Explorer fights
+   * with no {fuel} and flat ground, because both are good mechanics and both
+   * are a second thing to explain at the moment somebody is still working out
+   * why their {robot} drove into a wall.
+   */
+  const preset = levelSpec(level).match;
   const [teamSize, setTeamSize] = useState(1);
-  const [fuelLevel, setFuelLevel] = useState<FuelLevel>("normal");
-  const [terrainLevel, setTerrainLevel] = useState<TerrainLevel>("flat");
+  const [fuelLevel, setFuelLevel] = useState<FuelLevel>(preset.fuel);
+  const [terrainLevel, setTerrainLevel] = useState<TerrainLevel>(preset.terrain);
+  /*
+   * And whether those rows are on show at all.
+   *
+   * Eleven buttons across three rows, above the list of who to fight, every
+   * one of them a decision about a mechanic you have not met — sides, {fuel}
+   * scarcity, terrain amplitude. For a beginner they are not options, they are
+   * noise sitting between them and the one button they came here to press. So
+   * they fold away, with the preset named on the fold, and open on a tap.
+   */
+  const simple = levelSpec(level).register === "simple";
+  const compact = simple;
+  const [showSetup, setShowSetup] = useState(!simple);
   const [expanded, setExpanded] = useState(false);
   const [lastOutcome, setLastOutcome] = useState<MatchOutcome | null>(null);
   const [inspecting, setInspecting] = useState(false);
+  const openInspector = () => {
+    setInspecting(true);
+    onInspectorOpened();
+  };
 
   // Escape leaves the expanded view. A view that fills the screen and can only
   // be dismissed by finding one small button again is a trap.
@@ -2048,11 +2400,28 @@ function TrialPane({
     return () => window.removeEventListener("keydown", onKey);
   }, [expanded]);
 
+  /*
+   * Which built-in {robotPlural} this player has met.
+   *
+   * The Duck is always there — it is the one you are meant to lose to first —
+   * and everything else at the simple register arrives as a quest reward. At
+   * the full register there is no filter at all.
+   */
+  const sampleIds = useMemo(
+    () => (simple ? ["sitting-duck", ...unlockedOpponents] : null),
+    [simple, unlockedOpponents],
+  );
   const contenders = useMemo(
-    () => buildContenders(lib.robots, robot?.id ?? null),
-    [lib.robots, robot?.id],
+    () => buildContenders(lib.robots, robot?.id ?? null, sampleIds),
+    [lib.robots, robot?.id, sampleIds],
   );
   const groups = useMemo(() => groupContenders(contenders, words), [contenders, words]);
+  const picked = useMemo(
+    () => contenders.filter((c) => opponents.includes(c.id)),
+    [contenders, opponents],
+  );
+  // The player is always entry zero in a trial.
+  const mineTelemetry = lastOutcome?.telemetry.find((entry) => entry.robotId === 0);
   const [manifest, setManifest] = useState<MatchManifest | null>(null);
   /** What each entry in the current manifest was picked as, entry order. */
   const [lineup, setLineup] = useState<string[]>([]);
@@ -2089,6 +2458,22 @@ function TrialPane({
 
   const start = () => {
     if (!robot || !canRun || broken) return;
+    /*
+     * At the simple register the fight fills the screen.
+     *
+     * The Trial pane shows the arena, its transport, the setup, who to fight
+     * and the debrief at once — which is right for tuning a robot, and wrong
+     * for watching one fight. The canvas is aspect-locked, so on an 827px
+     * window with this skin's type it was rendering at 206x142: nine percent
+     * of the screen for the only part of the game that moves.
+     *
+     * Rather than win that back twenty pixels at a time from panels that all
+     * have a reason to exist, the fight stops being one panel among them.
+     * Everything else is still there when it ends — this is the same expand
+     * the button beside it has always offered, taken automatically for
+     * somebody who has not yet met the button.
+     */
+    if (compact) setExpanded(true);
     // Filtered through the live list, so a version deleted since it was ticked
     // simply drops out rather than failing to compile.
     const chosen = contenders.filter((c) => opponents.includes(c.id));
@@ -2190,6 +2575,22 @@ function TrialPane({
           {...(canRun ? { traceRobotId: 0 } : {})}
         />
 
+        {/*
+          * Why the button will not press, next to the button.
+          *
+          * A tooltip is not an answer for somebody who is not going to hover,
+          * and the Build tab's copy of this is on another tab. The disabled
+          * control and the reason for it belong in the same place.
+          */}
+        {broken && robot ? (
+          <ScriptStatus
+            source={robot.source}
+            register={levelSpec(level).register}
+            showLabel="Take me to it"
+            onShow={onFixThere}
+          />
+        ) : null}
+
         <div className="readout">
           <span
             className={`lamp ${!manifest ? "" : status?.over ? "done" : running ? "live" : "held"}`}
@@ -2209,7 +2610,13 @@ function TrialPane({
                 data-tour="trial-start"
                 onClick={start}
                 disabled={!robot || broken}
-                title={broken ? "Fix the line the editor is complaining about first" : undefined}
+                title={
+                  broken
+                    ? simple
+                      ? "Something in your robot does not make sense yet — see the message under it."
+                      : "Fix the line the editor is complaining about first"
+                    : undefined
+                }
               >
                 {manifest ? "Restart" : "Start trial"}
               </button>
@@ -2239,13 +2646,30 @@ function TrialPane({
       </section>
 
       <div className="trial-side">
-        {lastOutcome ? (
+        {lastOutcome && simple && mineTelemetry ? (
+          /*
+           * The numbers are still there behind "show me the numbers" — this
+           * replaces which of the two is on top, not the fact that both exist.
+           */
+          <PictureDebrief
+            facts={{
+              mine: mineTelemetry,
+              field: lastOutcome.telemetry,
+              ticks: status?.tick ?? 0,
+              ...(lastOutcome.inspection ? { coverage: lastOutcome.inspection.coverage } : {}),
+            }}
+            say={say}
+            fill={fill}
+            {...(onApplyFix ? { onFix: onApplyFix } : {})}
+            {...(lastOutcome.inspection ? { onDetail: openInspector } : {})}
+          />
+        ) : lastOutcome ? (
           <BattleDebrief
-            mine={lastOutcome.telemetry.find((entry) => entry.robotId === 0) ?? null}
+            mine={mineTelemetry ?? null}
             field={lastOutcome.telemetry}
             winnerId={lastOutcome.result.winnerId}
             onHistory={onHistory}
-            {...(lastOutcome.inspection ? { onInspect: () => setInspecting(true) } : {})}
+            {...(lastOutcome.inspection ? { onInspect: openInspector } : {})}
           />
         ) : null}
 
@@ -2255,12 +2679,37 @@ function TrialPane({
             <span className="silkscreen">Who to fight</span>
             <span className="spacer" />
             <span className="roster-meta">
-              {opponents.length === 0
+              {/* Counted against the contenders rather than against the stored
+                  ticks. The two differ for anybody whose list has shrunk —
+                  a player dropping to a level that has met fewer built-in
+                  {robotPlural} keeps their ticks, and `start` already filters
+                  them out, so a raw count would promise two opponents and
+                  field none. */}
+              {picked.length === 0
                 ? "Nobody picked — it will run on its own"
-                : `${opponents.length} picked`}
+                : `${picked.length} picked`}
             </span>
           </div>
           <div className="panel-body">
+            {simple ? (
+              <button
+                type="button"
+                className="setup-toggle"
+                aria-expanded={showSetup}
+                onClick={() => setShowSetup((v) => !v)}
+              >
+                {showSetup ? "▾" : "▸"} How the fight is set up
+                <span className="roster-meta">
+                  {fuelLevel === "off" ? `no ${words.arena === "arena" ? "fuel" : "food"}` : fuelLevel}
+                  {" · "}
+                  {terrainLevelWord(terrainLevel, theme)}
+                  {teamSize === 1 ? "" : ` · ${teamSize} a side`}
+                </span>
+              </button>
+            ) : null}
+
+            {showSetup ? (
+            <>
             <div className="row" aria-label="copies per side">
               <span className="roster-meta">Per side</span>
               {[1, 2, 3, MAX_TEAM_SIZE].map((n) => (
@@ -2312,6 +2761,8 @@ function TrialPane({
               )}
             </div>
             <p className="empty small">Takes effect on the next start.</p>
+            </>
+            ) : null}
             {groups.map((group) => (
               <div key={group.title} className="chip-group">
                 <span className="chip-group-title">{group.title}</span>
@@ -2704,6 +3155,7 @@ function BenchPane({
   inSession,
   arenaOverride,
   arenaName,
+  onRan,
 }: {
   robot: StoredRobot | null;
   robots: StoredRobot[];
@@ -2711,6 +3163,8 @@ function BenchPane({
   canRun: boolean;
   sharedReport: TrialReport | null;
   onShare: (report: TrialReport) => void;
+  /** A batch finished here. Fires on the machine that ran it, not on watchers. */
+  onRan: () => void;
   inSession: boolean;
   /** The map to measure on, when an arena is being edited. See `TrialPane`. */
   arenaOverride: ArenaSpec | null;
@@ -2746,7 +3200,10 @@ function BenchPane({
 
   useEffect(() => () => workerRef.current?.terminate(), []);
 
-  const contenders = useMemo(() => buildContenders(robots, robot?.id ?? null), [robots, robot?.id]);
+  const contenders = useMemo(
+    () => buildContenders(robots, robot?.id ?? null, null),
+    [robots, robot?.id],
+  );
 
   const run = () => {
     if (!robot) return;
@@ -2764,6 +3221,7 @@ function BenchPane({
       if (message.type === "done") {
         setReport(message.report);
         setProgress(null);
+        onRan();
         // One machine burns the CPU; everyone else just gets the table.
         if (inSession) onShare(message.report);
       }

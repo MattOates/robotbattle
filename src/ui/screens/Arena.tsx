@@ -52,6 +52,7 @@ import { accuracy, executionWarning } from "../../sim/telemetry.js";
 import type { RobotTelemetry } from "../../store/types.js";
 import type { Theme } from "../../lang/vocab.js";
 import { navigate, parseRoute } from "../router.js";
+import type { QuestSignal } from "../../workshop/quests.js";
 
 interface Props {
   theme: Theme;
@@ -59,6 +60,7 @@ interface Props {
   playerName: string;
   onPlayerName: (name: string) => void;
   initialRoom: string | null;
+  onQuestSignal: (signal: QuestSignal) => void;
 }
 
 interface LiveMatch {
@@ -67,7 +69,14 @@ interface LiveMatch {
   myIndex: number | null;
 }
 
-export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Props) {
+export function Arena({
+  theme,
+  lib,
+  playerName,
+  onPlayerName,
+  initialRoom,
+  onQuestSignal,
+}: Props) {
   const tour = useTour("arena", theme);
   const { robots } = lib;
   const [robotId, setRobotId] = useState<string | null>(robots[0]?.id ?? null);
@@ -177,8 +186,9 @@ export function Arena({ theme, lib, playerName, onPlayerName, initialRoom }: Pro
         myRobotId: robot.id,
         myEntryIndex: match.myIndex,
       });
+      if (match.myIndex !== null) onQuestSignal({ kind: "arenaPlayed" });
     },
-    [lib.battles, match, robot],
+    [lib.battles, match, onQuestSignal, robot],
   );
 
   const startMatch = () => {

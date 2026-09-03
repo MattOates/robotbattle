@@ -56,6 +56,23 @@ export interface StoredRobot {
   locomotion?: Locomotion;
   /** The working copy — what the editor shows. */
   source: string;
+  /**
+   * Where the blocks sit on the canvas, by stable key — see
+   * `workshop/layout.ts`.
+   *
+   * Beside the script rather than inside it, and deliberately: a layout is not
+   * part of the program. Two {robotPlural} arranged differently are the same
+   * {robot}, they compile to the same bytecode, and a position encoded in the
+   * source would be a comment the compiler had to carry and the language had
+   * to explain. It travels with the {robot} when one is traded, because a
+   * {robot} somebody has laid out well is easier to read than the same
+   * {robot} in a heap — which is most of what makes one worth being given.
+   *
+   * Absent on anything stored before layouts existed, and on anything only
+   * ever written as text; the block editor lays those out canonically the
+   * first time it opens them.
+   */
+  layout?: Record<string, { x: number; y: number }>;
   createdAt: number;
   updatedAt: number;
   snapshots: Snapshot[];

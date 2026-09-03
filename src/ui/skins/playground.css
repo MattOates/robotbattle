@@ -1,0 +1,779 @@
+/*
+ * The playground skin.
+ *
+ * `styles.css` dresses the game as a piece of lab equipment: dark, dense,
+ * 14px, cream micro-labels in tracked-out uppercase, 3px corners. That is a
+ * good interface and it stays exactly as it was for anyone who wants it. It is
+ * also completely wrong for a seven-year-old, and not because of the ideas in
+ * it — "when you see something, shoot it" is not hard — but because every label
+ * is small grey text and every control is mouse-sized.
+ *
+ * So this file changes nothing structural. It redefines the token ladder that
+ * `styles.css` was rewritten onto, plus a short list of components whose
+ * *character* is wrong rather than merely their size — chiefly `.silkscreen`,
+ * which is a tiny tracked-out uppercase label and cannot be fixed by scaling.
+ * Every rule is scoped to `:root[data-skin="playground"]`, so the two skins
+ * cannot leak into one another and the instrument renders byte-identically to
+ * how it did before either existed.
+ *
+ * Light rather than dark on purpose: this is the skin most likely to be used on
+ * a school laptop under fluorescent strip lights, and dark text on a pale ground
+ * survives that better than the reverse.
+ */
+
+:root[data-skin="playground"] {
+  /* Paper, not chassis. The greens keep a trace of the instrument's olive so
+     the two skins read as the same game in different clothes. */
+  --chassis: #f2efe6;
+  --panel: #ffffff;
+  --panel-raised: #ffffff;
+  --bezel: #d9d3c4;
+  --bezel-light: #c2bba9;
+
+  /* A recess in paper is a slightly greyer patch of paper, not a hole. */
+  --well: #f7f5ef;
+  --well-deep: #ebe7dc;
+
+  /* Inverted, and more opaque than the instrument's. The instrument leans on
+     the match showing faintly through its cards; here legibility wins, because
+     the person reading the card may be sounding the words out. */
+  --veil: rgb(255 255 255 / 92%);
+  --veil-deep: rgb(255 255 255 / 95%);
+  --veil-soft: rgb(35 38 31 / 6%);
+  --wash: rgb(242 239 230 / 65%);
+  --halo: rgb(255 255 255 / 90%);
+
+  --gauge-track: rgb(35 38 31 / 14%);
+  /* The signal is a mid orange here, so white reads on it where the near-black
+     of the instrument's badges would not. */
+  --on-signal: #ffffff;
+  /* The map stays dark in both skins. It is a place being looked into rather
+     than a surface being read off, the walls and terrain are drawn in light on
+     it, and inverting it would mean redrawing them. */
+  --map-ground: #1b2027;
+
+  --ink: #23261f;
+  --ink-strong: #0f120c;
+  /* Muted, but still 4.6:1 on the panel — "muted" in this skin means quieter,
+     never harder to read. Half the meta text in the game uses this. */
+  --ink-muted: #5c604f;
+
+  --signal: #c2621a;
+  --signal-dim: #e8b98a;
+  --readout: #1c6f78;
+  --alert: #b8331a;
+  --alert-soft: #962914;
+  --ok: #3f7a22;
+
+  /* Syntax colours redarkened for a pale ground. The roles are the ones
+     `styles.css` sets out — amber structures a script, cyan is what it can act
+     on, green is the world talking back — kept recognisable so a child who
+     levels up does not have to relearn the colour of a keyword. */
+  --syn-comment: #6b6f5c;
+  --syn-keyword: #a8500f;
+  --syn-action: #12626b;
+  --syn-event: #7a3fa0;
+  --syn-object: #40691f;
+  --syn-property: #4d7a2a;
+  --syn-modifier: #6b6f5c;
+  --syn-number: #8a5a00;
+  --syn-string: #1f5a8a;
+  --syn-atom: #a8306b;
+  --syn-colour: #a8306b;
+  --syn-operator: #5c604f;
+  --syn-variable: #23261f;
+  --syn-invalid: #b8331a;
+
+  /* Round, not machined. */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 18px;
+
+  /*
+   * The ladder, moved up bodily. The instrument's rungs run 8-24px; these run
+   * 13-34px, so nothing on screen is smaller than the instrument's body text
+   * and the rungs that were micro-labels land at a comfortable reading size.
+   * The relative order is preserved exactly, which is why no layout breaks:
+   * everything that was smaller than something else still is.
+   */
+  --t-05: 13px;
+  --t-1: 13px;
+  --t-2: 14px;
+  --t-3: 14px;
+  --t-4: 15px;
+  --t-5: 15px;
+  --t-6: 16px;
+  --t-7: 16px;
+  --t-8: 17px;
+  --t-9: 18px;
+  --t-10: 19px;
+  --t-11: 21px;
+  --t-12: 23px;
+  --t-13: 25px;
+  --t-14: 29px;
+  --t-15: 34px;
+
+  --sp-1: 6px;
+  --sp-2: 10px;
+  --sp-3: 14px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 28px;
+  --gap: 18px;
+
+  --control-h: 44px;
+  --touch-min: 44px;
+  --stroke: 2px;
+
+  /*
+   * Lexend over IBM Plex Sans. Chosen for the letterforms rather than the
+   * mood: a single-storey `a` and `g` and an `l` that cannot be read as a `1`,
+   * which is what a child sounding out `turret` needs. It was drawn for
+   * reading proficiency and it measures wider than Plex, hence the extra
+   * spacing above rather than instead of it.
+   */
+  --font-body: "Lexend", "Trebuchet MS", system-ui, sans-serif;
+  --font-display: "Lexend", "Trebuchet MS", system-ui, sans-serif;
+}
+
+/* The youngest players get one more notch. Not a fourth skin — the same skin
+   with the ladder nudged, which is the whole reason the ladder is a token. */
+:root[data-skin="playground"][data-level="explorer"] {
+  --t-4: 16px;
+  --t-5: 16px;
+  --t-6: 17px;
+  --t-7: 17px;
+  --t-8: 19px;
+  --t-9: 20px;
+  --t-10: 22px;
+  --t-11: 24px;
+  --t-12: 26px;
+  --t-13: 28px;
+  --t-14: 32px;
+  --t-15: 38px;
+  --control-h: 52px;
+  --touch-min: 52px;
+  --gap: 22px;
+}
+
+/*
+ * The label that scaling cannot save.
+ *
+ * `.silkscreen` is the game's most-used label — panel heads, field names,
+ * every shelf — and it is 11px uppercase at 0.18em tracking in a muted grey.
+ * Tracked-out uppercase is among the slowest things there is to read, and it is
+ * slowest of all for someone still decoding words letter by letter. Made
+ * bigger it is merely large and slow. So here it stops being a silkscreen
+ * legend and becomes a heading.
+ */
+:root[data-skin="playground"] .silkscreen {
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+/*
+ * And everywhere else it appears, which is twenty-nine rules in `styles.css`:
+ * panel heads, tabs, mode cards, screen titles, table headers, badges. Listing
+ * them here would be a list that goes stale the first time a heading is added,
+ * so this inverts it — everything is sentence case except the wordmarks, which
+ * are logos rather than text and are meant to be shouted.
+ *
+ * `letter-spacing` goes with it. The two were always set together, and tracked
+ * lowercase is worse than tracked uppercase: it pulls words apart into
+ * letters, which is precisely the thing a child learning to read is trying to
+ * stop doing.
+ */
+:root[data-skin="playground"] :not(.menu-title, .menu-title *, .welcome-title, .welcome-title *, .world-name, .world-name *) {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Same argument, one level down: buttons are uppercase and tracked too. */
+:root[data-skin="playground"] .btn {
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 600;
+  min-height: var(--control-h);
+  padding: var(--sp-2) var(--sp-4);
+  border-width: var(--stroke);
+  border-color: var(--bezel-light);
+  box-shadow: 0 2px 0 var(--bezel);
+}
+
+:root[data-skin="playground"] .btn:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+/* `.btn.small` exists so a control can get out of the way. It may get out of
+   the way; it may not become untappable doing it. */
+:root[data-skin="playground"] .btn.small {
+  min-height: calc(var(--control-h) - 8px);
+}
+
+:root[data-skin="playground"] .btn.primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: #fff;
+}
+
+/*
+ * Anything that takes a tap gets a thumb-sized target, whatever it looks like.
+ * A blanket rule rather than a list, because the list would be out of date the
+ * first time a control was added — and `--touch-min` is 0 on the instrument, so
+ * this costs that skin nothing.
+ */
+:root[data-skin="playground"] button,
+:root[data-skin="playground"] [role="tab"],
+:root[data-skin="playground"] input[type="checkbox"],
+:root[data-skin="playground"] select {
+  min-height: var(--touch-min);
+}
+
+:root[data-skin="playground"] input[type="checkbox"] {
+  min-width: var(--touch-min);
+  accent-color: var(--signal);
+}
+
+:root[data-skin="playground"] .text-input,
+:root[data-skin="playground"] select {
+  border-width: var(--stroke);
+  border-radius: var(--radius);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+/* Panels become cards: a visible edge and a little lift, so a child can see
+   where one thing ends and the next begins without reading anything. */
+:root[data-skin="playground"] .panel,
+:root[data-skin="playground"] .mode-card,
+:root[data-skin="playground"] .world-card,
+:root[data-skin="playground"] .age-card,
+:root[data-skin="playground"] .welcome-card {
+  border-width: var(--stroke);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 2px 8px rgb(35 38 31 / 8%);
+}
+
+/* The focus ring has to survive a pale ground, and it is the only thing a
+   keyboard user has. */
+:root[data-skin="playground"] :focus-visible {
+  outline: 3px solid var(--readout);
+  outline-offset: 2px;
+}
+
+/*
+ * The Workshop sidebar was sized in pixels for 11px labels — 240 to 300 wide.
+ * At this skin's type that is not a narrow column, it is a column that
+ * truncates the robot's name to one letter. Type got bigger; the thing holding
+ * it has to as well.
+ */
+:root[data-skin="playground"] .workshop-body {
+  grid-template-columns: minmax(300px, 380px) 1fr;
+}
+
+/*
+ * Monospace back to the body face, for the text that is prose rather than
+ * code.
+ *
+ * `styles.css` uses IBM Plex Mono for a lot of small print — help text under a
+ * field, a mode card's footer, the menu strap, empty states. On the instrument
+ * that reads as machine annotation and it works. Here it is the opposite of
+ * what is wanted: monospace sets every letter on the same width, which pulls
+ * short words apart and squeezes wide ones, and it is the hardest kind of text
+ * for somebody still decoding words to read.
+ *
+ * Code keeps its mono, obviously — `.code-editor`, `.robo-block` and the
+ * script lines are untouched, because there the fixed pitch is doing real work
+ * lining up indentation.
+ */
+:root[data-skin="playground"] .roster-meta,
+:root[data-skin="playground"] .menu-strap,
+:root[data-skin="playground"] .welcome-strap,
+:root[data-skin="playground"] .mode-foot,
+:root[data-skin="playground"] .news-body,
+:root[data-skin="playground"] .news-date,
+:root[data-skin="playground"] .empty,
+:root[data-skin="playground"] .world-words {
+  font-family: var(--font-body);
+}
+
+/*
+ * Checkboxes in the playground skin.
+ *
+ * The blanket touch-target rule gives every control a 44-52px minimum, which
+ * is right for a button and absurd for a checkbox — it produced a tick the
+ * size of a postage stamp next to a line of ordinary text. Sized deliberately
+ * instead: bigger than the instrument's, nowhere near a thumb-width slab, and
+ * with the padding on the label doing the work of making the whole row easy to
+ * hit.
+ */
+:root[data-skin="playground"] input[type="checkbox"] {
+  min-width: 0;
+  min-height: 0;
+  width: 22px;
+  height: 22px;
+}
+
+:root[data-skin="playground"] .check,
+:root[data-skin="playground"] .opponent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--touch-min);
+  padding: var(--sp-1) var(--sp-3);
+}
+
+/*
+ * The standings row, stacked.
+ *
+ * `.standing` is a five-column grid with 228px of that fixed — a 92px meter
+ * and a 62px tally — leaving the name whatever is left of a 300px column. At
+ * the instrument's 11px that is enough for "Hungry Hippo"; at this skin's type
+ * the fixed columns hold bigger text and the name is squeezed to "M…", which
+ * is the one thing in the row a child is actually reading.
+ *
+ * So the health bar and the tally drop under the name rather than fighting it
+ * for width. Three short rows beat one row with the important part missing.
+ */
+:root[data-skin="playground"] .standing {
+  grid-template-columns: auto 12px 1fr;
+  row-gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-1);
+}
+
+:root[data-skin="playground"] .standing .meter,
+:root[data-skin="playground"] .standing .tally {
+  grid-column: 3;
+}
+
+:root[data-skin="playground"] .standing .tally {
+  text-align: left;
+}
+
+/*
+ * The compact Workshop lives in this file, not in `styles.css`.
+ *
+ * It was written there first and silently lost: `.workshop.compact
+ * .workshop-body` and `:root[data-skin="playground"] .workshop-body` both
+ * score (0,3,0), so the tie went to whichever file loaded last — this one. The
+ * rules only ever apply in this skin anyway, so here is where they belong.
+ */
+
+/*
+ * A beginner's Workshop, laid out for what is actually in it.
+ *
+ * The instrument is three columns: shelves on the left, work in the middle,
+ * detail on the right. That is right for somebody with nine robots, four
+ * arenas and a room full of people. It is wrong for somebody with one robot
+ * and one opponent, and the cost is not merely aesthetic — the trial canvas is
+ * aspect-locked and height-bound, so 305px of banners and a 380px column of
+ * empty shelf left it rendering at 320x220 in a 1512x827 window. Nine percent
+ * of the screen for the only part of the game that moves.
+ *
+ * So in the simple register the shelves become a strip across the top, the
+ * headers shrink, and the middle column gets the whole width.
+ */
+:root[data-skin="playground"] .workshop.compact .screen-head.hidden {
+  display: none;
+}
+
+/*
+ * One column, two rows — and the rows have to be declared.
+ *
+ * Left to `auto`, the shelf strip and the work area split the height between
+ * them and the work area overflowed rather than shrinking, which is how the
+ * arena ended up at 192px inside a 677px body. The strip takes what it needs;
+ * everything else goes to the work.
+ */
+:root[data-skin="playground"] .workshop.compact .workshop-body {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+}
+
+/*
+ * The library, laid on its side and flattened.
+ *
+ * One robot is a toolbar, not a column — and not a panel with a heading, a
+ * storage meter, a row and a block of four buttons stacked under it either.
+ * That shape was 173px tall even lying down.
+ */
+:root[data-skin="playground"] .workshop.compact .sidebar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  /*
+   * A ceiling, and scroll past it.
+   *
+   * The strip holds whatever shelves the level shows, and in a session that
+   * grows by two more — who is here, and the chat — which between them pushed
+   * the editor off the bottom of the screen entirely. The shelves are things
+   * you glance at; the editor is the thing you are doing.
+   */
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .panel {
+  display: flex;
+  align-items: center;
+  /*
+   * Wrap rather than scroll, so a panel with more in it than fits — Work
+   * together, with two transport buttons, a start, a code and a Join — does
+   * not put its last control off the edge. A control you cannot see is a
+   * control you do not have.
+   *
+   * The heading is exempt below: wrapping put it on a line of its own and cost
+   * a whole row to the words "Your robots".
+   */
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-3);
+}
+
+/*
+ * The accordion head, the robot row and the buttons all on one line.
+ *
+ * `.panel-body` has to be in this list or the flattening stops one level
+ * short: the panel becomes a row of two, and the second of them is still a
+ * stack. That was the difference between 179px and 60px.
+ */
+:root[data-skin="playground"] .workshop.compact .sidebar .panel-head,
+:root[data-skin="playground"] .workshop.compact .sidebar .panel-body,
+:root[data-skin="playground"] .workshop.compact .sidebar .roster,
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-select {
+  flex: 1 1 auto;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-select {
+  border-left: 0;
+}
+
+/* The storage meter is a thing you look at once a year. */
+:root[data-skin="playground"] .workshop.compact .sidebar .panel-head .roster-meta {
+  display: none;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .panel {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-actions {
+  flex-wrap: nowrap;
+}
+
+/*
+ * The trial, arena first.
+ *
+ * Who to fight goes underneath rather than beside. At this level it is one or
+ * two chips, and as a column it was taking 320px of width from the only thing
+ * on the screen anybody is looking at.
+ */
+/*
+ * The arena takes the room; who-to-fight takes what is left.
+ *
+ * `1fr auto` alone is not enough: the second row is content-sized and its
+ * content is two panels, so it claimed 246px of a 446px column and left the
+ * aspect-locked canvas rendering at 47px tall. A floor on the arena and a
+ * ceiling on the row below it settles the argument in the right direction.
+ */
+:root[data-skin="playground"] .workshop.compact .trial-body {
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(300px, 1fr) auto;
+}
+
+:root[data-skin="playground"] .workshop.compact .trial-side {
+  max-height: 34vh;
+  overflow: auto;
+}
+
+:root[data-skin="playground"] .workshop.compact .trial-side {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+:root[data-skin="playground"] .workshop.compact .trial-side > * {
+  flex: 1 1 260px;
+}
+
+/*
+ * The arena panel's own chrome, trimmed.
+ *
+ * Its head and its readout were 140px between them around a 156px canvas —
+ * more furniture than picture. Neither is removed, because the transport
+ * buttons and the tick counter are how a match is watched; they are simply not
+ * allowed to be the bigger half.
+ */
+:root[data-skin="playground"] .workshop.compact .arena-panel .panel-head,
+:root[data-skin="playground"] .workshop.compact .readout {
+  padding-block: var(--sp-1);
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel .panel-head .silkscreen {
+  font-size: var(--t-8);
+}
+
+/* The name is the only part of the row worth room here. */
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-name {
+  font-size: var(--t-10);
+}
+
+/* The chips run across now, so they no longer need to stack. */
+:root[data-skin="playground"] .workshop.compact .trial-side .chip-group {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+
+/*
+ * The block canvas wants room, and the pane above it does not.
+ *
+ * Blockly measures itself from its host element, so a short host is a short
+ * canvas — the same trap the trial arena fell into. The editor panel is told
+ * to take what is going rather than to fit its contents.
+ */
+:root[data-skin="playground"] .workshop.compact .editor-panel {
+  min-height: 24em;
+}
+
+/* The shelf strip should sit at the left, not spread across the width. */
+:root[data-skin="playground"] .workshop.compact .sidebar .panel {
+  justify-content: flex-start;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-select {
+  flex: 0 1 auto;
+}
+
+/* ---------- the arena stops being a panel ---------- */
+
+/*
+ * The radical bit, and the numbers that forced it.
+ *
+ * Every part of this Workshop is a *panel*: a bordered box with a heading bar,
+ * a body and a footer bar. Panels nest, so the trial arena is a head, a canvas,
+ * a status line and a readout. At the instrument's 11px each of those bars is
+ * about thirty pixels and the arithmetic works. At this skin's type each is
+ * sixty-five, and four of them is two hundred pixels of furniture before any
+ * content — which is how the arena ended up as a 109x75 window inside a 1456px
+ * panel. The frame got twice as wide and nobody made the picture bigger.
+ *
+ * So at this register the arena is not a panel with a picture in it. It is the
+ * picture, and the controls float on top of it — which is what a video player,
+ * a map or a game does, and none of them puts a titled bar above and below the
+ * thing you came to look at.
+ */
+:root[data-skin="playground"] .workshop.compact .arena-panel {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+}
+
+/*
+ * Head and readout float over the canvas rather than taking rows from it.
+ * Both keep a scrim so they stay readable over whatever the match is doing
+ * underneath them.
+ */
+:root[data-skin="playground"] .workshop.compact .arena-panel > .panel-head,
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  border: 0;
+  /*
+   * A dark scrim, not the skin's `--veil`.
+   *
+   * `--veil` is white here, because everywhere else in this skin it floats
+   * over paper. These float over the arena, which is dark in both skins, and
+   * taking the page's veil put near-white text on a near-white bar over a
+   * black ground — invisible, and the one bar that has to be readable while a
+   * match is running.
+   */
+  background: rgb(12 15 20 / 72%);
+  backdrop-filter: blur(6px);
+  padding: var(--sp-2) var(--sp-4);
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel > .panel-head {
+  top: 0;
+  /* The word "arena" over the arena is a caption on a photograph of itself. */
+  background: transparent;
+  backdrop-filter: none;
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel > .panel-head .silkscreen {
+  display: none;
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout {
+  bottom: 0;
+}
+
+/*
+ * Which leaves the whole panel for the canvas — and the panel takes the
+ * arena's own colour rather than the page's.
+ *
+ * The canvas keeps a fixed 900x620 shape, so unless the panel happens to match
+ * it there is letterboxing either side. Pale, that read as a dark hole punched
+ * in a light card; dark, the whole panel is the arena and the letterbox is
+ * simply where the arena ends.
+ */
+:root[data-skin="playground"] .workshop.compact .arena-panel > .match-canvas {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  background: var(--map-ground);
+}
+
+/* Which means the controls floating on it are now over a dark ground. */
+:root[data-skin="playground"] .workshop.compact .arena-panel > .panel-head,
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout {
+  color: #e8e6df;
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout .field-label,
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout .lamp,
+:root[data-skin="playground"] .workshop.compact .arena-panel > .panel-head .check {
+  color: #c8c5bb;
+}
+
+/* The transport keeps its shape but has to read against the arena. */
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout .btn:not(.primary) {
+  background: rgb(255 255 255 / 12%);
+  border-color: rgb(255 255 255 / 28%);
+  color: #e8e6df;
+  box-shadow: none;
+}
+
+:root[data-skin="playground"] .workshop.compact .arena-panel > .readout .btn:disabled {
+  opacity: 0.45;
+}
+
+/* A broken script still has to be said, and it sits above the transport it is
+   explaining rather than floating over the match. */
+:root[data-skin="playground"] .workshop.compact .arena-panel > .diagnostic {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--control-h) + var(--sp-4) * 2);
+  z-index: 3;
+  border: 0;
+  background: var(--veil);
+  backdrop-filter: blur(6px);
+}
+
+/* ---------- the shelves become a toolbar ---------- */
+
+/*
+ * 135px for "Your robots", one name and four buttons — because it is a panel,
+ * and a panel has a heading bar, a border, a body and its own padding. Lying
+ * on its side it kept all of that. A row of controls is a toolbar; it does not
+ * need to announce itself.
+ */
+:root[data-skin="playground"] .workshop.compact .sidebar .panel {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--panel);
+  border: var(--stroke) solid var(--bezel);
+  border-radius: var(--radius-lg);
+}
+
+/* The shelf headings are the panel's name, and the panel is gone. The ones
+   that open something keep their control; the label goes. */
+:root[data-skin="playground"] .workshop.compact .sidebar .accordion-head .silkscreen {
+  font-size: var(--t-6);
+  color: var(--ink-muted);
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .roster-name {
+  font-size: var(--t-9);
+}
+
+/* ---------- the helper, on one line ---------- */
+
+/*
+ * It folded its explanation away already and was still 102px, because the
+ * avatar is 32px inside padding inside a column that stacks the instruction
+ * over the actions. One row: face, instruction, How?, pips.
+ */
+:root[data-skin="playground"] .workshop.compact .helper {
+  padding: var(--sp-1) var(--sp-3);
+}
+
+:root[data-skin="playground"] .workshop.compact .helper-body {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+:root[data-skin="playground"] .workshop.compact .helper-say {
+  font-size: var(--t-9);
+  flex: 1;
+  min-width: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .helper-actions {
+  flex: 0 0 auto;
+}
+
+/* The shelf heading sits *beside* what it heads, not above it. Left to wrap it
+   took a 52px row of its own to say "Your robots". */
+:root[data-skin="playground"] .workshop.compact .sidebar .panel > .panel-head {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .panel > .panel-head button {
+  min-height: 0;
+}
+
+:root[data-skin="playground"] .workshop.compact .sidebar .panel > .panel-body {
+  flex: 1 1 auto;
+}
+
+/*
+ * And the arena takes what is left, rather than its own minimum.
+ *
+ * `minmax(300px, 1fr)` resolved to `300px 0px`: the row sat at its floor while
+ * a hundred and fifty pixels of column went unused, because the grid was only
+ * as tall as its content and `1fr` of nothing is nothing.
+ *
+ * The floor is in viewport units rather than pixels, and that is the point of
+ * it: the arena should be about half the screen whatever the screen is, and
+ * every pixel figure in this file has already been wrong once on a window it
+ * was not measured on. It also has to be *stated*, because the panel's own
+ * children are absolutely positioned now — it has no content to be as tall as,
+ * so left to itself it collapses to nothing.
+ */
+:root[data-skin="playground"] .workshop.compact .trial-body {
+  grid-template-rows: minmax(46vh, 1fr) auto;
+}

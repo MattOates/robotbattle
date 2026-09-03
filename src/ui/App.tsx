@@ -6,13 +6,20 @@
  * of the bundle.
  */
 
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy, useCallback, useState, useEffect } from "react";
 import { useRoute, type ScreenName } from "./router.js";
 import { useLibrary, useProfile, starterRobot } from "./useLibrary.js";
 import { navigate } from "./router.js";
 import { branding } from "./branding.js";
 import { Welcome } from "./screens/Welcome.js";
 import { Settings } from "./Settings.js";
+import { JourneyBar } from "./JourneyBar.js";
+import { QuestLog } from "./quest/QuestLog.js";
+import { QuestToasts } from "./quest/QuestToast.js";
+import { useQuests } from "./quest/useQuests.js";
+import { levelSpec, nextLevel } from "./level.js";
+import { fillVocab } from "../learn/markdown.js";
+import type { Pane } from "./panes.js";
 
 const Menu = lazy(() => import("./screens/Menu.js").then((m) => ({ default: m.Menu })));
 const Workshop = lazy(() =>
@@ -39,10 +46,10 @@ const ROOM_SCREENS: ReadonlySet<ScreenName> = new Set<ScreenName>([
 
 export function App() {
   const route = useRoute();
-  const { profile, setName, setTheme, setAssistantModel, complete } = useProfile();
+  const { profile, setName, setTheme, setLevel, setAssistantModel, complete } = useProfile();
   // Nothing is seeded until a world has been chosen, because which robot a new
   // player starts with depends on whether they took the tour.
-  const lib = useLibrary(starterRobot(profile.onboarded));
+  const lib = useLibrary(starterRobot(profile.onboarded, profile.level));
   const brand = branding(profile.onboarded ? profile.theme : null);
 
   // The tab is named after the world you chose.
@@ -56,8 +63,8 @@ export function App() {
     return (
       <Welcome
         invitedTo={ROOM_SCREENS.has(route.screen) ? route.room : null}
-        onDone={(name, theme, wantsTour) => {
-          complete(name, theme, wantsTour);
+        onDone={(name, theme, level, wantsTour) => {
+          complete(name, theme, level, wantsTour);
           // The tour opens on the menu — a greeting, and what the modes are
           // for — and walks them to the Workshop itself.
           if (wantsTour && !ROOM_SCREENS.has(route.screen)) navigate("menu");
@@ -67,17 +74,91 @@ export function App() {
   }
 
   return (
+    <AppShell
+      profile={profile}
+      lib={lib}
+      route={route}
+      setName={setName}
+      setTheme={setTheme}
+      setLevel={setLevel}
+      setAssistantModel={setAssistantModel}
+    />
+  );
+}
+
+/**
+ * The shell proper, below the welcome gate.
+ *
+ * Split out so the quest hooks are only mounted once somebody has a level,
+ * rather than being called and then thrown away on a first visit — and because
+ * hooks cannot live below the early return above.
+ */
+function AppShell({
+  profile,
+  lib,
+  route,
+  setName,
+  setTheme,
+  setLevel,
+  setAssistantModel,
+}: {
+  profile: ReturnType<typeof useProfile>["profile"];
+  lib: ReturnType<typeof useLibrary>;
+  route: ReturnType<typeof useRoute>;
+  setName: (name: string) => void;
+  setTheme: ReturnType<typeof useProfile>["setTheme"];
+  setLevel: ReturnType<typeof useProfile>["setLevel"];
+  setAssistantModel: (id: string) => void;
+}) {
+  const spec = levelSpec(profile.level);
+
+
+  /** One line, in the right register and the right world. */
+  const say = useCallback(
+    (both: { full: string; simple: string }) =>
+      spec.register === "simple" ? both.simple : both.full,
+    [spec.register],
+  );
+  const fill = useCallback((text: string) => fillVocab(text, profile.theme), [profile.theme]);
+
+  const quests = useQuests(profile.level, say, fill);
+  const [logOpen, setLogOpen] = useState(false);
+  const [requestedPane, setRequestedPane] = useState<Pane | null>(null);
+
+
+  const goToQuest = useCallback((target: { screen: ScreenName; pane?: Pane }) => {
+    setRequestedPane(target.screen === "workshop" ? (target.pane ?? null) : null);
+    navigate(target.screen);
+  }, []);
+  const clearRequestedPane = useCallback(() => setRequestedPane(null), []);
+
+  // The journey bar is for somebody finding their way. An Engineer has been
+  // using the menu perfectly well and does not need a game telling them where
+  // they are.
+  const showJourney = profile.level !== "engineer";
+
+  return (
     <>
       <Settings
         profile={profile}
         onName={setName}
         onTheme={setTheme}
+        onLevel={setLevel}
         onAssistantModel={setAssistantModel}
         lib={lib}
       />
       <Suspense fallback={<div className="splash">Loading…</div>}>
       {route.screen === "menu" ? (
-        <Menu theme={profile.theme} robotCount={lib.robots.length} playerName={profile.name} />
+        <Menu
+          theme={profile.theme}
+          robotCount={lib.robots.length}
+          playerName={profile.name}
+          level={profile.level}
+          quests={quests}
+          say={say}
+          fill={fill}
+          onOpenLog={() => setLogOpen(true)}
+        />
       ) : null}
 
       {route.screen === "workshop" ? (
@@ -87,6 +168,16 @@ export function App() {
           playerName={profile.name}
           initialRoom={route.room}
           assistantModel={profile.assistantModel}
+          level={profile.level}
+          unlocked={quests.unlocked}
+          onQuestSignal={quests.signal}
+          onQuestObserve={quests.observe}
+          helperStep={quests.next}
+          questsDone={quests.done}
+          say={say}
+          fill={fill}
+          requestedPane={requestedPane}
+          onRequestedPaneHandled={clearRequestedPane}
         />
       ) : null}
 
@@ -97,6 +188,7 @@ export function App() {
           playerName={profile.name}
           onPlayerName={setName}
           initialRoom={route.room}
+          onQuestSignal={quests.signal}
         />
       ) : null}
 
@@ -117,6 +209,7 @@ export function App() {
           playerName={profile.name}
           onPlayerName={setName}
           initialRoom={route.room}
+          onQuestSignal={quests.signal}
         />
       ) : null}
 
@@ -135,6 +228,44 @@ export function App() {
       ) : null}
 
       </Suspense>
+
+      {/* Mounted by the shell rather than by each screen, because a step can be
+          met on any screen and the toast for it has to survive the navigation
+          that met it — going to the Workshop is itself a quest step. */}
+      {showJourney ? (
+        <>
+          <JourneyBar
+            level={profile.level}
+            screen={route.screen}
+            quests={quests}
+            say={say}
+            fill={fill}
+            onOpenLog={() => setLogOpen(true)}
+          />
+          <QuestLog
+            quests={quests}
+            open={logOpen}
+            onClose={() => setLogOpen(false)}
+            say={say}
+            fill={fill}
+            onGoTo={goToQuest}
+          />
+        </>
+      ) : null}
+
+      <QuestToasts
+        queue={quests.celebrations}
+        onDismiss={quests.dismiss}
+        theme={profile.theme}
+        onLevelUp={() => {
+          const up = nextLevel(profile.level);
+          if (!up) return;
+          quests.acceptLevelUp();
+          setLevel(up);
+          quests.celebrations.forEach((c) => quests.dismiss(c.id));
+        }}
+        onDeclineLevelUp={quests.declineLevelUp}
+      />
     </>
   );
 }

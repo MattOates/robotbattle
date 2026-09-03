@@ -29,6 +29,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@blockly/field-colour": "^13.2.0",
+    "@blockly/field-slider": "^13.2.0",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/language": "^6.12.4",
@@ -38,6 +40,7 @@
     "@lezer/highlight": "^1.2.3",
     "@mintplex-labs/piper-tts-web": "^1.0.5",
     "@mlc-ai/web-llm": "^0.2.84",
+    "blockly": "^13.2.1",
     "chevrotain": "^13.2.0",
     "peerjs": "^1.5.5",
     "pixi.js": "^8.6.6",
