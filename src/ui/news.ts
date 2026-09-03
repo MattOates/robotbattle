@@ -50,8 +50,8 @@ export const NEWS: readonly NewsEntry[] = [
   },
   {
     date: "2026-08-23",
-    title: "Sides, and something to say to them",
-    body: "The Arena can be fought in sides now, not just everyone against everyone. On a side you can tell who is with you \u2014 every event that reports another {robot} says whether it is one of yours \u2014 and the host decides whether your shots pass through your own or not. The last side standing wins.",
+    title: "Pick a {team}, and say something to it",
+    body: "The Arena can be fought in {teams} now, not just everyone against everyone. On a {team} you can tell who is with you \u2014 every event that reports another {robot} says whether it is one of yours \u2014 and the host decides whether your shots pass through your own or not. The last {team} standing wins.",
   },
   {
     date: "2026-08-23",
@@ -61,12 +61,12 @@ export const NEWS: readonly NewsEntry[] = [
   {
     date: "2026-08-23",
     title: "A flock that has never seen itself",
-    body: "Two new {robots} to read. Wingman marks its call-outs with a word its side agrees on. Boid is a whole flock: it obeys the three rules that make starlings turn together \u2014 do not crowd, head the way they head, drift towards the middle \u2014 and it does it without ever looking at a single one of them. It knows where they all are because they say so. There is a lesson on each.",
+    body: "Two new {robots} to read. Wingman marks its call-outs with a word its {team} agrees on. Boid is a whole flock: it obeys the three rules that make starlings turn together \u2014 do not crowd, head the way they head, drift towards the middle \u2014 and it does it without ever looking at a single one of them. It knows where they all are because they say so. There is a lesson on each.",
   },
   {
     date: "2026-08-23",
     title: "The bench can field a team",
-    body: "The test bench and the Trial will both put several copies of your {robot} on one side now. Some {robots} cannot be measured one at a time: a flock of one does not flock, and one that calls out what it has found has nobody to call to.",
+    body: "The test bench and the Trial will both put several copies of your {robot} on one {team} now. Some {robots} cannot be measured one at a time: a flock of one does not flock, and one that calls out what it has found has nobody to call to.",
   },
   {
     date: "2026-08-22",

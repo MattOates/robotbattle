@@ -400,7 +400,7 @@ export const ANNOTATIONS: Readonly<Record<string, Annotation>> = {
     label: "broadcast",
     title: "broadcast",
     summary:
-      `Says one thing to every {robot} in the {arena} at once. They all get it as \`on radio\`, and none of them are told it was you \u2014 so if your side needs to know, say so in the message. You can speak again every ${RADIO.cooldown} ticks.`,
+      `Says one thing to every {robot} in the {arena} at once. They all get it as \`on radio\`, and none of them are told it was you \u2014 so if your {team} needs to know, say so in the message. You can speak again every ${RADIO.cooldown} ticks.`,
     section: "actions",
     example: 'broadcast "help"',
   },
@@ -677,7 +677,7 @@ export function simulationFacts(theme: Theme): FactGroup[] {
     },
     {
       title: "Talking",
-      blurb: `The one thing you can do that reaches the whole {arena} at once. Every {robot} still alive hears every ${w("broadcast")}, and none of them are told who sent it \u2014 so saying who you are, without also telling the other side, is left to you.`,
+      blurb: `The one thing you can do that reaches the whole {arena} at once. Every {robot} still alive hears every ${w("broadcast")}, and none of them are told who sent it \u2014 so saying who you are, without also telling the other {team}, is left to you.`,
       facts: [
         {
           label: `${w("broadcast")} cooldown`,

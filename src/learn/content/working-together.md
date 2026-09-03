@@ -7,9 +7,9 @@ section: The world
 order: 4
 ---
 
-Everything so far has assumed you are on your own. In a team match you are not:
-some of the {robots} out there are on your side, and the match is over when one
-side is left rather than one {robot}.
+Everything so far has assumed you are on your own. In a {team} match you are not:
+some of the {robots} out there are on your {team}, and the match is over when one
+{team} is left rather than one {robot}.
 
 That changes two things. You have to know who you are shooting at, and it helps
 enormously to be able to say something to the others.
@@ -17,11 +17,11 @@ enormously to be able to say something to the others.
 ## Telling friend from foe
 
 Every event that tells you about another {robot} now carries `event.friend`. It
-is true when they are on your side and false when they are not — and in a
-free-for-all it is false for everybody, because there everyone is a side of
+is true when they are on your {team} and false when they are not — and in a
+free-for-all it is false for everybody, because there everyone is a {team} of
 their own.
 
-So the very first thing a team {robot} does is check before it {fire}s:
+So the very first thing a {team} {robot} does is check before it {fire}s:
 
 ```robo
 on sense robot
@@ -36,8 +36,8 @@ Leave that check out and you will spend the match destroying the only ally
 you have. `event.friend` is on `sense robot`, `ping robot`, `hit robot`,
 `hit by bullet`, `bullet hit` and `robot destroyed`.
 
-It is deliberately a yes-or-no rather than a side number. Whether somebody is on
-*your* side is all the arena will tell you. With three sides in the match you
+It is deliberately a yes-or-no rather than a {team} number. Whether somebody is on
+*your* {team} is all the {arena} will tell you. With three {teams} in the match you
 cannot tell one enemy from another — which is a real gap, and the rest of this
 lesson is how you close it yourself.
 
@@ -56,7 +56,7 @@ name "Caller"
 chassis tank
 
 -- Two copies of this script are on the field, plus a Wingman on the other
--- side. Watch the labels: a Caller never shows its OWN call-out, because you
+-- {team}. Watch the labels: a Caller never shows its OWN call-out, because you
 -- do not hear yourself -- it shows whatever the other two said. The Wingman's
 -- messages look like gibberish because they are packed; see further down.
 
@@ -83,7 +83,7 @@ end
 Whoever hears it gets an `on radio` block, and `event.data` is what was sent.
 There is a catch, and it is the whole point of the feature:
 
-- **Everyone** hears it. Your side, the other side, everyone.
+- **Everyone** hears it. Your {team}, the other {team}, everyone.
 - It does not say **who sent it**. No name, no bearing, no distance.
 
 :::bot
@@ -102,7 +102,7 @@ neighbours' chatter — or to release the molecule themselves and lie.
 ## Saying who you are
 
 Since nothing marks a message as yours, you have to mark it yourself. Agree a
-word with the rest of your side and put it at the front:
+word with the rest of your {team} and put it at the front:
 
 ```robo
 var codeword = "vulpes"
@@ -142,7 +142,7 @@ match can see the word `vulpes` go past and start sending it too — and then yo
 {robots} will happily drive to wherever an enemy tells them to.
 
 There is no answer to this in the language. That is on purpose: proving who you
-are to your own side without also proving it to somebody reading over your
+are to your own {team} without also proving it to somebody reading over your
 shoulder is one of the genuinely hard problems, and this is a safe place to meet
 it.
 
@@ -150,8 +150,8 @@ Some things to try, none of which is a complete answer:
 
 - Change the word as the match goes on — say, `codeword + round(arena.time / 300)`
   — so a word learned early stops working.
-- Send a number that both sides can check but is awkward to fake, built out of
-  something only your side knows.
+- Send a number that both {teams} can check but is awkward to fake, built out of
+  something only your {team} knows.
 - Ignore a call-out that does not agree with what you can see yourself.
 - Send messages that are only useful to somebody already in the right place.
 

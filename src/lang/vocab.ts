@@ -169,10 +169,15 @@ export interface ThemeVocab {
   readonly broadcastVerb: string;
   /** What arrives when somebody does: a radio message, or a signal in the water. */
   readonly radio: string;
-  /** Somebody on your side. Display only — the language says `event.friend`. */
+  /** Somebody on your {team}. Display only — the language says `event.friend`. */
   readonly ally: string;
-  /** A side. Display only, and always shown counting from one. */
+  /** A team. Display only, and always shown counting from one. */
   readonly team: string;
+  /**
+   * More than one of them. Carried rather than derived: a colony pluralises to
+   * colonies, so `team + "s"` is wrong in half the game.
+   */
+  readonly teamPlural: string;
   readonly driveVerb: string;
   /** The consumable scattered about: fuel cells or morsels of food. */
   readonly fuel: string;
@@ -213,6 +218,7 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     radio: "radio",
     ally: "ally",
     team: "team",
+    teamPlural: "teams",
     driveVerb: "drive",
     fuel: "fuel",
     slope: "slope",
@@ -239,6 +245,7 @@ export const THEMES: Readonly<Record<Theme, ThemeVocab>> = {
     radio: "signal",
     ally: "kin",
     team: "colony",
+    teamPlural: "colonies",
     driveVerb: "swim",
     fuel: "food",
     slope: "thickness",
