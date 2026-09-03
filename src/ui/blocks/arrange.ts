@@ -66,7 +66,9 @@ export function applyLayout(ws: Blockly.Workspace, sketch: Sketch, layout: Layou
  * The canonical arrangement, measured.
  *
  * Rows from `tidyBands`; within a row, blocks laid left to right; each row
- * starts below the tallest block of the one above. Heights come from Blockly
+ * starts below the tallest block of the one above. The declarations are lifted
+ * out into the top-left corner and the rows form a column to their right, so
+ * the first row — `start` — shares the heading's line. Heights come from Blockly
  * because a hat with nine statements in it is not the same height as an empty
  * one, and a layout computed from guesses would overlap exactly where a robot
  * is most worth reading.
@@ -77,22 +79,50 @@ export function applyLayout(ws: Blockly.Workspace, sketch: Sketch, layout: Layou
  */
 export function tidy(ws: Blockly.WorkspaceSvg, sketch: Sketch): Layout {
   const blocks = topBlocks(ws, sketch) as Map<string, Blockly.BlockSvg>;
+  const bands = tidyBands(sketch);
   const layout: Layout = {};
-  let y = 0;
 
-  for (const band of tidyBands(sketch)) {
-    let x = 0;
+  /*
+   * The declarations sit in the corner and everything else forms a column
+   * beside them: the heading is a title block, not the first of a list, and a
+   * column that started under it would read as one.
+   */
+  const header = blocks.get("robot");
+  const headerSize = header?.getHeightWidth() ?? { width: 0, height: 0 };
+  if (header) layout["robot"] = { x: 0, y: 0 };
+
+  const columnX = header ? headerSize.width + GAP_X : 0;
+  let y = 0;
+  let first = true;
+
+  for (const band of bands) {
+    // The declarations are placed above and are not a row of their own here.
+    const keys = band.keys.filter((key) => key !== "robot");
+    if (keys.length === 0) continue;
+
+    let x = columnX;
     let tallest = 0;
-    for (const key of band.keys) {
+    for (const key of keys) {
       const block = blocks.get(key);
       if (!block) continue;
       layout[key] = { x, y };
       const size = block.getHeightWidth();
+      // Same event, so side by side: a handler and the behaviours declared
+      // `given` it are one idea, and reading them as a row says so.
       x += size.width + GAP_X;
       tallest = Math.max(tallest, size.height);
     }
-    // A row that placed nothing must not push the next one down.
     if (tallest > 0) y += tallest + GAP_Y;
+    /*
+     * The first row shares the heading's line. If the heading is the taller of
+     * the two — and it usually is, carrying a name, a chassis, a colour and
+     * every global — the row after it clears the heading rather than starting
+     * beside its lower half.
+     */
+    if (first && header) {
+      y = Math.max(y, headerSize.height + GAP_Y);
+      first = false;
+    }
   }
 
   applyLayout(ws, sketch, layout);

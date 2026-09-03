@@ -297,3 +297,59 @@ describe("positions, through a real workspace", () => {
     ws.dispose();
   });
 });
+
+/**
+ * The geometry, as far as it can be checked without a rendered canvas.
+ *
+ * `tidy` needs real block sizes and so needs an SVG workspace, which these
+ * tests do not have. What can be checked is the shape the sizes are poured
+ * into: which blocks share a row, and in what order — which is the half that
+ * decides whether two people's robots are comparable.
+ */
+describe("the shape of a tidy", () => {
+  const src = [
+    'name "R"',
+    "chassis tank",
+    "",
+    "on start",
+    "  stop",
+    "end",
+    "",
+    "can dodge given sense robot",
+    "  stop",
+    "end",
+    "",
+    "on sense robot",
+    "  stop",
+    "end",
+    "",
+    "can helper",
+    "  stop",
+    "end",
+  ].join("\n");
+
+  it("keeps the declarations out of every handler row", () => {
+    // They are placed in the corner by `tidy`; their band exists so that the
+    // key is accounted for, not so that it takes a row beside a handler.
+    const bands = tidyBands(fromSource(src));
+    expect(bands[0]!.keys).toEqual(["robot"]);
+    expect(bands.slice(1).flatMap((b) => b.keys)).not.toContain("robot");
+  });
+
+  it("puts the handler and its behaviours on one row, handler first", () => {
+    // Same event, one idea: `can dodge given sense robot` runs when the
+    // sensing handler does, and reading them as a row says so.
+    const band = tidyBands(fromSource(src)).find((b) => b.event === "sense robot")!;
+    expect(band.keys).toEqual(["on:sense robot", "can:dodge"]);
+  });
+
+  it("starts with `start`, so it can share the heading's line", () => {
+    const bands = tidyBands(fromSource(src));
+    expect(bands[1]!.event).toBe("start");
+  });
+
+  it("leaves the behaviours that answer to nothing until last", () => {
+    const bands = tidyBands(fromSource(src));
+    expect(bands[bands.length - 1]!.keys).toEqual(["can:helper"]);
+  });
+});
