@@ -6,8 +6,13 @@
  * child who wants to know what is new to play with, a parent working out
  * whether this grows with them, a teacher deciding if it survives a classroom,
  * and an engineer who wants the actual guarantee. That is one entry with a
- * line apiece, not four registers \u2014 say what you can now do, then the one
+ * line apiece, not four registers. Say what you can now do, then give the one
  * concrete fact behind it, and each of them takes what they came for.
+ *
+ * Keep the sentences short and the dashes rare. A sentence with two clauses
+ * bolted on by dashes reads as one long thought, and a nine-year-old and a
+ * teacher skimming on their break both give up at the same place. Prefer a
+ * full stop. If a sentence runs past about twenty words, it is two sentences.
  *
  * Kept by hand rather than generated from the git log. The commit subjects in
  * this repository are decent prose, but they are addressed to whoever maintains
@@ -36,22 +41,22 @@ export const NEWS: readonly NewsEntry[] = [
   {
     date: "2026-09-03",
     title: "One button and your blocks line up",
-    body: "Drag your blocks wherever you want them and they stay put \u2014 even in a copy you hand to a friend. Lost track of them? Hit Tidy up and the whole thing snaps into shape: your {robot} top left, what it does at the start on the line beside it, then a row for everything that can happen to it. Where the blocks sit is kept alongside the {robot} rather than buried in the script, so two people who changed the same one can see which parts at a glance.",
+    body: "Drag your blocks wherever you want them. They stay put, even in a copy you hand to a friend. Lost track of them? Hit Tidy up and the whole thing snaps into shape. Your {robot} goes top left. What it does at the start sits on the line beside it. Everything that can happen to it gets a row below. Where the blocks sit is kept with the {robot}, not buried in the script. So two people who changed the same one can see which parts at a glance.",
   },
   {
     date: "2026-09-02",
     title: "Lost? Now you can see exactly why",
-    body: "Every trial ends with four drawings of the fight and a short list of what went wrong. \u201cYou never fired a shot\u201d \u2014 and a button that adds the missing part for you. It is read from what your {robot} actually ran rather than guessed at, so it can point at the part that was never reached. Useful if you are teaching a room of them and cannot read thirty scripts at once.",
+    body: "Every trial ends with four drawings of the fight and a short list of what went wrong. \u201cYou never fired a shot\u201d, with a button that adds the missing part for you. It is read from what your {robot} actually ran, so it can point at the part that was never reached. Handy if you are teaching a room of them and cannot read thirty scripts at once.",
   },
   {
     date: "2026-08-31",
-    title: "Tap it, drag it, or type it \u2014 same {robot}",
-    body: "Cards you tap together, blocks you drag, or text you write: three ways in, one {robot} underneath. The blocks are Blockly \u2014 yes, the Scratch ones \u2014 and they are not a cut-down version of the language: every last thing it can say has a block, and a script survives the trip out to blocks and back character for character. So a seven-year-old on cards and a teenager on code can work on the same {robot}, and nothing built on the way up gets left behind. Tell it your age when you arrive and it sets itself up to suit.",
+    title: "Tap it, drag it, or type it",
+    body: "Cards you tap together, blocks you drag, or text you write. Three ways in, one {robot} underneath. The blocks are Blockly, the same ones Scratch uses, and they are not a cut-down version of the language. Every last thing it can say has a block. A script survives the trip out to blocks and back, character for character. So a seven-year-old on cards and a teenager on code can work on the same {robot}. Nothing built on the way up gets left behind. Tell it your age when you arrive and it sets itself up to suit.",
   },
   {
     date: "2026-08-23",
     title: "Pick a {team}, and say something to it",
-    body: "The Arena can be fought in {teams} now, not just everyone against everyone. On a {team} you can tell who is with you \u2014 every event that reports another {robot} says whether it is one of yours \u2014 and the host decides whether your shots pass through your own or not. The last {team} standing wins.",
+    body: "The Arena can be fought in {teams} now, not just everyone against everyone. On a {team} you can tell who is with you: every event that reports another {robot} says whether it is one of yours. The host decides whether your shots pass through your own or not. The last {team} standing wins.",
   },
   {
     date: "2026-08-23",
