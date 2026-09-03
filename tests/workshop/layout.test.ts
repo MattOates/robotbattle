@@ -136,9 +136,31 @@ describe("the canonical arrangement", () => {
     expect(band).toContain("can:dodge");
   });
 
-  it("leaves the behaviours that answer to no event until last", () => {
+  it("puts the library before the things that use it", () => {
+    /*
+     * A behaviour that names no event is a *part* — something a handler
+     * `do`es — and it is read before the handler, not after. Boid is written
+     * entirely this way: `fold`, `remember`, `fly` and `forget` are the
+     * vocabulary and everything else is a sentence built out of it. Put last,
+     * the reader meets every call before the thing it calls.
+     */
     const bands = tidyBands(fromSource(src));
-    expect(bands[bands.length - 1]!.keys).toEqual(["can:helper"]);
+    const library = bands.findIndex((b) => b.keys.includes("can:helper"));
+    const firstHandler = bands.findIndex((b) => b.event !== null && b.event !== "start");
+    expect(library).toBeGreaterThan(0);
+    expect(library).toBeLessThan(firstHandler);
+  });
+
+  it("keeps the library after the starting work, not before it", () => {
+    const bands = tidyBands(fromSource(src));
+    expect(bands.map((b) => b.keys)).toEqual([
+      ["robot"],
+      ["on:start"],
+      ["can:helper"],
+      ["on:sense robot"],
+      ["on:hit wall"],
+      ["can:dodge"],
+    ]);
   });
 
   it("is the same picture however the file is ordered", () => {
@@ -348,9 +370,12 @@ describe("the shape of a tidy", () => {
     expect(bands[1]!.event).toBe("start");
   });
 
-  it("leaves the behaviours that answer to nothing until last", () => {
+  it("reads the behaviours that answer to nothing before their callers", () => {
     const bands = tidyBands(fromSource(src));
-    expect(bands[bands.length - 1]!.keys).toEqual(["can:helper"]);
+    const library = bands.findIndex((b) => b.keys.includes("can:helper"));
+    const handlers = bands.findIndex((b) => b.event !== null && b.event !== "start");
+    expect(library).toBeGreaterThan(0);
+    expect(library).toBeLessThan(handlers);
   });
 });
 

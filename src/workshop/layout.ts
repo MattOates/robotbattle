@@ -91,13 +91,22 @@ export interface Band {
  * - Then `on start`, at the same left margin as everything below it, because
  *   it *is* behaviour: the first thing that happens rather than part of the
  *   declaration.
+ * - Then the library: every named behaviour that answers to no event. These
+ *   are the parts — the things a handler `do`es — and they come *before* the
+ *   handlers because that is the order they are read in. Boid is written
+ *   entirely this way: `fold`, `remember`, `fly` and `forget` are the
+ *   vocabulary, and `listen`, `spot` and `flock_together` are sentences built
+ *   out of it. Put last, the reader meets every call before the thing it
+ *   calls.
  * - Then one row per event, in the order the language lists them, holding the
  *   handler for that event and any named behaviour declared `given` it —
  *   because those run together, and with no `on` block the behaviours *are*
- *   the handler.
- * - Then one row for the named behaviours that answer to no event. They are
- *   the library: things you `do` from somewhere else, and they belong at the
- *   bottom rather than scattered among the things that call them.
+ *   the handler. Boid has no `on` blocks at all, so for it this is the whole
+ *   of its behaviour.
+ *
+ * The split that matters here is not `on` against `can`: it is whether a
+ * block names an event. One that does is behaviour and belongs with its
+ * event; one that does not is a part, and belongs with the other parts.
  */
 export function tidyBands(sketch: Sketch): Band[] {
   const placed: Placed[] = [];
@@ -118,17 +127,26 @@ export function tidyBands(sketch: Sketch): Band[] {
   const header = take((p) => p.block.kind === "robot");
   if (header.length > 0) bands.push({ event: null, keys: header.map((p) => p.key) });
 
-  // A row per event, in the language's own order rather than the script's, so
-  // the same event lands in the same band whoever wrote the {robot}. `start`
-  // is first because the language lists it first, and sits at the same left
-  // margin as the rest.
+  // The starting work, on the line kept for it beside the heading.
+  const starting = order(take((p) => p.block.event === "start"));
+  if (starting.length > 0) bands.push({ event: "start", keys: starting.map((p) => p.key) });
+
+  // Then the library, before any of the behaviour that uses it.
+  const library = order(take((p) => p.block.event === null));
+  if (library.length > 0) bands.push({ event: null, keys: library.map((p) => p.key) });
+
+  // Then a row per event, in the language's own order rather than the
+  // script's, so the same event lands in the same band whoever wrote the
+  // {robot}.
   for (const event of EVENT_NAMES) {
+    if (event === "start") continue;
     const band = order(take((p) => p.block.event === event));
     if (band.length > 0) bands.push({ event, keys: band.map((p) => p.key) });
   }
 
-  // Everything left: named behaviours with no `given`, and anything whose
-  // event this build does not recognise.
+  // Anything whose event this build does not recognise, kept rather than
+  // dropped: a block off the bottom is still findable, a block with no
+  // position at all is not.
   const rest = order(placed.slice());
   if (rest.length > 0) bands.push({ event: null, keys: rest.map((p) => p.key) });
 
