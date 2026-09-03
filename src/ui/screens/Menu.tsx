@@ -148,6 +148,7 @@ export function Menu({
    */
   const visible = MODES.filter((mode) => showsMode(level, mode.screen, quests.unlocked.modes));
   const register = levelSpec(level).register;
+  const showNews = register === "full";
   const next = quests.next;
 
   return (
@@ -164,7 +165,10 @@ export function Menu({
         />
       </div>
 
-      <div className="menu-content">
+      {/* News moves to a column of its own when there is any (see the
+          `has-news` rules): as the last thing in one centred column it sat
+          below the fold, and the quest banner above it made that worse. */}
+      <div className={`menu-content${showNews ? " has-news" : ""}`}>
         <header className="menu-head">
           <h1 className="menu-title">
             {brand.prefix}
@@ -232,7 +236,7 @@ export function Menu({
             things that changed since a version you never played, written for
             somebody who was already here. It is the one thing on this screen
             with nothing in it for a beginner. */}
-        {register === "full" ? (
+        {showNews ? (
         <section className="menu-news" aria-labelledby="news-head">
           <h2 className="menu-news-head" id="news-head">
             News

@@ -1115,6 +1115,69 @@ button {
   overflow: auto;
 }
 
+/*
+ * With News on the page, a second column for it.
+ *
+ * As one centred column the order was title, what to do next, the six modes,
+ * then News — which put it under the fold on any laptop, and the quest banner
+ * pushed it further down again. It is reference material rather than a call to
+ * action, so it belongs beside the menu instead of after it: top right, its own
+ * column, reading from the top while the menu stays centred.
+ *
+ * Only when there is News to show. At the simple register there is none, and
+ * the column would be an empty gutter beside a centred page.
+ */
+@media (min-width: 1040px) {
+  .menu-content.has-news {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+    grid-template-areas:
+      "head  news"
+      "next  news"
+      "modes news"
+      "foot  foot";
+    /* Rows sized by their content, with the slack given to the modes row, so
+       the menu still reads as vertically centred beside a full-height column. */
+    grid-template-rows: auto auto 1fr auto;
+    align-content: center;
+    column-gap: clamp(24px, 4vw, 56px);
+  }
+
+  .menu-content.has-news .menu-head {
+    grid-area: head;
+  }
+
+  .menu-content.has-news .menu-next {
+    grid-area: next;
+  }
+
+  .menu-content.has-news .menu-modes {
+    grid-area: modes;
+    align-self: start;
+  }
+
+  .menu-content.has-news .menu-foot {
+    grid-area: foot;
+  }
+
+  .menu-content.has-news .menu-news {
+    grid-area: news;
+    /* Level with the title rather than with whatever the left column ended
+       on, which is the whole reason it moved. */
+    align-self: stretch;
+    margin-top: 0;
+    max-width: none;
+    min-height: 0;
+  }
+
+  /* The ceiling was for a strip at the bottom of a page. In a column of its
+     own the list should use the height it has been given. */
+  .menu-content.has-news .news-list {
+    max-height: none;
+    flex: 1 1 auto;
+  }
+}
+
 .menu-title {
   font-family: var(--font-display);
   font-weight: 700;
